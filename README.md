@@ -1,27 +1,30 @@
 # ApiMu
 
-I am too untalented in mathematics so I have to make a "cheating engine" for myself!
+I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
-(Type theory and [Lean](https://leanprover.github.io/) seem to be too difficult to learn...)
-
+(Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too
+difficult to learn...)
 
 
 ## To Do List
 
-- [x] Boilerplate code (data structures, console output, etc.)
-- [ ] Parser for FOL
-- [ ] Syntax & parser for DSL
-- [ ] Natural Deduction DSL
+- [ ] The verifier
+  - [x] Boilerplate code (data structures, console output, etc.)
+  - [ ] Binary format for FOL and ND trees
+- [ ] The elaborator
+  - [ ] Boilerplate code & CLI
+  - [ ] Syntax & parser for "deduction builder"
+  - [ ] Tactics & infoview
   - [ ] Test: the "no one loves QZR" deduction
 - [ ] Formula & deduction schema support
   - [ ] Instantiation based
   - [ ] Template based
-- [ ] Introduction of Skolem functions
+- [ ] Extension by definitions support
   - [ ] Test: PA
   - [ ] Test: ZFC
   - [ ] Test: PA under ZFC
   - [ ] Test: group under ZFC
-- [ ] Simple Natural Deduction proof searcher
+- [ ] Simple ND proof searcher
 - [ ] More advanced provers
   - [ ] Test: clean up formalisations
-- [ ] Visual Studio Code Integration
+- [ ] GUI? Visual Studio Code extension?
