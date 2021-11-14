@@ -1,4 +1,4 @@
-# ApiMu
+# ApiMu/FOL
 
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
@@ -26,5 +26,5 @@ difficult to learn...)
   - [ ] Test: group under ZFC
 - [ ] Simple ND proof searcher
 - [ ] More advanced provers
-  - [ ] Test: clean up formalisations
+  - [ ] Test: clean up formalizations
 - [ ] GUI? Visual Studio Code extension?

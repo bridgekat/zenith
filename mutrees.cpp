@@ -1,8 +1,10 @@
-// MuTrees/FOL verifier
+// MuTrees/FOL verifier v0.1
 // This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
 
 // Author: Zhanrong Qiao
 // Licensed under CC0
+
+// The code below may contain (many) errors.
 
 #include <iostream>
 #include <stdio.h>
@@ -89,6 +91,7 @@ public:
 	string predicateSymbol(size_t id) const { return ps[id]; }
 	string constantSymbol(size_t id) const { return cs[id]; }
 	static string variableSymbol(size_t id) { std::stringstream ss; ss << "x" << id; return ss.str(); }
+	static string formulaSymbol(size_t id) { std::stringstream ss; ss << "$" << id; return ss.str(); }
 };
 
 // Formula (schema) tree node, and related syntactic operations
@@ -97,7 +100,7 @@ class Node {
 public:
 	// Alphabet for a first-order language with equality
 	enum Symbol: unsigned int {
-		EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms for formulas.
+		EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
 		CONSTANT, VARIABLE, FUNCTION, PREDICATE, // EQUALS,
 		ABSURDITY, NEGATION, CONJUNCTION, DISJUNCTION, IMPLICATION, EQUIVALENCE,
 		UNIVERSAL, EXISTENTIAL,
@@ -608,10 +611,14 @@ public:
 	// TODO: pretty print
 };
 
+Node* newNode(Node::Symbol sym, Allocator<Node>& pool) {
+	return &pool.push_back(Node(sym));
+}
+
 // Derivation (schema) tree node, and related syntactic operations
 class Derivation {
 public:
-	// Natural Deduction rules for classical FOL + equality
+	// Natural Deduction rule names for classical FOL + equality
 	enum Rule: unsigned int {
 		CONJUNCTION_I, CONJUNCTION_E,
 		DISJUNCTION_I, DISJUNCTION_E,
@@ -646,29 +653,88 @@ public:
 		for (Derivation* node: nodes) c.push_back(node);
 	}
 
-	// Check if a derivation is valid (cf. definitions in 1.4, 1.6, 2.8 and 2.9)
-	// ?
-	bool check(const set<const Node*>& hyp) {
-		// #####
-		return false;
+	// Check if a derivation is valid, given a set of axioms (cf. definitions in 1.4, 1.6, 2.8 and 2.9)
+	// TODO: use hash tables to accelerate lookup
+	bool check(const vector<const Node*>& hyp, const Signature& sig) {
+		auto res = check_(sig);
+		if (!res.first) return false;
+		for (auto p: res.second) {
+			bool found = false;
+			for (auto q: hyp) {
+				if (*p == *q) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) return false;
+		}
+		return true;
 	}
 
 private:
 
 	// Returns: (current result, the set of uncancelled hypotheses)
-	pair<bool, set<const Node*> > check_() {
-		// #####
-		return make_pair(false, set<const Node*>());
+	pair<bool, set<const Node*> > check_(const Signature& sig) {
+		set<const Node*> hyps, empty;
+		// Check if conclusion is wff
+		if (!a->isForm(sig)) return make_pair(false, empty); 
+		// Check all premises
+		for (auto p: c) {
+			auto res = p->check_(sig);
+			if (!res.first) return make_pair(false, empty);
+			if (hyps.empty()) hyps = res.second;
+			else hyps.insert(res.second.begin(), res.second.end());
+		}
+		// Natural Deduction rules
+		switch (rule) {
+		case CONJUNCTION_I:
+			if (c.size() != 2) return make_pair(false, empty);
+			const Node *l = c[0]->a, *r = c[1]->a;
+			// Two premises l and r, conclusion in the form of (l /\ r) or (r /\ l)
+			return make_pair(a->symbol == Node::CONJUNCTION &&
+				((*(a->connective.l) == *l && *(a->connective.r) == *r) ||
+				 (*(a->connective.l) == *r && *(a->connective.r) == *l)),
+				hyps);
+		case CONJUNCTION_E:
+			if (c.size() != 1) return make_pair(false, empty);
+			const Node* p = c[0]->a;
+			// One premise in the form of (l /\ r), conclusion equals to l or r
+			return make_pair(p->symbol == Node::CONJUNCTION &&
+				(*a == *(p->connective.l) || *a == *(p->connective.r)),
+				hyps);
+		case DISJUNCTION_I:
+			if (c.size() != 1) return make_pair(false, empty);
+			const Node* p = c[0]->a;
+			// One premise p, conclusion in the form of (p \/ r) or (l \/ p)
+			return make_pair(a->symbol == Node::DISJUNCTION &&
+				(*(a->connective.l) == *p || (*(a->connective.r) == *p)),
+				hyps);
+		case DISJUNCTION_E:
+		case IMPLICATION_I:
+			// #####
+		case IMPLICATION_E:
+		case NEGATION_I:
+		case NEGATION_E:
+		case EQUIVALENCE_I:
+		case EQUIVALENCE_E:
+		case EFQ:
+		case RAA:
+		case UNIVERSAL_I:
+		case UNIVERSAL_E:
+		case EXISTENTIAL_I:
+		case EXISTENTIAL_E:
+		case EQUALITY_I:
+		case EQUALITY_E:
+		case EQUALITY_SYMM:
+		case EQUALITY_TRANS:
+		}
+		return make_pair(false, empty); // Unreachable
 	}
 
 public:
 
 	// TODO: debug output
 };
-
-Node* newNode(Node::Symbol sym, Allocator<Node>& pool) {
-	return &pool.push_back(Node(sym));
-}
 
 // A collection of axioms, definitions and theorems (derivations)
 class Collection {
