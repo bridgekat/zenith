@@ -33,6 +33,21 @@ inline void set_union_inplace(vector<T>& dst, const vector<T>& rhs) {
 }
 */
 
+template <typename T>
+inline vector<T> set_union(const vector<T>& s1, const vector<T>& s2) {
+	if (s1.size() < s2.size()) return set_union(s2, s1);
+	vector<T> res = s1;
+	for (const auto& x: s2) res.push_back(x);
+	return res;
+}
+
+template <typename T>
+inline vector<const T*> ptr_set_minus_elem(const vector<const T*>& s, const T* t) {
+	vector<const T*> res;
+	for (auto p: s) if (*p != *t) res.push_back(p);
+	return res;
+}
+
 // A simple region-based memory allocator: https://news.ycombinator.com/item?id=26433654
 // This ensures that objects stay in the same place
 template <typename T>
@@ -200,7 +215,7 @@ public:
 		return res;
 	}
 
-	// (Strict) equality
+	// Strict equality
 	// Pre: all nonzero pointers are valid
 	// O(size)
 	bool operator==(const Node& rhs) const {
@@ -625,10 +640,11 @@ public:
 		IMPLICATION_I, IMPLICATION_E,
 		NEGATION_I, NEGATION_E,
 		EQUIVALENCE_I, EQUIVALENCE_E,
+		EQUIVALENCE_SYMM, EQUIVALENCE_TRANS, // Derived rules for equivalence
 		EFQ, RAA,
 		UNIVERSAL_I, UNIVERSAL_E,
 		EXISTENTIAL_I, EXISTENTIAL_E,
-		EQUALITY_I, EQUALITY_E, // Equality
+		EQUALITY_I, EQUALITY_E,
 		EQUALITY_SYMM, EQUALITY_TRANS, // Derived rules for equality
 	} const rule;
 
@@ -654,7 +670,8 @@ public:
 	}
 
 	// Check if a derivation is valid, given a set of axioms (cf. definitions in 1.4, 1.6, 2.8 and 2.9)
-	// TODO: use hash tables to accelerate lookup
+	// O((number of nodes) * (total size of hypotheses))
+	// TODO: use hash tables to accelerate lookup?
 	bool check(const vector<const Node*>& hyp, const Signature& sig) {
 		auto res = check_(sig);
 		if (!res.first) return false;
@@ -674,51 +691,141 @@ public:
 private:
 
 	// Returns: (current result, the set of uncancelled hypotheses)
-	pair<bool, set<const Node*> > check_(const Signature& sig) {
-		set<const Node*> hyps, empty;
+	pair<bool, vector<const Node*> > check_(const Signature& sig) {
+		pair<bool, vector<const Node*> > fail = { false, {} };
+		vector<vector<const Node*> > hyps;
 		// Check if conclusion is wff
-		if (!a->isForm(sig)) return make_pair(false, empty); 
-		// Check all premises
+		if (!a->isForm(sig)) return fail;
+		// Check if all premises are wff and correct
 		for (auto p: c) {
 			auto res = p->check_(sig);
-			if (!res.first) return make_pair(false, empty);
-			if (hyps.empty()) hyps = res.second;
-			else hyps.insert(res.second.begin(), res.second.end());
+			if (!res.first) return fail;
+			hyps.push_back(res.second);
 		}
-		// Natural Deduction rules
+		// Natural Deduction rules (major premises are listed first)
 		switch (rule) {
-		case CONJUNCTION_I:
-			if (c.size() != 2) return make_pair(false, empty);
+		case CONJUNCTION_I: {
+			if (c.size() != 2) return fail;
 			const Node *l = c[0]->a, *r = c[1]->a;
-			// Two premises l and r, conclusion in the form of (l /\ r) or (r /\ l)
-			return make_pair(a->symbol == Node::CONJUNCTION &&
-				((*(a->connective.l) == *l && *(a->connective.r) == *r) ||
-				 (*(a->connective.l) == *r && *(a->connective.r) == *l)),
-				hyps);
-		case CONJUNCTION_E:
-			if (c.size() != 1) return make_pair(false, empty);
+			// Two premises l and r, conclusion in the form of (l /\ r)
+			if (a->symbol == Node::CONJUNCTION &&
+				*(a->connective.l) == *l && *(a->connective.r) == *r)
+				return { true, set_union(hyps[0], hyps[1]) };
+			else return fail;
+		}
+		case CONJUNCTION_E: {
+			if (c.size() != 1) return fail;
 			const Node* p = c[0]->a;
 			// One premise in the form of (l /\ r), conclusion equals to l or r
-			return make_pair(p->symbol == Node::CONJUNCTION &&
-				(*a == *(p->connective.l) || *a == *(p->connective.r)),
-				hyps);
-		case DISJUNCTION_I:
-			if (c.size() != 1) return make_pair(false, empty);
+			if (p->symbol == Node::CONJUNCTION &&
+				(*a == *(p->connective.l) || *a == *(p->connective.r)))
+				return { true, hyps[0] };
+			else return fail;
+		}
+		case DISJUNCTION_I: {
+			if (c.size() != 1) return fail;
 			const Node* p = c[0]->a;
 			// One premise p, conclusion in the form of (p \/ r) or (l \/ p)
-			return make_pair(a->symbol == Node::DISJUNCTION &&
-				(*(a->connective.l) == *p || (*(a->connective.r) == *p)),
-				hyps);
-		case DISJUNCTION_E:
-		case IMPLICATION_I:
+			if (a->symbol == Node::DISJUNCTION &&
+				(*(a->connective.l) == *p || *(a->connective.r) == *p))
+				return { true, hyps[0] };
+			else return fail;
+		}
+		case DISJUNCTION_E: {
+			if (c.size() != 3) return fail;
+			const Node *d = c[0]->a, *r0 = c[1]->a, *r1 = c[2]->a;
+			// Three premises (p \/ q), r, r, conclusion is r, cancelling hypotheses p, q in left, right
+			if (d->symbol != Node::DISJUNCTION || *r0 != *r1) return fail;
+			const Node *p = d->connective.l, *q = d->connective.r;
+			if (*a == *r0)
+				return { true, set_union(hyps[0],
+				         set_union(ptr_set_minus_elem(hyps[1], p), ptr_set_minus_elem(hyps[2], q))) };
+			else return fail;
+		}
+		case IMPLICATION_I: {
+			if (c.size() != 1) return fail;
+			const Node* p = c[0]->a;
+			// One premise p, conclusion in the form of (q -> p), cancelling hypothesis q
+			if (a->symbol != Node::IMPLICATION || *(a->connective.r) != *p) return fail;
+			const Node* q = a->connective.l;
+			return { true, ptr_set_minus_elem(hyps[0], q) };
+		}
+		case IMPLICATION_E: {
+			if (c.size() != 2) return fail;
+			const Node *l = c[0]->a, *r = c[1]->a;
+			// Two premises in the form of (p -> q), p, conclusion is q
+			if (l->symbol == Node::IMPLICATION &&
+				(*r == *(l->connective.l) && *a == *(l->connective.r)))
+				return { true, set_union(hyps[0], hyps[1]) };
+			else return fail;
+		}
+		case NEGATION_I: {
+			if (c.size() != 1) return fail;
+			const Node* f = c[0]->a;
+			// One premise _|_, conclusion in the form of (~p), cancelling hypothesis p
+			if (a->symbol != Node::NEGATION || f->symbol != Node::ABSURDITY) return fail;
+			const Node* p = a->connective.l;
+			return { true, ptr_set_minus_elem(hyps[0], p) };
+		}
+		case NEGATION_E: {
+			if (c.size() != 2) return fail;
+			const Node *l = c[0]->a, *r = c[1]->a;
+			// Two premises (~p), p, conclusion is _|_
+			if (a->symbol != Node::ABSURDITY || l->symbol != Node::NEGATION) return fail;
+			if (*r == *(l->connective.l))
+				return { true, set_union(hyps[0], hyps[1]) };
+			else return fail;
+		}
+		case EQUIVALENCE_I: {
+			if (c.size() != 2) return fail;
+			const Node *l = c[0]->a, *r = c[1]->a;
+			// Two premises l, r, conclusion in the form of (l <-> r), cancelling hypotheses r and l in left, right
+			if (a->symbol != Node::EQUIVALENCE) return fail;
+			if (*(a->connective.l) == *l && *(a->connective.r) == *r)
+				return { true, set_union(ptr_set_minus_elem(hyps[0], r), ptr_set_minus_elem(hyps[1], l)) };
+			else return fail;
+		}
+		case EQUIVALENCE_E: {
+			// TODO: extended <->E (like =E)
 			// #####
-		case IMPLICATION_E:
-		case NEGATION_I:
-		case NEGATION_E:
-		case EQUIVALENCE_I:
-		case EQUIVALENCE_E:
-		case EFQ:
-		case RAA:
+			return fail;
+		}
+		case EQUIVALENCE_SYMM: {
+			if (c.size() != 1) return fail;
+			const Node* p = c[0]->a;
+			// One premise in the form of (l <-> r), conclusion is (r <-> l)
+			if (p->symbol != Node::EQUIVALENCE || a->symbol != Node::EQUIVALENCE) return fail;
+			if (*(p->connective.l) == *(a->connective.r) && *(p->connective.r) == *(a->connective.l))
+				return { true, hyps[0] };
+			else return fail;
+		}
+		case EQUIVALENCE_TRANS: {
+			if (c.size() != 2) return fail;
+			const Node *l = c[0]->a, *r = c[1]->a;
+			// Two premises in the form of (p <-> q), (q <-> s), conclusion is (p <-> s)
+			if (l->symbol != Node::EQUIVALENCE || r->symbol != Node::EQUIVALENCE ||
+				a->symbol != Node::EQUIVALENCE) return fail;
+			const Node *p = l->connective.l, *q0 = l->connective.r;
+			const Node *q1 = r->connective.l, *s = r->connective.r;
+			if (*q0 == *q1 && *(a->connective.l) == *p && *(a->connective.r) == *s)
+				return { true, set_union(hyps[0], hyps[1]) };
+			else return fail;
+		}
+		case EFQ: {
+			if (c.size() != 1) return fail;
+			const Node* f = c[0]->a;
+			// One premise in the form of _|_
+			if (f->symbol != Node::ABSURDITY) return fail;
+			return { true, hyps[0] };
+		}
+		case RAA: {
+			if (c.size() != 1) return fail;
+			const Node* f = c[0]->a;
+			// One premise in the form of _|_, conclusion is p, cancelling hypotheses (~p)
+			if (f->symbol != Node::ABSURDITY) return fail;
+			Node t(Node::NEGATION); t.connective.l = a;
+			return { true, ptr_set_minus_elem(hyps[0], &t) };
+		}
 		case UNIVERSAL_I:
 		case UNIVERSAL_E:
 		case EXISTENTIAL_I:
@@ -728,7 +835,7 @@ private:
 		case EQUALITY_SYMM:
 		case EQUALITY_TRANS:
 		}
-		return make_pair(false, empty); // Unreachable
+		return fail; // Unreachable
 	}
 
 public:
@@ -746,6 +853,7 @@ public:
 			AXIOM_U, // Removal of an axiom (schema)
 			PREDICATE_D, FUNCTION_D, // Extension by definitions (using "shorthands")
 			FUNCTION_DD, // Extension by definitions (using "definite descriptions")
+			FUNCTION_ID, // Extension by definitions (using "indefinite descriptions")
 			PREDICATE_U, FUNCTION_U, // Undefining predicates and functions
 			DERIVATION // A derivation to be checked
 		} const id;
