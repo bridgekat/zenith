@@ -33,6 +33,7 @@ inline void set_union_inplace(vector<T>& dst, const vector<T>& rhs) {
 }
 */
 
+// Duplicates are allowed
 template <typename T>
 inline vector<T> set_union(const vector<T>& s1, const vector<T>& s2) {
 	if (s1.size() < s2.size()) return set_union(s2, s1);
@@ -41,6 +42,7 @@ inline vector<T> set_union(const vector<T>& s1, const vector<T>& s2) {
 	return res;
 }
 
+// All instances are removed
 template <typename T>
 inline vector<const T*> ptr_set_minus_elem(const vector<const T*>& s, const T* t) {
 	vector<const T*> res;
@@ -83,6 +85,9 @@ private:
 	vector<unsigned int> fa, pa; // Corresponding arities
 
 public:
+	// Predicate 0 is reserved for equality
+	Signature() { addPredicate("=", 2); }
+
 	size_t addFunction(string symbol, unsigned int arity) {
 		fa.push_back(arity);
 		fs.push_back(symbol);
@@ -116,7 +121,7 @@ public:
 	// Alphabet for a first-order language with equality
 	enum Symbol: unsigned int {
 		EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
-		CONSTANT, VARIABLE, FUNCTION, PREDICATE, // EQUALS,
+		CONSTANT, VARIABLE, FUNCTION, PREDICATE,
 		ABSURDITY, NEGATION, CONJUNCTION, DISJUNCTION, IMPLICATION, EQUIVALENCE,
 		UNIVERSAL, EXISTENTIAL,
 	} symbol;
@@ -125,8 +130,8 @@ public:
 	union {
 		struct { unsigned int id; } constant;
 		struct { unsigned int id; } variable;
-		struct { unsigned int id; Node* c; } function;
-		struct { unsigned int id; Node* c; } predicate;
+		struct { int id; Node* c; } function;  // Negative indices denote metavariables
+		struct { int id; Node* c; } predicate; // Negative indices denote metavariables
 		struct { Node *l, *r; } connective; // 16B (64-bit)
 		struct { unsigned int l; Node* r; } quantifier;
 	};
@@ -137,9 +142,11 @@ public:
 	// Assuming: pointer is nonzero <=> pointer is valid (exception: root nodes have undefined *s pointer)
 
 	// Implicitly-defined default constructor does nothing: https://en.cppreference.com/w/cpp/language/default_constructor
+	// The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
 	Node(): symbol(EMPTY), s(nullptr) {}
 	Node(Symbol sym): symbol(sym), s(nullptr) {
 		switch (sym) {
+		case EMPTY: break;
 		case CONSTANT: constant.id = 0; break;
 		case VARIABLE: variable.id = 0; break;
 		case FUNCTION: function.id = 0; function.c = nullptr; break;
@@ -148,7 +155,7 @@ public:
 			connective.l = connective.r = nullptr; break;
 		case UNIVERSAL: case EXISTENTIAL: quantifier.l = 0; quantifier.r = nullptr; break;
 		}
-	};
+	}
 	// Implicitly-defined copy constructor copies all non-static members: https://en.cppreference.com/w/cpp/language/copy_constructor
 	// Node(const Node& rhs) = default;
 	// Implicitly-defined move constructor moves all non-static members: https://en.cppreference.com/w/cpp/language/move_constructor
@@ -160,8 +167,8 @@ public:
 	// Implicitly-defined destructor does nothing: https://en.cppreference.com/w/cpp/language/destructor
 	// ~Node() = default;
 	
-	// Arity "de facto"
-	// Pre: all nonzero pointers are valid
+	// Count the number of child nodes
+	// Pre: symbol is FUNCTION of PREDICATE; all nonzero pointers are valid
 	unsigned int arity() const {
 		if (symbol != FUNCTION && symbol != PREDICATE) return 0;
 		unsigned int res = 0;
@@ -173,7 +180,7 @@ public:
 	// Attach children (no-copy)
 	// Each node may only be attached to **one** parent node at a time!
 	// Pre: symbol is FUNCTION of PREDICATE
-	void attachChildrenNoCopy(const std::initializer_list<Node*>& nodes) {
+	void attachChildrenUnsafe(const std::initializer_list<Node*>& nodes) {
 		if (symbol != FUNCTION && symbol != PREDICATE) return;
 		Node* last = nullptr;
 		for (Node* node: nodes) {
@@ -215,7 +222,7 @@ public:
 		return res;
 	}
 
-	// Strict equality
+	// Syntactical equality
 	// Pre: all nonzero pointers are valid
 	// O(size)
 	bool operator==(const Node& rhs) const {
@@ -343,7 +350,7 @@ public:
 	}
 
 	// Returns the set of free variables (cf. definitions 2.3.6, 2.3.7)
-	// Pre: subtree must be a well-formed term or formula
+	// Pre: (*this) must be a well-formed term or formula
 	// O(size * log(number of vars))
 	set<unsigned int> FV() const {
 		set<unsigned int> res, upperbv;
@@ -388,7 +395,7 @@ private:
 public:
 
 	// Returns the set of bound variables (cf. definitions 2.3.6, 2.3.7)
-	// Pre: subtree must be a well-formed term or formula
+	// Pre: (*this) must be a well-formed term or formula
 	// O(size * log(number of vars))
 	set<unsigned int> BV() const {
 		set<unsigned int> res;
@@ -428,14 +435,36 @@ private:
 
 public:
 
-	// (cf. definitions 2.3.8)
-	// Pre: subtree must be a well-formed term or formula
+	// Test if x_i is a free variable (cf. definitions 2.3.6, 2.3.7)
+	// Pre: (*this) must be a well-formed term or formula
+	// O(size)
+	bool isFV(unsigned int i) const {
+		switch (symbol) {
+		case CONSTANT: return false;
+		case VARIABLE: return variable.id == i;
+		case FUNCTION: case PREDICATE: {
+			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
+			while (p) { if (p->isFV(i)) return true; p = p->s; }
+			}
+			return false;
+		case ABSURDITY: return false;
+		case NEGATION: case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
+			return (connective.l && connective.l->isFV(i)) ||
+			       (connective.r && connective.r->isFV(i));
+		case UNIVERSAL: case EXISTENTIAL:
+			return quantifier.l != i && quantifier.r && quantifier.r->isFV(i);
+		}
+		return false;
+	}
+
+	// Check if (*this) is a closed term or formula (cf. definitions 2.3.8)
+	// Pre: (*this) must be a well-formed term or formula
 	bool isClosedTerm(const Signature& sig) { return isTerm(sig) && FV().empty(); }
 	bool isClosedForm(const Signature& sig) { return isForm(sig) && FV().empty(); }
 	
 	// In-place simultaneous replacement of variables by terms: s[t.../xi...] or φ[t.../xi...] (cf. definitions 2.3.9, 2.3.10)
-	// Pre: subtree must be a well-formed term or formula; t's must be well-formed terms; every individual input must be disjoint subtrees
-	// Post: the nodes given in the map will not be used directly; it will only be copied
+	// The nodes given in the map will not be used directly; it will only be copied
+	// Pre: (*this) must be a well-formed term or formula; t's must be well-formed terms
 	// O(size * log(number of replacements))
 	Node* replaceVariables(const map<unsigned int, const Node*>& reps, Allocator<Node>& pool) {
 		switch (symbol) {
@@ -483,8 +512,8 @@ public:
 	}
 	
 	// In-place simultaneous replacement of predicates by formulas: φ[ψ.../$i...] (cf. definition 2.3.11)
-	// Pre: subtree must be a well-formed formula; ψ's must be well-formed formulas; every individual input must be disjoint subtrees
-	// Post: the nodes given in the map will not be used directly; it will only be copied
+	// The nodes given in the map will not be used directly; it will only be copied
+	// Pre: (*this) must be a well-formed formula; ψ's must be well-formed formulas
 	// O(size * log(number of replacements))
 	Node* replacePropositions(const map<unsigned int, const Node*>& reps, Allocator<Node>& pool) {
 		switch (symbol) {
@@ -512,9 +541,10 @@ public:
 	}
 
 	// Check whether t is "free for" xi in this subtree (cf. definition 2.3.12, lemma 2.3.13)
-	// Pre: subtree must be a well-formed term or formula
+	// Pre: (*this) must be a well-formed term or formula
 	// O(size * log(size of FV(t)))
 	bool variableIsFreeFor(const Node* t, unsigned int i) const { return variableIsFreeFor_(t->FV(), i).first; }
+	bool variableIsFreeFor(const set<unsigned int>& fvt, unsigned int i) const { return variableIsFreeFor_(fvt, i).first; }
 	
 private:
 
@@ -556,9 +586,10 @@ private:
 public:
 
 	// Check whether ψ is "free for" $i in this subtree (cf. definition 2.3.14, lemma 2.3.15)
-	// Pre: subtree must be a well-formed formula
+	// Pre: (*this) must be a well-formed formula
 	// O(size * log(size of FV(ψ)))
 	bool propositionIsFreeFor(const Node* psi, unsigned int i) const { return propositionIsFreeFor_(psi->FV(), i).first; }
+	bool propositionIsFreeFor(const set<unsigned int>& fvpsi, unsigned int i) const { return propositionIsFreeFor_(fvpsi, i).first; }
 
 private:
 
@@ -633,8 +664,12 @@ Node* newNode(Node::Symbol sym, Allocator<Node>& pool) {
 // Derivation (schema) tree node, and related syntactic operations
 class Derivation {
 public:
-	// Natural Deduction rule names for classical FOL + equality
+	// Natural Deduction rules for classical FOL + equality
+	// ("Derived rules" are marked for destruction!)
 	enum Rule: unsigned int {
+		EMPTY = 0,
+		THEOREM, ASSUMPTION,
+		PREDICATE_S, FUNCTION_S, // Specialization of metavariables
 		CONJUNCTION_I, CONJUNCTION_E,
 		DISJUNCTION_I, DISJUNCTION_E,
 		IMPLICATION_I, IMPLICATION_E,
@@ -645,69 +680,101 @@ public:
 		UNIVERSAL_I, UNIVERSAL_E,
 		EXISTENTIAL_I, EXISTENTIAL_E,
 		EQUALITY_I, EQUALITY_E,
-		EQUALITY_SYMM, EQUALITY_TRANS, // Derived rules for equality
+		EQUALITY_SYMM, EQUALITY_TRANS // Derived rules for equality
 	} const rule;
-
+	
 	// Conclusion
 	Node* a;
 
+	// Auxiliary data (not going to put "nontrivial" data types into a union...)
+	string name;
+	Node* tmpl;
+	vector<unsigned int> loc;
+	
 	// Child derivations
 	// DAGs are allowed (used in Fitch-style notation)
-	vector<Derivation*> c;
-
-	// Storage: 4B + 4B + ?B = ?B (32-bit) / 4B + 8B + ?B = ?B (64-bit)
+	vector<const Derivation*> c;
 	// Assuming: pointer is present <=> pointer is valid
 
 	// Implicitly-defined default constructor does nothing...
-	Derivation(Rule r): rule(r), a(nullptr) {};
-
-	// Arity "de facto"
-	unsigned int arity() const { return c.size(); }
+	Derivation(): rule(EMPTY), a(nullptr), tmpl(nullptr) {}
+	Derivation(Rule r): rule(r), a(nullptr), tmpl(nullptr) {}
 
 	// DAGs are allowed: each node may be attached to multiple parent nodes at a time
-	void attachChildren(const std::initializer_list<Derivation*>& nodes) {
-		for (Derivation* node: nodes) c.push_back(node);
+	void attachChildren(const std::initializer_list<const Derivation*>& nodes) {
+		for (const Derivation* node: nodes) c.push_back(node);
 	}
 
 	// Check if a derivation is valid, given a set of axioms (cf. definitions in 1.4, 1.6, 2.8 and 2.9)
 	// O((number of nodes) * (total size of hypotheses))
 	// TODO: use hash tables to accelerate lookup?
-	bool check(const vector<const Node*>& hyp, const Signature& sig) {
-		auto res = check_(sig);
-		if (!res.first) return false;
-		for (auto p: res.second) {
-			bool found = false;
-			for (auto q: hyp) {
-				if (*p == *q) {
-					found = true;
-					break;
-				}
-			}
-			if (!found) return false;
-		}
-		return true;
+	bool check(const Signature& sig, const map<string, const Node*>& theorems) const {
+		auto res = check_(sig, theorems);
+		return res.first && res.second.empty();
 	}
 
 private:
 
 	// Returns: (current result, the set of uncancelled hypotheses)
-	pair<bool, vector<const Node*> > check_(const Signature& sig) {
+	pair<bool, vector<const Node*> > check_(const Signature& sig, const map<string, const Node*>& theorems) const {
 		pair<bool, vector<const Node*> > fail = { false, {} };
 		vector<vector<const Node*> > hyps;
-		// Check if conclusion is wff
-		if (!a->isForm(sig)) return fail;
-		// Check if all premises are wff and correct
+		// Check if initialized
+		if (rule == EMPTY) return fail;
+		// Check if conclusion is present and wff
+		if (!a || !a->isForm(sig)) return fail;
+		// Check if all premises are present, wff and valid; store all uncancelled hypotheses
 		for (auto p: c) {
-			auto res = p->check_(sig);
+			if (!p) return fail;
+			auto res = p->check_(sig, theorems);
 			if (!res.first) return fail;
 			hyps.push_back(res.second);
 		}
 		// Natural Deduction rules (major premises are listed first)
+		/* Distinction is made between ASSUMPTION and THEOREM in order to handle metavariable specialization within a proof.
+		* The metavariable specialization rule: if a metavariable has arity K, replacing it by some ψ (resp. t) involves:
+		  1. Changing bound variables in ψ to avoid naming clashes in Step 3.
+		  2. Assigning new indices "unused across the whole derivation" to free variables with indices > K in ψ.
+		  3. Substituting the free variables with indices 1..K in ψ for the child terms (the terms "in the parentheses").
+		* It can be proven if all metavariables inside a derivation are simultaneously specialized "consistently" (i.e.
+		  the new indices given in Step 2 are the same), the derivation remains syntactically valid.
+		* So Γ ⊢ φ by derivation D gives Γ_sub(D, ψ) ⊢ Γ_sub(D, ψ).
+		* We may further "relax" the constraints in Step 2, by choosing indices "unused in all uncancelled hypotheses and
+		  the conclusion", since the variables mentioned in the derivation which do not present in hypotheses or conclusion
+		  can be renamed freely.
+		* (It is easier to see that the rule is indeed semantically valid: we are just "restricting" arbitrary predicates /
+		  functions to a specific subset of predicates / functions!)
+		* Now note that the use of axiom schemata or previously-derived theorem schemata do not contribute to "uncancelled
+		  hypotheses" - their derivation rely on no hypothesis, and in principle we may chain these derivations together
+		  and do metavariable specialization on "the whole thing". (By definition, axiom schemata can be specialized freely.
+		  Here we do not explicitly specialize them, just to make checking faster.)
+		* (We may "relax" the constraints even further, by allowing overlap between those "extra free variables" in Step 2
+		  and the "already-present free variables" in the original schema. I haven't made a syntactic proof yet, but
+		  semantically it just imposes the same "variable equality" restrictions on all the hypotheses and the conclusion,
+		  under which the entailment relation should remain valid. However, since this is not so intuitive and may cause
+		  inconvienience, I am not allowing it at least for now.)
+		*/
 		switch (rule) {
+		case THEOREM: {
+			if (c.size() != 0) return fail;
+			auto it = theorems.find(name);
+			if (it == theorems.end() || *(it->second) != *a) return fail;
+			return { true, {} };
+		}
+		case ASSUMPTION: {
+			if (c.size() != 0) return fail;
+			return { true, { a } };
+		}
+		case PREDICATE_S: {
+
+		}
+		case FUNCTION_S: {
+
+		}
 		case CONJUNCTION_I: {
 			if (c.size() != 2) return fail;
 			const Node *l = c[0]->a, *r = c[1]->a;
-			// Two premises l and r, conclusion in the form of (l /\ r)
+			// Two premises l and r, conclusion in the form of (l ∧ r)
 			if (a->symbol == Node::CONJUNCTION &&
 				*(a->connective.l) == *l && *(a->connective.r) == *r)
 				return { true, set_union(hyps[0], hyps[1]) };
@@ -716,7 +783,7 @@ private:
 		case CONJUNCTION_E: {
 			if (c.size() != 1) return fail;
 			const Node* p = c[0]->a;
-			// One premise in the form of (l /\ r), conclusion equals to l or r
+			// One premise in the form of (l ∧ r), conclusion equals to l or r
 			if (p->symbol == Node::CONJUNCTION &&
 				(*a == *(p->connective.l) || *a == *(p->connective.r)))
 				return { true, hyps[0] };
@@ -725,7 +792,7 @@ private:
 		case DISJUNCTION_I: {
 			if (c.size() != 1) return fail;
 			const Node* p = c[0]->a;
-			// One premise p, conclusion in the form of (p \/ r) or (l \/ p)
+			// One premise p, conclusion in the form of (p ∨ r) or (l ∨ p)
 			if (a->symbol == Node::DISJUNCTION &&
 				(*(a->connective.l) == *p || *(a->connective.r) == *p))
 				return { true, hyps[0] };
@@ -734,7 +801,7 @@ private:
 		case DISJUNCTION_E: {
 			if (c.size() != 3) return fail;
 			const Node *d = c[0]->a, *r0 = c[1]->a, *r1 = c[2]->a;
-			// Three premises (p \/ q), r, r, conclusion is r, cancelling hypotheses p, q in left, right
+			// Three premises (p ∨ q), r, r, conclusion is r, cancelling hypotheses p, q in left, right
 			if (d->symbol != Node::DISJUNCTION || *r0 != *r1) return fail;
 			const Node *p = d->connective.l, *q = d->connective.r;
 			if (*a == *r0)
@@ -745,7 +812,7 @@ private:
 		case IMPLICATION_I: {
 			if (c.size() != 1) return fail;
 			const Node* p = c[0]->a;
-			// One premise p, conclusion in the form of (q -> p), cancelling hypothesis q
+			// One premise p, conclusion in the form of (q → p), cancelling hypothesis q
 			if (a->symbol != Node::IMPLICATION || *(a->connective.r) != *p) return fail;
 			const Node* q = a->connective.l;
 			return { true, ptr_set_minus_elem(hyps[0], q) };
@@ -753,7 +820,7 @@ private:
 		case IMPLICATION_E: {
 			if (c.size() != 2) return fail;
 			const Node *l = c[0]->a, *r = c[1]->a;
-			// Two premises in the form of (p -> q), p, conclusion is q
+			// Two premises in the form of (p → q), p, conclusion is q
 			if (l->symbol == Node::IMPLICATION &&
 				(*r == *(l->connective.l) && *a == *(l->connective.r)))
 				return { true, set_union(hyps[0], hyps[1]) };
@@ -762,7 +829,7 @@ private:
 		case NEGATION_I: {
 			if (c.size() != 1) return fail;
 			const Node* f = c[0]->a;
-			// One premise _|_, conclusion in the form of (~p), cancelling hypothesis p
+			// One premise ⊥, conclusion in the form of (¬p), cancelling hypothesis p
 			if (a->symbol != Node::NEGATION || f->symbol != Node::ABSURDITY) return fail;
 			const Node* p = a->connective.l;
 			return { true, ptr_set_minus_elem(hyps[0], p) };
@@ -770,7 +837,7 @@ private:
 		case NEGATION_E: {
 			if (c.size() != 2) return fail;
 			const Node *l = c[0]->a, *r = c[1]->a;
-			// Two premises (~p), p, conclusion is _|_
+			// Two premises (¬p), p, conclusion is ⊥
 			if (a->symbol != Node::ABSURDITY || l->symbol != Node::NEGATION) return fail;
 			if (*r == *(l->connective.l))
 				return { true, set_union(hyps[0], hyps[1]) };
@@ -779,21 +846,47 @@ private:
 		case EQUIVALENCE_I: {
 			if (c.size() != 2) return fail;
 			const Node *l = c[0]->a, *r = c[1]->a;
-			// Two premises l, r, conclusion in the form of (l <-> r), cancelling hypotheses r and l in left, right
+			// Two premises l, r, conclusion in the form of (l ↔ r), cancelling hypotheses r and l in left, right
 			if (a->symbol != Node::EQUIVALENCE) return fail;
 			if (*(a->connective.l) == *l && *(a->connective.r) == *r)
 				return { true, set_union(ptr_set_minus_elem(hyps[0], r), ptr_set_minus_elem(hyps[1], l)) };
 			else return fail;
 		}
 		case EQUIVALENCE_E: {
-			// TODO: extended <->E (like =E)
-			// #####
-			return fail;
+			if (c.size() < 1) return fail;
+			int n = int(c.size()) - 1;
+			const Node* q = c.back()->a;
+			// Check if template is present and well-formed
+			if (!tmpl || !tmpl->isForm(sig)) return fail;
+			// Check if replacement locations are correct (duplicated or "invalid" entries are tolerated)
+			if (loc.size() != n) return fail;
+			// n major premises in the form of (li ↔ ri), one minor premise
+			// Minor premise and conclusion are equal to template substituted by li's and ri's respectively
+			map<unsigned int, const Node*> qreps, areps;
+			for (int i = 0; i < n; i++) {
+				const Node* pi = c[i]->a;
+				// Check if major premise i is in the correct form
+				if (pi->symbol != Node::EQUIVALENCE) return fail;
+				const Node *li = pi->connective.l, *ri = pi->connective.r;
+				// Check if substitution is "proper", or "free"
+				if (!tmpl->propositionIsFreeFor(li, loc[i]) || !tmpl->propositionIsFreeFor(ri, loc[i])) return fail;
+				qreps[loc[i]] = li; areps[loc[i]] = ri;
+			}
+			// Do the substitution
+			Allocator<Node> pool;
+			Node *q_ = tmpl->treeClone(pool), *a_ = tmpl->treeClone(pool);
+			q_->replacePropositions(qreps, pool); a_->replacePropositions(areps, pool);
+			// Check if results matched
+			if (*q == *q_ && *a == *a_) {
+				vector<const Node*> allHyps;
+				for (int i = 0; i < n; i++) allHyps = set_union(allHyps, hyps[i]);
+				return { true, allHyps };
+			} else return fail;
 		}
 		case EQUIVALENCE_SYMM: {
 			if (c.size() != 1) return fail;
 			const Node* p = c[0]->a;
-			// One premise in the form of (l <-> r), conclusion is (r <-> l)
+			// One premise in the form of (l ↔ r), conclusion is (r ↔ l)
 			if (p->symbol != Node::EQUIVALENCE || a->symbol != Node::EQUIVALENCE) return fail;
 			if (*(p->connective.l) == *(a->connective.r) && *(p->connective.r) == *(a->connective.l))
 				return { true, hyps[0] };
@@ -802,7 +895,7 @@ private:
 		case EQUIVALENCE_TRANS: {
 			if (c.size() != 2) return fail;
 			const Node *l = c[0]->a, *r = c[1]->a;
-			// Two premises in the form of (p <-> q), (q <-> s), conclusion is (p <-> s)
+			// Two premises in the form of (p ↔ q), (q ↔ s), conclusion is (p ↔ s)
 			if (l->symbol != Node::EQUIVALENCE || r->symbol != Node::EQUIVALENCE ||
 				a->symbol != Node::EQUIVALENCE) return fail;
 			const Node *p = l->connective.l, *q0 = l->connective.r;
@@ -814,26 +907,146 @@ private:
 		case EFQ: {
 			if (c.size() != 1) return fail;
 			const Node* f = c[0]->a;
-			// One premise in the form of _|_
+			// One premise in the form of ⊥
 			if (f->symbol != Node::ABSURDITY) return fail;
 			return { true, hyps[0] };
 		}
 		case RAA: {
 			if (c.size() != 1) return fail;
 			const Node* f = c[0]->a;
-			// One premise in the form of _|_, conclusion is p, cancelling hypotheses (~p)
+			// One premise in the form of ⊥, conclusion is p, cancelling hypotheses (¬p)
 			if (f->symbol != Node::ABSURDITY) return fail;
 			Node t(Node::NEGATION); t.connective.l = a;
 			return { true, ptr_set_minus_elem(hyps[0], &t) };
 		}
-		case UNIVERSAL_I:
-		case UNIVERSAL_E:
-		case EXISTENTIAL_I:
-		case EXISTENTIAL_E:
-		case EQUALITY_I:
-		case EQUALITY_E:
-		case EQUALITY_SYMM:
-		case EQUALITY_TRANS:
+		case UNIVERSAL_I: {
+			if (c.size() != 1) return fail;
+			const Node* p = c[0]->a;
+			// One premise p, conclusion in the form of (∀xi, p), with xi does not occur free in any hypothesis
+			if (a->symbol != Node::UNIVERSAL || *(a->quantifier.r) != *p) return fail;
+			unsigned int i = a->quantifier.l;
+			for (const Node* hyp: hyps[0]) if (hyp->isFV(i)) return fail;
+			return { true, hyps[0] };
+		}
+		case UNIVERSAL_E: {
+			if (c.size() != 1) return fail;
+			const Node* p = c[0]->a;
+			// Check if t is present and well-formed
+			const Node* t = tmpl;
+			if (!t || !t->isForm(sig)) return fail;
+			// One premise in the form of (∀xi, p), conclusion is p[t/xi]
+			if (p->symbol != Node::UNIVERSAL) return fail;
+			unsigned int i = p->quantifier.l;
+			p = p->quantifier.r;
+			// Check if substitution is "proper", or "free"
+			if (!p->variableIsFreeFor(t, i)) return fail;
+			// Do the substitution
+			Allocator<Node> pool;
+			Node* p_ = p->treeClone(pool);
+			p_->replaceVariables({{ i, t }}, pool);
+			// Check if results matched
+			if (*p_ == *a)
+				return { true, hyps[0] };
+			else return fail;
+		}
+		case EXISTENTIAL_I: {
+			if (c.size() != 1) return fail;
+			const Node* p = c[0]->a;
+			// Check if t is present and well-formed
+			const Node* t = tmpl;
+			if (!t || !t->isForm(sig)) return fail;
+			// One premise q[t/xi], conclusion in the form of (∃xi, q)
+			if (a->symbol != Node::EXISTENTIAL) return fail;
+			unsigned int i = a->quantifier.l;
+			const Node* q = a->quantifier.r;
+			// Check if substitution is "proper", or "free"
+			if (!q->variableIsFreeFor(t, i)) return fail;
+			// Do the substitution
+			Allocator<Node> pool;
+			Node* q_ = q->treeClone(pool);
+			q_->replaceVariables({{ i, t }}, pool);
+			// Check if results matched
+			if (*q_ == *p)
+				return { true, hyps[0] };
+			else return fail;
+		}
+		case EXISTENTIAL_E: {
+			if (c.size() != 2) return fail;
+			const Node *p = c[0]->a, *q = c[1]->a;
+			// Two premises in the form of (∃xi, p) and q, with xi does not occur free in q or any hypothesis
+			// from q (except p), conclusion is q, cancelling hypothesis p from the derivation of q
+			if (p->symbol != Node::EXISTENTIAL || *a != *q) return fail;
+			unsigned int i = p->quantifier.l;
+			p = p->quantifier.r;
+			if (q->isFV(i)) return fail;
+			for (const Node* hyp: hyps[1]) if (hyp->isFV(i) && *hyp != *p) return fail;
+			return { true, set_union(hyps[0], ptr_set_minus_elem(hyps[1], p)) };
+		}
+		case EQUALITY_I: {
+			if (c.size() != 0) return fail;
+			// No premise, conclusion is in the form of (t = t)
+			if (a->symbol != Node::PREDICATE || a->predicate.id != 0) return fail;
+			const Node* l = a->predicate.c;
+			const Node* r = l->s;
+			if (*l == *r) return { true, {} };
+			else return fail;
+		}
+		case EQUALITY_E: {
+			if (c.size() < 1) return fail;
+			int n = int(c.size()) - 1;
+			const Node* q = c.back()->a;
+			// Check if template is present and well-formed
+			if (!tmpl || !tmpl->isForm(sig)) return fail;
+			// Check if replacement locations are correct (duplicated or "invalid" entries are tolerated)
+			if (loc.size() != n) return fail;
+			// n major premises in the form of (li = ri), one minor premise
+			// Minor premise and conclusion are equal to template substituted by li's and ri's respectively
+			map<unsigned int, const Node*> qreps, areps;
+			for (int i = 0; i < n; i++) {
+				const Node* pi = c[i]->a;
+				// Check if major premise i is in the correct form
+				if (pi->symbol != Node::PREDICATE || pi->predicate.id != 0) return fail;
+				const Node *li = pi->predicate.c, *ri = li->s;
+				// Check if substitution is "proper", or "free"
+				if (!tmpl->variableIsFreeFor(li, loc[i]) || !tmpl->variableIsFreeFor(ri, loc[i])) return fail;
+				qreps[loc[i]] = li; areps[loc[i]] = ri;
+			}
+			// Do the substitution
+			Allocator<Node> pool;
+			Node *q_ = tmpl->treeClone(pool), *a_ = tmpl->treeClone(pool);
+			q_->replaceVariables(qreps, pool); a_->replaceVariables(areps, pool);
+			// Check if results matched
+			if (*q == *q_ && *a == *a_) {
+				vector<const Node*> allHyps;
+				for (int i = 0; i < n; i++) allHyps = set_union(allHyps, hyps[i]);
+				return { true, allHyps };
+			} else return fail;
+		}
+		case EQUALITY_SYMM: {
+			if (c.size() != 1) return fail;
+			const Node* p = c[0]->a;
+			// One premise in the form of (s = t), conclusion is (t = s)
+			if (p->symbol != Node::PREDICATE || p->predicate.id != 0 ||
+				a->symbol != Node::PREDICATE || a->predicate.id != 0) return fail;
+			const Node *s0 = p->predicate.c, *t0 = a->predicate.c;
+			const Node *t1 = s0->s, *s1 = t0->s;
+			if (*s0 == *s1 && *t0 == *t1)
+				return { true, hyps[0] };
+			else return fail;
+		}
+		case EQUALITY_TRANS: {
+			if (c.size() != 2) return fail;
+			const Node *l = c[0]->a, *r = c[1]->a;
+			// Two premises in the form of (s = t), (t = u), conclusion is (s = u)
+			if (l->symbol != Node::PREDICATE || l->predicate.id != 0 ||
+				r->symbol != Node::PREDICATE || r->predicate.id != 0 ||
+				a->symbol != Node::PREDICATE || a->predicate.id != 0) return fail;
+			const Node *s0 = l->predicate.c, *t0 = r->predicate.c, *s1 = a->predicate.c;
+			const Node *t1 = s0->s, *u0 = t0->s, *u1 = s1->s;
+			if (*s0 == *s1 && *t0 == *t1 && *u0 == *u1)
+				return { true, set_union(hyps[0], hyps[1]) };
+			else return fail;
+		}
 		}
 		return fail; // Unreachable
 	}
@@ -874,7 +1087,7 @@ int main() {
 		const unsigned int ADD = sig.addFunction("+", 2);
 		const unsigned int MUL = sig.addFunction("*", 2);
 		const unsigned int SUCC = sig.addFunction("S", 1);
-		const unsigned int EQUAL = sig.addPredicate("=", 2);
+		const unsigned int EQUAL = 0;
 		const unsigned int LESS = sig.addPredicate("<", 2);
 		const unsigned int LEQUAL = sig.addPredicate("≤", 2);
 
@@ -890,13 +1103,13 @@ int main() {
 		cout << a.isTerm(sig) << a.isForm(sig) << e.isTerm(sig) << e.isForm(sig) << endl; // 0000
 		a.connective.l = &b; a.connective.r = &c;
 		cout << a.isForm(sig) << b.isForm(sig) << b.isTerm(sig) << endl; // 000
-		b.attachChildrenNoCopy({ &x1, &y1 });
+		b.attachChildrenUnsafe({ &x1, &y1 });
 		cout << a.isForm(sig) << b.isForm(sig) << b.isTerm(sig) << endl; // 010
 		c.connective.l = &d; c.connective.r = &e;
 		cout << a.isForm(sig) << c.isForm(sig) << endl; // 00
-		d.attachChildrenNoCopy({ &x2, &y2 });
+		d.attachChildrenUnsafe({ &x2, &y2 });
 		cout << a.isForm(sig) << c.isForm(sig) << endl; // 00
-		e.attachChildrenNoCopy({ &x3, &y3 });
+		e.attachChildrenUnsafe({ &x3, &y3 });
 		cout << a.isForm(sig) << c.isForm(sig) << endl; // 11
 
 		cout << b.toString(sig) << endl; // ≤(x1, x2)
@@ -908,6 +1121,7 @@ int main() {
 		cout << a.FV().size() << a.BV().size() << endl; // 20
 		cout << q.FV().size() << q.BV().size() << endl; // 11
 		cout << p.FV().size() << p.BV().size() << endl; // 02
+		cout << a.isFV(1) << a.isFV(3) << p.isFV(1) << p.isFV(2) << endl; // 1000
 	}
 
 	{ // Experiment 2
@@ -916,7 +1130,7 @@ int main() {
 		const unsigned int ADD = sig.addFunction("+", 2);
 		const unsigned int MUL = sig.addFunction("*", 2);
 		const unsigned int SUCC = sig.addFunction("S", 1);
-		const unsigned int EQUAL = sig.addPredicate("=", 2);
+		const unsigned int EQUAL = 0;
 		const unsigned int LESS = sig.addPredicate("<", 2);
 		const unsigned int LEQUAL = sig.addPredicate("≤", 2);
 
@@ -956,6 +1170,7 @@ int main() {
 		cout << a->FV().size() << a->BV().size() << endl; // 20
 		cout << q->FV().size() << q->BV().size() << endl; // 11
 		cout << p->FV().size() << p->BV().size() << endl; // 02
+		cout << a->isFV(1) << a->isFV(3) << p->isFV(1) << p->isFV(2) << endl; // 1000
 
 		auto zero = newNode(Node::CONSTANT, all); zero->constant.id = ZERO;
 		auto one = newNode(Node::FUNCTION, all); one->function.id = SUCC; one->attachChildren({ zero }, all);

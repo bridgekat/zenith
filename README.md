@@ -10,7 +10,7 @@ difficult to learn...)
 
 - [ ] The verifier
   - [x] Boilerplate code (data structures, console output, etc.)
-  - [ ] Binary format for FOL and ND trees
+  - [ ] Text & binary file formats for FOL and ND trees
 - [ ] The elaborator
   - [ ] Boilerplate code & CLI
   - [ ] Syntax & parser for "deduction builder"
@@ -27,4 +27,5 @@ difficult to learn...)
 - [ ] Simple ND proof searcher
 - [ ] More advanced provers
   - [ ] Test: clean up formalizations
+- [ ] User-defined connectives?
 - [ ] GUI? Visual Studio Code extension?
