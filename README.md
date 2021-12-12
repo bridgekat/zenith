@@ -19,18 +19,17 @@ already enough for this...)
   - [ ] Text & binary file formats for FOL and ND trees (WIP)
 - [ ] The elaborator
   - [ ] Boilerplate code & CLI
-  - [ ] Syntax & parser for "deduction builder"
+  - [ ] Syntax & parser for "derivation builder"
   - [ ] Tactics & infoview
-  - [ ] Test: the "no one loves QZR" deduction
 - [ ] Formula & deduction schema support
   - [x] ~~Instantiation based~~
   - [ ] Metavariable based (WIP)
 - [ ] Extension by definitions support
   - [ ] Test: PA
   - [ ] Test: ZFC
-  - [ ] Test: PA under ZFC
+  - [ ] Test: von Neumann ordinals
   - [ ] Test: group under ZFC
-- [ ] Simple ND proof searcher
+- [ ] Simple "library search"
 - [ ] More advanced provers
   - [ ] Test: clean up formalizations
 - [ ] User-defined connectives?
@@ -39,7 +38,8 @@ already enough for this...)
 
 ## Some random thoughts
 
-(Don't take it serious...)
+(Don't take it serious, I am neither an expert in intuitionistic type theory
+nor one in set theory...)
 
 (Certainly, set theory has its drawbacks as a logical framework of a theorem
 prover, but I think there are solutions... As commonly criticized, lack of
