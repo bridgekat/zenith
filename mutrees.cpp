@@ -1,10 +1,8 @@
-// MuTrees/FOL verifier v0.1
+// ApiMu/FOL verifier v0.1
+// Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
+
 // This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
-
-// Author: Zhanrong Qiao
-// Licensed under CC0
-
-// The code below may contain (many) errors.
+// The code below may contain (many) errors. Please let me (zq621@ic.ac.uk) know if you found one or more.
 
 #include <iostream>
 #include <stdio.h>
@@ -110,12 +108,15 @@ public:
 	unsigned int predicateArity(size_t id) const { return pa[id]; }
 	string predicateSymbol(size_t id) const { return ps[id]; }
 	string constantSymbol(size_t id) const { return cs[id]; }
+
+	static string functionMetaSymbol(size_t id) { std::stringstream ss; ss << "[f" << id << "]"; return ss.str(); }
+	static string predicateMetaSymbol(size_t id) { std::stringstream ss; ss << "[P" << id << "]"; return ss.str(); }
 	static string variableSymbol(size_t id) { std::stringstream ss; ss << "x" << id; return ss.str(); }
-	static string formulaSymbol(size_t id) { std::stringstream ss; ss << "$" << id; return ss.str(); }
 };
 
 // Formula (schema) tree node, and related syntactic operations
 // Pre (for all methods): there is no "cycle" throughout the tree
+// TODO: "locally nameless": de Brujin for BV, names for FV
 class Node {
 public:
 	// Alphabet for a first-order language with equality
@@ -123,7 +124,7 @@ public:
 		EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
 		CONSTANT, VARIABLE, FUNCTION, PREDICATE,
 		ABSURDITY, NEGATION, CONJUNCTION, DISJUNCTION, IMPLICATION, EQUIVALENCE,
-		UNIVERSAL, EXISTENTIAL,
+		UNIVERSAL, EXISTENTIAL
 	} symbol;
 	
 	// Union-like classes: https://en.cppreference.com/w/cpp/language/union
@@ -322,7 +323,11 @@ public:
 				p = p->s;
 				arity++;
 			}
-			return arity == sig.functionArity(function.id); // Check if the arity is correct
+			// Check if the arity is correct
+			// Function metavariables are NOT checked here, although if the same variable has different arities across
+			// a formula, it should be considered as ill-formed. Since these variables can never be instantiated, they
+			// seem to be only a minor problem; I will add checks for them later.
+			return function.id < 0 || arity == sig.functionArity(function.id);
 		}
 		return false;
 	}
@@ -339,7 +344,11 @@ public:
 				p = p->s;
 				arity++;
 			}
-			return arity == sig.predicateArity(predicate.id); // Check if the arity is correct
+			// Check if the arity is correct
+			// Predicate metavariables are NOT checked here, although if the same variable has different arities across
+			// a formula, it should be considered as ill-formed. Since these variables can never be instantiated, they
+			// seem to be only a minor problem; I will add checks for them later.
+			return predicate.id < 0 || arity == sig.predicateArity(predicate.id);
 		}
 		if (symbol == ABSURDITY && !connective.l && !connective.r) return true;
 		if (symbol == NEGATION && (connective.l && connective.l->isForm(sig)) && !connective.r) return true;
@@ -449,10 +458,9 @@ public:
 			return false;
 		case ABSURDITY: return false;
 		case NEGATION: case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			return (connective.l && connective.l->isFV(i)) ||
-			       (connective.r && connective.r->isFV(i));
+			return connective.l->isFV(i) || connective.r->isFV(i);
 		case UNIVERSAL: case EXISTENTIAL:
-			return quantifier.l != i && quantifier.r && quantifier.r->isFV(i);
+			return quantifier.l != i && quantifier.r->isFV(i);
 		}
 		return false;
 	}
@@ -491,11 +499,11 @@ public:
 		case ABSURDITY:
 			break;
 		case NEGATION:
-			if (connective.l) connective.l = connective.l->replaceVariables(reps, pool);
+			connective.l = connective.l->replaceVariables(reps, pool);
 			break;
 		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			if (connective.l) connective.l = connective.l->replaceVariables(reps, pool);
-			if (connective.r) connective.r = connective.r->replaceVariables(reps, pool);
+			connective.l = connective.l->replaceVariables(reps, pool);
+			connective.r = connective.r->replaceVariables(reps, pool);
 			break;
 		case UNIVERSAL: case EXISTENTIAL: {
 			auto it = reps.find(quantifier.l);
@@ -506,6 +514,152 @@ public:
 				if (!reps_.empty()) quantifier.r = quantifier.r->replaceVariables(reps_, pool);
 			}
 			}
+			break;
+		}
+		return this;
+	}
+	
+	// In-place simultaneous replacement of predicates by formulas: φ[ψ.../$i...] (cf. definition 2.3.11)
+	// The nodes given in the map will not be used directly; it will only be copied
+	// Pre: (*this) must be a well-formed formula; ψ's must be well-formed formulas
+	// O(size * log(number of replacements))
+	Node* replacePropositions(const map<unsigned int, const Node*>& reps, Allocator<Node>& pool) {
+		switch (symbol) {
+		case CONSTANT: case VARIABLE: case FUNCTION:
+			break;
+		case PREDICATE: {
+			auto it = reps.find(predicate.id);
+			if (it != reps.end()) return it->second->treeClone(pool);
+			}
+			break;
+		case ABSURDITY:
+			break;
+		case NEGATION:
+			connective.l = connective.l->replacePropositions(reps, pool);
+			break;
+		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
+			connective.l = connective.l->replacePropositions(reps, pool);
+			connective.r = connective.r->replacePropositions(reps, pool);
+			break;
+		case UNIVERSAL: case EXISTENTIAL:
+			quantifier.r = quantifier.r->replacePropositions(reps, pool);
+			break;
+		}
+		return this;
+	}
+
+	// Check whether t is "free for" xi in this subtree (cf. definition 2.3.12, lemma 2.3.13)
+	// Pre: (*this) must be a well-formed term or formula
+	// O(size * log(size of FV(t)))
+	bool variableIsFreeFor(const Node* t, unsigned int i) const { return variableIsFreeFor_(t->FV(), i).first; }
+	bool variableIsFreeFor(const set<unsigned int>& fvt, unsigned int i) const { return variableIsFreeFor_(fvt, i).first; }
+	
+private:
+
+	// Returns: (current result, whether a replacement will occur in subtree)
+	pair<bool, bool> variableIsFreeFor_(const set<unsigned int>& fvt, unsigned int i) const {
+		switch (symbol) {
+		case CONSTANT: break;
+		case VARIABLE: return make_pair(true, variable.id == i);
+		case FUNCTION: case PREDICATE: {
+			bool replaced = false;
+			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
+			while (p) {
+				if (p->variableIsFreeFor_(fvt, i).second) replaced = true;
+				p = p->s;
+			}
+			return make_pair(true, replaced);
+			}
+		case ABSURDITY: break;
+		case NEGATION:
+			return connective.l->variableIsFreeFor_(fvt, i);
+		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE: {
+			pair<bool, bool> lres = connective.l->variableIsFreeFor_(fvt, i);
+			pair<bool, bool> rres = connective.r->variableIsFreeFor_(fvt, i);
+			return make_pair(lres.first && rres.first, lres.second || rres.second);
+			}
+		case UNIVERSAL: case EXISTENTIAL: {
+			if (quantifier.l == i) break; // No replacement occurs in tree
+			pair<bool, bool> rres = quantifier.r->variableIsFreeFor_(fvt, i);
+			bool ok = ((!rres.second || fvt.find(quantifier.l) == fvt.end()) && rres.first);
+			bool replaced = rres.second;
+			return make_pair(ok, replaced);
+			}
+		}
+		return make_pair(true, false); // When no replacement occurs in tree
+	}
+
+public:
+
+	// Check whether ψ is "free for" $i in this subtree (cf. definition 2.3.14, lemma 2.3.15)
+	// Pre: (*this) must be a well-formed formula
+	// O(size * log(size of FV(ψ)))
+	bool propositionIsFreeFor(const Node* psi, unsigned int i) const { return propositionIsFreeFor_(psi->FV(), i).first; }
+	bool propositionIsFreeFor(const set<unsigned int>& fvpsi, unsigned int i) const { return propositionIsFreeFor_(fvpsi, i).first; }
+
+private:
+
+	// Returns: (current result, whether a replacement will occur in subtree)
+	pair<bool, bool> propositionIsFreeFor_(const set<unsigned int>& fvpsi, unsigned int i) const {
+		switch (symbol) {
+		case CONSTANT: case VARIABLE: case FUNCTION: break;
+		case PREDICATE: return make_pair(true, predicate.id == i);
+		case ABSURDITY: break;
+		case NEGATION:
+			return connective.l->propositionIsFreeFor_(fvpsi, i);
+		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE: {
+			pair<bool, bool> lres = connective.l->propositionIsFreeFor_(fvpsi, i);
+			pair<bool, bool> rres = connective.r->propositionIsFreeFor_(fvpsi, i);
+			return make_pair(lres.first && rres.first, lres.second || rres.second);
+			}
+		case UNIVERSAL: case EXISTENTIAL: {
+			pair<bool, bool> rres = quantifier.r->propositionIsFreeFor_(fvpsi, i);
+			bool ok = ((!rres.second || fvpsi.find(quantifier.l) == fvpsi.end()) && rres.first);
+			bool replaced = rres.second;
+			return make_pair(ok, replaced);
+			}
+		}
+		return make_pair(true, false); // When no replacement occurs in tree
+	}
+
+public:
+/*
+	// In-place simultaneous replacement of function metavariables by terms (see explanations below, in `Derivation::check_`)
+	// The nodes given in the map will not be used directly; it will only be copied
+	// Pre: (*this) must be a well-formed term or formula; t's must be well-formed terms
+	// O(size * log(number of replacements)) ?????
+	Node* replaceFunctionsMeta(const map<unsigned int, const Node*>& reps, Allocator<Node>& pool) {
+		switch (symbol) {
+		case CONSTANT: case VARIABLE:
+			break;
+		case FUNCTION: {
+			
+			}
+			break;
+		case PREDICATE: {
+			Node* p = predicate.c;
+			Node** last = &predicate.c;
+			while (p) {
+				// *p: next node to be processed
+				// *last: the pointer that should be set to point to the new node
+				Node* curr = p->replaceFunctionsMeta(reps, pool); // replaceVariables() does not affect `p->s`
+				*last = curr; // Does not affect `p->s`
+				last = &(curr->s); // Does not affect `p->s`
+				p = p->s;
+			}
+			}
+			break;
+		case ABSURDITY:
+			break;
+		case NEGATION:
+			connective.l = connective.l->replaceFunctionsMeta(reps, pool);
+			break;
+		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
+			connective.l = connective.l->replaceFunctionsMeta(reps, pool);
+			connective.r = connective.r->replaceFunctionsMeta(reps, pool);
+			break;
+		case UNIVERSAL: case EXISTENTIAL: {
+			quantifier.r = quantifier.r->replaceFunctionsMeta(reps, pool);
 			break;
 		}
 		return this;
@@ -539,87 +693,7 @@ public:
 		}
 		return this;
 	}
-
-	// Check whether t is "free for" xi in this subtree (cf. definition 2.3.12, lemma 2.3.13)
-	// Pre: (*this) must be a well-formed term or formula
-	// O(size * log(size of FV(t)))
-	bool variableIsFreeFor(const Node* t, unsigned int i) const { return variableIsFreeFor_(t->FV(), i).first; }
-	bool variableIsFreeFor(const set<unsigned int>& fvt, unsigned int i) const { return variableIsFreeFor_(fvt, i).first; }
-	
-private:
-
-	// Returns: (current result, whether a replacement will occur in subtree)
-	pair<bool, bool> variableIsFreeFor_(const set<unsigned int>& fvt, unsigned int i) const {
-		switch (symbol) {
-		case CONSTANT: break;
-		case VARIABLE: return make_pair(true, variable.id == i);
-		case FUNCTION: case PREDICATE: {
-			bool replaced = false;
-			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
-			while (p) {
-				if (p->variableIsFreeFor_(fvt, i).second) replaced = true;
-				p = p->s;
-			}
-			return make_pair(true, replaced);
-			}
-		case ABSURDITY: break;
-		case NEGATION:
-			if (!connective.l) break;
-			return connective.l->variableIsFreeFor_(fvt, i);
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE: {
-			if (!connective.l || !connective.r) break;
-			pair<bool, bool> lres = connective.l->variableIsFreeFor_(fvt, i);
-			pair<bool, bool> rres = connective.r->variableIsFreeFor_(fvt, i);
-			return make_pair(lres.first && rres.first, lres.second || rres.second);
-			}
-		case UNIVERSAL: case EXISTENTIAL: {
-			if (!quantifier.r || quantifier.l == i) break; // No replacement occurs in tree
-			pair<bool, bool> rres = quantifier.r->variableIsFreeFor_(fvt, i);
-			bool ok = ((!rres.second || fvt.find(quantifier.l) == fvt.end()) && rres.first);
-			bool replaced = rres.second;
-			return make_pair(ok, replaced);
-			}
-		}
-		return make_pair(true, false); // When no replacement occurs in tree
-	}
-
-public:
-
-	// Check whether ψ is "free for" $i in this subtree (cf. definition 2.3.14, lemma 2.3.15)
-	// Pre: (*this) must be a well-formed formula
-	// O(size * log(size of FV(ψ)))
-	bool propositionIsFreeFor(const Node* psi, unsigned int i) const { return propositionIsFreeFor_(psi->FV(), i).first; }
-	bool propositionIsFreeFor(const set<unsigned int>& fvpsi, unsigned int i) const { return propositionIsFreeFor_(fvpsi, i).first; }
-
-private:
-
-	// Returns: (current result, whether a replacement will occur in subtree)
-	pair<bool, bool> propositionIsFreeFor_(const set<unsigned int>& fvpsi, unsigned int i) const {
-		switch (symbol) {
-		case CONSTANT: case VARIABLE: case FUNCTION: break;
-		case PREDICATE: return make_pair(true, predicate.id == i);
-		case ABSURDITY: break;
-		case NEGATION:
-			if (!connective.l) break;
-			return connective.l->propositionIsFreeFor_(fvpsi, i);
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE: {
-			if (!connective.l || !connective.r) break;
-			pair<bool, bool> lres = connective.l->propositionIsFreeFor_(fvpsi, i);
-			pair<bool, bool> rres = connective.r->propositionIsFreeFor_(fvpsi, i);
-			return make_pair(lres.first && rres.first, lres.second || rres.second);
-			}
-		case UNIVERSAL: case EXISTENTIAL: {
-			if (!quantifier.r) break; // No replacement occurs in tree
-			pair<bool, bool> rres = quantifier.r->propositionIsFreeFor_(fvpsi, i);
-			bool ok = ((!rres.second || fvpsi.find(quantifier.l) == fvpsi.end()) && rres.first);
-			bool replaced = rres.second;
-			return make_pair(ok, replaced);
-			}
-		}
-		return make_pair(true, false); // When no replacement occurs in tree
-	}
-
-public:
+*/
 
 	// Print
 	// Displays "[ERROR]" if not a well-formed term / formula
@@ -628,7 +702,18 @@ public:
 		case CONSTANT: return sig.constantSymbol(constant.id);
 		case VARIABLE: return sig.variableSymbol(variable.id);
 		case FUNCTION: case PREDICATE: {
-			string res = (symbol == FUNCTION? sig.functionSymbol(function.id) : sig.predicateSymbol(predicate.id));
+			string res;
+			int id = 0;
+			bool meta = false; // Is metavariable?
+			if (symbol == FUNCTION) {
+				id = function.id;
+				meta = (id >= 0);
+				res = (meta? sig.functionSymbol(id) : sig.functionMetaSymbol(-id));
+			} else {
+				id = predicate.id;
+				meta = (id >= 0);
+				res = (meta? sig.predicateSymbol(id) : sig.predicateMetaSymbol(-id));
+			}
 			res += "(";
 			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
 			unsigned int arity = 0;
@@ -639,7 +724,7 @@ public:
 				arity++;
 			}
 			res += ")";
-			if (arity != (symbol == FUNCTION? sig.functionArity(function.id) : sig.predicateArity(predicate.id))) break;
+			if (!meta && arity != (symbol == FUNCTION? sig.functionArity(id) : sig.predicateArity(id))) break;
 			return res;
 			}
 		case ABSURDITY: return "⊥";
@@ -654,7 +739,7 @@ public:
 		return "[ERROR]";
 	}
 
-	// TODO: pretty print
+	// TODO: pretty print (infixl, infixr, precedence, etc.)
 };
 
 Node* newNode(Node::Symbol sym, Allocator<Node>& pool) {
@@ -686,7 +771,7 @@ public:
 	// Conclusion
 	Node* a;
 
-	// Auxiliary data (not going to put "nontrivial" data types into a union...)
+	// Auxiliary data (not going to put "non-POD" data types into a union...)
 	string name;
 	Node* tmpl;
 	vector<unsigned int> loc;
@@ -731,28 +816,34 @@ private:
 			hyps.push_back(res.second);
 		}
 		// Natural Deduction rules (major premises are listed first)
-		/* Distinction is made between ASSUMPTION and THEOREM in order to handle metavariable specialization within a proof.
-		* The metavariable specialization rule: if a metavariable has arity K, replacing it by some ψ (resp. t) involves:
+		/*
+		* **Differences from the original van Dalen's version:**
+		* The EQUIVALENCE_E rule simultaneously substitutes equivalent formulas across the whole premise, just like
+		  EQUALITY_E (Justify by either semantic equivalence or induction on "depth".). This allows me to do
+		  "α-conversion" (renaming bound variables) or "unfolding of definition" anywhere in a formula in one step.
+		* Distinction is made between ASSUMPTION and THEOREM in order to handle metavariable specialization from within
+		  a derivation.
+		* The metavariable specialization rule: if a metavariable has arity K, replacing it by some ψ (or t) involves:
 		  1. Changing bound variables in ψ to avoid naming clashes in Step 3.
 		  2. Assigning new indices "unused across the whole derivation" to free variables with indices > K in ψ.
-		  3. Substituting the free variables with indices 1..K in ψ for the child terms (the terms "in the parentheses").
+		  3. Substituting the free variables with indices 1..K in ψ for the child terms (the terms "in parentheses").
 		* It can be proven if all metavariables inside a derivation are simultaneously specialized "consistently" (i.e.
 		  the new indices given in Step 2 are the same), the derivation remains syntactically valid.
 		* So Γ ⊢ φ by derivation D gives Γ_sub(D, ψ) ⊢ Γ_sub(D, ψ).
-		* We may further "relax" the constraints in Step 2, by choosing indices "unused in all uncancelled hypotheses and
-		  the conclusion", since the variables mentioned in the derivation which do not present in hypotheses or conclusion
-		  can be renamed freely.
-		* (It is easier to see that the rule is indeed semantically valid: we are just "restricting" arbitrary predicates /
-		  functions to a specific subset of predicates / functions!)
-		* Now note that the use of axiom schemata or previously-derived theorem schemata do not contribute to "uncancelled
-		  hypotheses" - their derivation rely on no hypothesis, and in principle we may chain these derivations together
-		  and do metavariable specialization on "the whole thing". (By definition, axiom schemata can be specialized freely.
-		  Here we do not explicitly specialize them, just to make checking faster.)
-		* (We may "relax" the constraints even further, by allowing overlap between those "extra free variables" in Step 2
-		  and the "already-present free variables" in the original schema. I haven't made a syntactic proof yet, but
-		  semantically it just imposes the same "variable equality" restrictions on all the hypotheses and the conclusion,
-		  under which the entailment relation should remain valid. However, since this is not so intuitive and may cause
-		  inconvienience, I am not allowing it at least for now.)
+		* We may further "relax" the constraints in Step 2, by choosing indices "unused in all uncancelled hypotheses
+		  and the conclusion", since the variables mentioned in the derivation which do not present in hypotheses or
+		  conclusion can be renamed freely.
+		* (It is easier to see that the rule is indeed semantically valid: we are just "restricting" arbitrary
+		  predicates / functions to a specific subset of predicates / functions!)
+		* Now note that the use of axiom schemata or previously-derived theorem schemata do not contribute to
+		  "uncancelled hypotheses" - their derivation rely on no hypothesis, and in principle we may chain these
+		  derivations together and do metavariable specialization on "the whole thing". (By definition, axiom schemata
+		  can be specialized freely. Here we do not explicitly specialize them, just to make checking faster.)
+		* We may "relax" the constraints even further, by allowing overlap between those "extra free variables" in
+		  Step 2 and the "already-present free variables" in the original schema. Semantically it just imposes the same
+		  "variable equality" restrictions on all the hypotheses and the conclusion, under which the entailment
+		  relation should remain valid. Moreover, by applying →I, ∀I, ∀E, →E on the derivation of the "non-overlapped"
+		  version, we could get a derivation for the "overlapped" version.
 		*/
 		switch (rule) {
 		case THEOREM: {
@@ -766,10 +857,12 @@ private:
 			return { true, { a } };
 		}
 		case PREDICATE_S: {
-
+			// #####
+			return fail;
 		}
 		case FUNCTION_S: {
-
+			// #####
+			return fail;
 		}
 		case CONJUNCTION_I: {
 			if (c.size() != 2) return fail;
@@ -974,7 +1067,7 @@ private:
 			if (c.size() != 2) return fail;
 			const Node *p = c[0]->a, *q = c[1]->a;
 			// Two premises in the form of (∃xi, p) and q, with xi does not occur free in q or any hypothesis
-			// from q (except p), conclusion is q, cancelling hypothesis p from the derivation of q
+			// from q (except p), conclusion is q, cancelling hypothesis p in right
 			if (p->symbol != Node::EXISTENTIAL || *a != *q) return fail;
 			unsigned int i = p->quantifier.l;
 			p = p->quantifier.r;
@@ -1062,12 +1155,12 @@ public:
 	class Entry {
 	public:
 		enum ID {
+			PUSH, POP,
 			AXIOM_D, // Declaration of an axiom (schema)
-			AXIOM_U, // Removal of an axiom (schema)
 			PREDICATE_D, FUNCTION_D, // Extension by definitions (using "shorthands")
 			FUNCTION_DD, // Extension by definitions (using "definite descriptions")
-			FUNCTION_ID, // Extension by definitions (using "indefinite descriptions")
-			PREDICATE_U, FUNCTION_U, // Undefining predicates and functions
+//			FUNCTION_ID, // Extension by definitions (using "indefinite descriptions")
+			PREDICATE_U, FUNCTION_U, // Undefining predicates and functions (removing all axioms/theorems that contain them)
 			DERIVATION // A derivation to be checked
 		} const id;
 
@@ -1077,7 +1170,7 @@ public:
 	// #####
 };
 
-// TODO: read binary files
+// TODO: read text & binary files
 
 int main() {
 	
