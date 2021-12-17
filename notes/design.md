@@ -24,9 +24,10 @@ In the following specification, context extensions like $\Gamma \cup \ldots$ are
 
 (TODO: complete; context-changing and non-context-changing rules)
 
-- Context-changing keywords: `section`, `any`, `assume`; `end` (preserves everything, adding $\forall$ or $\rightarrow$ in front of them), `qed` (preserves only the last line, also adding $\forall$ or $\rightarrow$ in front of it)
-- Other keywords: `=>` (declarative); `by` (imperative); `name` (give a name)
-  - Imperative commands: `andi _ _`, `andl _`, `andr _`, ...
+- Context-changing keywords: `{ ... }`, `any x { ... }`, `assume (...) { ... }`
+  - When leaving a section, everything is preserved, but possibly with added $\forall$ or $\rightarrow$ in the front
+- Other keywords: `=> ()` (declarative); `by` (imperative); `name ""` (give a name)
+  - Imperative commands: `andi () ()`, `andl ()`, `andr ()`, ...
 
 
 
@@ -34,12 +35,14 @@ In the following specification, context extensions like $\Gamma \cup \ldots$ are
 
 (TODO: complete)
 
-- `func g(x1, ..., xn)`: adds new function symbol `g/n` to context
-- `func g(x1, ..., xn) := ...`: adds new function symbol `g/n` and its defining axiom to context
-- `pred g(x1, ..., xn)`: adds new predicate symbol `g/n` to context
-- `pred g(x1, ..., xn) := ...`: adds new predicate symbol `g/n` and its defining axiom to context
+- `term g := ...`: adds new function (term) symbol `g/0` and its defining axiom to context
+- `form g := ...`: adds new predicate (formula) symbol `g/0` and its defining axiom to context
+- On exiting `any` sections, their arities will be added by one; a new argument is inserted at the beginning; $\forall$ will be added in front of all local theorems (including their defining axioms).
+- On exiting `assume` sections, their arities are unchanged; $\rightarrow$ will be added in front of all local theorems (including their defining axioms).
 
 (Put definitions inside `assume` and `end` to get partial functions & predicates (i.e. you have nothing to say about them unless you have all the preconditions))
+
+(TODO: `def` as sugar)
 
 (TODO: similarly for definite and indefinite descriptions)
 
@@ -47,11 +50,15 @@ In the following specification, context extensions like $\Gamma \cup \ldots$ are
 
 ### Metavariables
 
-- `metafunc g(x1, ..., xn)`: adds new function metavariable `g/n` to the context
-- `metapred g(x1, ..., xn)`: adds new predicate metavariable `g/n` to the context
+- `mterm g`: adds new function (term) metavariable `g/0` to context
+- `mform g`: adds new predicate (formula) metavariable `g/0` to context
+- On exiting `any` sections, their arities will be added by one; a new argument is inserted at the beginning; $\forall$ will be added in front of all local theorems.
+- On exiting `assume` sections, their arities are unchanged; $\rightarrow$ will be added in front of all local theorems.
 - More deduction keywords:
-  - `fsubs a g t`: substitute `g` in `a` using `t(x1, ..., xn, y1, ..., ym)`
-  - `psubs a g p`: substitute `g` in `a` using `p(x1, ..., xn, y1, ..., ym)`
+  - `mtsubs a g (t)`: substitute `g` in `a` using `t(x1, ..., xn, y1, ..., ym)`
+  - `mfsubs a g (p)`: substitute `g` in `a` using `p(x1, ..., xn, y1, ..., ym)`
+
+(TODO: `mdef` as sugar)
 
 
 
@@ -69,7 +76,8 @@ That's all for the foundations.
 
 ### Opaque definitions
 
-- Theorems can be modified using `private`. These will be cleared when leaving the current scope. (Alternatively, use `private` when opening a scope, and use `public` to modify theorems that you want to export.)
+- (TODO: revise)
+- Theorems can be modified using `private`. These will be cleared when leaving the current section. (Alternatively, use `private` when opening a section, and use `public` to modify theorems that you want to export.)
 - Definitions can be modified using `private` or `opaque`. The latter means that the definition will not be cleared, but its defining axiom will be.
 - This will allow "opaque definitions", which is suitable for preventing "fake theorems".
 

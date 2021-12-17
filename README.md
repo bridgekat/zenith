@@ -7,8 +7,8 @@ difficult to learn...
 
 (I am not aiming to make any serious ITP software! I will just try to make the
 UI as intuitive as possible while keeping the background theory simple. It
-seems like FOL (natural deduction) + equality + extension by definitions are
-already enough for this...)
+seems like FOL with equality (natural deduction) + metavariables + extension
+by definitions are already enough for this...)
 
 
 ## To do list
