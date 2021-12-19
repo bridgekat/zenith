@@ -27,7 +27,7 @@ any x y z {
 
 // One might as well use metavariables...
 anypred r/2 {
-  // Now you have a formula metavariable (predicate) r with arity 2...
+  // Now you have a formula metavariable (predicate) r with arity 2 (or more precisely, at least 2)...
   assume (forall x, r x x) (forall x y, r x y -> r y x -> x = y) (forall x y z, r x y -> r y z -> r x z) {
     // Assume r is a partial order...
     any x y z assume (r x y) (r y z) (r z x) {
@@ -63,8 +63,8 @@ assume (forallpred p/0, p) name h {
 #ls // The above declaration does not escape the scope and produce ((forallpred p/0, p) -> false)!
 
 // By design, formulas with `forallpred` and `forallfunc` should actually be understood as first-order "formula schemas", and they are useful only in two cases:
-// 1. Declaring primitive notions (i.e. "signature")
-// 2. Expressing axiom schemas
+// 1. Declaring primitive notions (i.e. "signature of the language")
+// 2. Expressing axiom schemas (schemes, schemata)
 // 3. Deriving generic results about formulas and terms
 // (You can nonetheless regard them as "formulas with second-order variables", as this only affects the metatheory which we don't need to care...)
 anypred p/0 {
@@ -112,15 +112,25 @@ any x y assume (x = y) {
 // Defined predicates and functions can be used to substitute metavariables too
 => (forall x y, phi x y or not phi x y) by random_lemma phi;
 
+// One could do "inline definitions" using something similar to the "lambda notation"!
+// Note that the `a` `b` here are all individual variables (i.e. we don't need higher-order functions).
+// This saves some typing by avoiding defining and undefining named functions / predicates. They are not necessary to the theory.
+=> (forall x y, x + y = 2 or not x + y = 2) by random_lemma (a b | a + b = 2);
+
 
 
 
 
 // Summary
+// Context: contains four types of things:
+Individual variables        ι
+Function variables          ι → ... → ι
+Predicate variables         ι → ... → Prop
+Assumptions                 *
 // Context-changing rules (and their targets):
 any x { ... }               forall x, ...
-anypred p/n { ... }         forallpred p/n, ...
-anyfunc f/n { ... }         forallfunc f/n, ...
+anypred p/n { ... }         forallpred p/n, ... // (Not commonly used)
+anyfunc f/n { ... }         forallfunc f/n, ... // (Not commonly used)
 assume (...) { ... }        ... -> ...
 // Non-context-changing rules (and their targets):
 and.i and.l and.r           and        ∧
@@ -131,13 +141,15 @@ iff.i iff.e iff.l iff.r     iff        ↔
 eq.i eq.e eq.symm eq.trans  eq         =
 forall.e                    forall     ∀
 exists.i exists.e           exists     ∃
-forallpred.e                forallpred ∀$
-forallfunc.e                forallfunc ∀#
-trivial                     true       ⊤
-exfalso raa                 false      ⊥
+unique.i unique.e           unique     ∃!
+forallpred.e                forallpred ∀$       // (Only used on axiom schemas)
+forallfunc.e                forallfunc ∀#       // (Only used on axiom schemas)
+true.i                      true       ⊤
+false.e raa                 false      ⊥
 // Extension by definitions
-def [:=] [::] [:<->] idef undef
+def := :: :<-> idef :: undef
 // (The above is ALL of the logic. There will be NO further extensions. Hopefully this makes an AI easier to build...?)
 
 // Auxiliary keywords (some are used to guide AI, some are used to guide human readers)
-name by => opaque private public notation infix
+=> name by opaque private public notation infix
+
