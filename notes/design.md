@@ -12,6 +12,8 @@ A **context $(\Sigma; \Gamma)$** is composed of **the set $\Sigma$ of all assume
 
 In the following specification, context extensions like $\Gamma \cup \ldots$ are assumed to be well-formed (i.e. no duplicate names).
 
+The domain is always considered to be non-empty.
+
 
 
 ### Well-formed terms and formulas (with equality)
@@ -31,23 +33,6 @@ In the following specification, context extensions like $\Gamma \cup \ldots$ are
 
 
 
-### Extension by definitions
-
-(TODO: complete)
-
-- `term g := ...`: adds new function (term) symbol `g/0` and its defining axiom to context
-- `form g := ...`: adds new predicate (formula) symbol `g/0` and its defining axiom to context
-- On exiting `any` sections, their arities will be added by one; a new argument is inserted at the beginning; $\forall$ will be added in front of all local theorems (including their defining axioms).
-- On exiting `assume` sections, their arities are unchanged; $\rightarrow$ will be added in front of all local theorems (including their defining axioms).
-
-(Put definitions inside `assume` and `end` to get partial functions & predicates (i.e. you have nothing to say about them unless you have all the preconditions))
-
-(TODO: `def` as sugar)
-
-(TODO: similarly for definite and indefinite descriptions)
-
-
-
 ### Metavariables
 
 - `mterm g`: adds new function (term) metavariable `g/0` to context
@@ -59,6 +44,23 @@ In the following specification, context extensions like $\Gamma \cup \ldots$ are
   - `mfsubs a g (p)`: substitute `g` in `a` using `p(x1, ..., xn, y1, ..., ym)`
 
 (TODO: `mdef` as sugar)
+
+
+
+### Extension by definitions
+
+(TODO: complete)
+
+- `term g := ...`: adds new function (term) symbol `g/0` and its defining axiom to context
+- `form g :<-> ...`: adds new predicate (formula) symbol `g/0` and its defining axiom to context
+- On exiting `any` sections, their arities will be added by one; a new argument (the variable generalised on) is inserted at the beginning; $\forall$ will be added in front of all local theorems (including their defining axioms).
+- On exiting `assume` sections, their arities are unchanged; $\rightarrow$ will be added in front of all local theorems (including their defining axioms).
+
+(Put definitions inside `assume` and `end` to get partial functions & predicates (i.e. you have nothing to say about them unless you have all the preconditions))
+
+(TODO: `def` as sugar)
+
+(TODO: similarly for definite and indefinite descriptions)
 
 
 
