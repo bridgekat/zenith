@@ -9,7 +9,7 @@ Though written in a formal syntax, this file is informal (i.e. NOT verified by a
 
 
 #ai local search_simple smt_z5 nn_gpt10f nn_alpha_turnstile_zero
-// Activate some of the inference engines I downloaded from the future world
+// Activate some of the inference engines I downloaded from the future
 
 
 anypred in/2 {
@@ -52,7 +52,7 @@ anypred in/2 {
           any y1 assume (forall a, a ∈ y1 <-> (a ∈ x and φ x a)) {
             any y2 assume (forall a, a ∈ y2 <-> (a ∈ x and φ x a)) {
               => (forall z, z ∈ y1 <-> z ∈ y2);
-              => (y1 = y2);
+              => (y1 = y2) by set_ext;
             }
           }
           => (unique y, forall a, a ∈ y <-> (a ∈ x and φ x a));
@@ -80,7 +80,7 @@ anypred in/2 {
           // A more useful form ("exactly" x and y...)
           any x y {
             any z' assume (x ∈ z' and y ∈ z') {
-              private def z := subset (a | a = x or a = y) z'; // Use subset to eliminate anything apart from x and y
+              private def z := subset (a | a = x or a = y) z'; // Use `subset` to eliminate anything apart from x and y
               => (exists z, forall a, a ∈ z' <-> a = x or a = y);
             }
             => (exists z, forall a, a ∈ z <-> a = x or a = y) by exists.e;
@@ -108,7 +108,7 @@ anypred in/2 {
             // A more useful form ("exactly" the union...)
             any F {
               any z' assume (forall x ∈ F, forall a ∈ x, a ∈ z') {
-                private def z := subset (a | exists x ∈ F, a ∈ x) z'; // Use subset to eliminate anything apart from elements of x's
+                private def z := subset (a | exists x ∈ F, a ∈ x) z'; // Use `subset` to eliminate anything apart from elements of x's
                 any a {
                   assume (a ∈ z) { => (exists x ∈ F, a ∈ x); }
                   assume (exists x ∈ F, a ∈ x) { any x assume (x ∈ F and a ∈ x) { => (a ∈ z'); } => (a ∈ z); }
@@ -154,13 +154,15 @@ anypred in/2 {
               
               // Axiom...
               assume (exists x, emptyset ∈ x and forall a ∈ x, (pairset a (singletonset a)) ∈ x)
-              name   set_infinity
-                     "axiom of infinity" {
+              name   inductiveset_primitive
+                     "axiom of infinity (primitive form)"
+                     "there exists an inductive set (primitive form)" {
                 
                 // Axiom...
                 assume (forall x, exists y, forall z ⊆ x, z ∈ y)
                 name   powerset_primitive
-                       "axiom of power set (primitive form)" {
+                       "axiom of power set (primitive form)"
+                       "the subsets of a set are all contained in some set (primitive form)" {
                   
                   // A more useful form ("exactly" the power set...)
                   any x {
@@ -177,16 +179,24 @@ anypred in/2 {
                          "the power set of x contains exactly the subsets of x as elements";
                   }
                   
-                  
                   // The axiom of choice (AC) is invoked (on the metatheoretic level!) when the `idef` keyword is used.
                   // `idef` is sufficient to prove the AC here:
-                  // (TODO: complete)
+                  any x assume (emptyset ∉ x) private {
+                    any y assume (y ∈ x) {
+                      => (exists a ∈ y);
+                      idef f :: (f ∈ y) name f_def;
+                      #ls // f_def : (f ∈ y)
+                    }
+                    #ls // f_def : (forall y ∈ x, f y ∈ y)
+                    // To complete the remaining steps, one could take the Cartesian product of x and ∪x, and use `subset` to make f_fn...
+                  }
                   
-                  
-                  // (TODO: the notation {a ∈ x | φ a})
-                  // (TODO: the notation {x, y} and {x})
-                  // (TODO: the notations {a, b, c, d, e}, etc.)
-                  // (TODO: the notations (x ∪ y), etc.)
+                  // The elaborator has special support for several set-theoretic notations:
+                  #el +subset_builder_fn subset // (TODO: the notation {a ∈ x | φ a})
+                  #el +singletonset_builder_fn singletonset // (TODO: the notation {x})
+                  #el +pairset_builder_fn pairset // (TODO: the notation {x, y} and {x})
+                  #el +listset_builder_fn singletonset pairset unionset // (TODO: the notations {a, b, c, d, e}, etc.)
+                  #el +binary_union_fn pairset unionset // (TODO: the notations (x ∪ y), etc.)
 
 
 /*

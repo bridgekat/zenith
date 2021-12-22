@@ -1,9 +1,5 @@
 General idea: every line you write down after `=>` will become a theorem, which may or may not have a name. The computer will remember every theorem and try to "follow" your thoughts, with several algorithms running in parallel.
 
-I will NOT adopt any form of Curry-Howard correspondence (and intuitionistic type theory) as that will complicate things, not do I use the LCF approach (though this unifies the proof language and metaprogramming language, the language will most likely be less convenient to use than mainstream ones)...
-
-Using C++ as the "metaprogramming language", we actually have more flexibility on writing automation...
-
 
 
 ## Logical theory and commands
