@@ -12,7 +12,7 @@ Though written in a formal syntax, this file is informal (i.e. NOT verified by a
 // Activate some of the inference engines I downloaded from the future
 
 
-import set
+#include "set.mu"
 
 namespace natc private {
   

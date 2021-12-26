@@ -3,7 +3,7 @@
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
 Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too
-difficult to learn...
+difficult to learn (at least for most undergraduates)...
 
 (I am not aiming to make any serious ITP software! This is just a "toy" system
 for inexperienced users (and AI) to interact with, so I will just try to make
@@ -15,27 +15,32 @@ definitions are already enough for this...)
 ## To do list
 
 - [ ] Core specification (WIP)
-  - [ ] Metavariable support (WIP)
-  - [ ] Extension by definitions support (WIP)
+  - [ ] Metavariables (WIP)
+  - [ ] Extension by definitions (WIP)
 - [ ] The verifier
   - [x] Boilerplate code (data structures, console output, etc.)
   - [ ] Core part (WIP)
   - [ ] Text & binary file formats for FOL and ND trees (WIP)
+  - [ ] Core API
+  - [ ] User-defined connectives
 - [ ] The elaborator
   - [ ] Boilerplate code & CLI
-  - [ ] Syntax & parser for "derivation builder"
-  - [ ] Tactics & infoview
   - [ ] Notation support
+  - [ ] Interactive proof-searching
+    - [ ] Sequent calculus (analytic tableaux) with optimizations
+    - [ ] First- and second-order unification
+    - [ ] Translation between ND and SC (tableaux)
+    - [ ] Tactics API
+    - [ ] Resolution-based methods
+  - [ ] VSCode extension
 - [ ] Mathematics
-  - [x] Test: PA
-  - [x] Test: ZFC
-  - [ ] Test: naturals, integers and rationals under ZFC
-  - [ ] Test: group under ZFC
-- [ ] Simple "library search"
-- [ ] More advanced provers
-  - [ ] Test: clean up formalizations
-- [ ] User-defined connectives?
-- [ ] GUI? Visual Studio Code extension?
+  - [x] PA
+  - [x] ZFC
+  - [ ] Naturals, integers and rationals under ZFC
+  - [ ] Groups under ZFC
+- [ ] Advanced elaborator features
+  - [ ] Inductive definitions
+  - [ ] Transferring results through isomorphism
 
 
 ## Some random thoughts

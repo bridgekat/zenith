@@ -2,7 +2,8 @@
 // Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
 
 // This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
-// The code below may contain (many) errors. Please let me (zq621@ic.ac.uk) know if you found one or more.
+// Additional features are described in `notes/design.md`.
+// The code below may contain (many) errors. Will write another checker using a more suitable language (e.g. Haskell or Lean).
 
 #include <iostream>
 #include <stdio.h>
@@ -20,16 +21,6 @@ using std::map;
 using std::pair, std::make_pair;
 using std::string;
 using std::cin, std::cout, std::endl;
-
-/*
-template <typename T>
-inline void set_union_inplace(vector<T>& dst, const vector<T>& rhs) {
-	vector<T> t = dst;
-	dst.resize(t.size() + rhs.size());
-	size_t len = std::set_union(t.begin(), t.end(), rhs.begin(), rhs.end(), dst.begin()) - dst.begin();
-	dst.resize(len);
-}
-*/
 
 // Duplicates are allowed
 template <typename T>
@@ -76,85 +67,50 @@ public:
 	}
 };
 
-// Signature of a language (an "environment" that keeps track of all nonlogical symbols)
-class Signature {
-private:
-	vector<string> fs, ps, cs; // Symbols for functions, predicates and constants
-	vector<unsigned int> fa, pa; // Corresponding arities
-
-public:
-	// Predicate 0 is reserved for equality
-	Signature() { addPredicate("=", 2); }
-
-	size_t addFunction(string symbol, unsigned int arity) {
-		fa.push_back(arity);
-		fs.push_back(symbol);
-		return fs.size() - 1u;
-	}
-
-	size_t addPredicate(string symbol, unsigned int arity) {
-		pa.push_back(arity);
-		ps.push_back(symbol);
-		return ps.size() - 1u;
-	}
-
-	size_t addConstant(string symbol) {
-		cs.push_back(symbol);
-		return cs.size() - 1u;
-	}
-
-	unsigned int functionArity(size_t id) const { return fa[id]; }
-	string functionSymbol(size_t id) const { return fs[id]; }
-	unsigned int predicateArity(size_t id) const { return pa[id]; }
-	string predicateSymbol(size_t id) const { return ps[id]; }
-	string constantSymbol(size_t id) const { return cs[id]; }
-
-	static string functionMetaSymbol(size_t id) { std::stringstream ss; ss << "[f" << id << "]"; return ss.str(); }
-	static string predicateMetaSymbol(size_t id) { std::stringstream ss; ss << "[P" << id << "]"; return ss.str(); }
-	static string variableSymbol(size_t id) { std::stringstream ss; ss << "x" << id; return ss.str(); }
-};
+// Type; a pair of (tag, arity) is sufficient to represent all types in this language (except propositions)
+typedef pair<unsigned int, unsigned int> Type;
+// Context/signature; contains pairs of (type, name) where names are for readability only
+typedef vector<pair<Type, string> > Context;
 
 // Formula (schema) tree node, and related syntactic operations
 // Pre (for all methods): there is no "cycle" throughout the tree
-// TODO: "locally nameless": de Brujin for BV, names for FV
+// Pre & invariant (for all methods): pointer is nonzero <=> pointer is valid (exception: root nodes have undefined *s pointer)
 class Node {
 public:
 	// Alphabet for a first-order language with equality
 	enum Symbol: unsigned int {
 		EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
-		CONSTANT, VARIABLE, FUNCTION, PREDICATE,
-		ABSURDITY, NEGATION, CONJUNCTION, DISJUNCTION, IMPLICATION, EQUIVALENCE,
-		UNIVERSAL, EXISTENTIAL
+		VAR, FUNC, PRED,
+		TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
+		FORALL, EXISTS, UNIQUE, FORALLFUNC, FORALLPRED
 	} symbol;
-	
-	// Union-like classes: https://en.cppreference.com/w/cpp/language/union
-	union {
-		struct { unsigned int id; } constant;
-		struct { unsigned int id; } variable;
-		struct { int id; Node* c; } function;  // Negative indices denote metavariables
-		struct { int id; Node* c; } predicate; // Negative indices denote metavariables
-		struct { Node *l, *r; } connective; // 16B (64-bit)
-		struct { unsigned int l; Node* r; } quantifier;
-	};
-	
-	Node* s; // Next sibling (for children of PREDICATE and FUNCTION nodes only)
 
-	// Storage: 4B + 8B + 4B = 16B (32-bit) / 4B + 16B + 8B = 28B (32B after alignment?) (64-bit)
-	// Assuming: pointer is nonzero <=> pointer is valid (exception: root nodes have undefined *s pointer)
+	// Union-like classes: https://en.cppreference.com/w/cpp/language/union
+	// The `id` field in VAR, FUNC, PRED stands for de Brujin index if the (meta)variable is not free
+	// To improve readability, the "preferred" or "default" names for bound variables will also be stored for each formula;
+	// The corresponding index is `quantifier.id`, which will NOT be used internally.
+	union {
+		// VAR, FUNC, PRED (`c` is ignored for VAR)
+		struct { bool free; unsigned int id; Node* c; } atom;
+		// TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF (`l` is ignored for the first two; `r` is ignored for the first three)
+		struct { Node* l, * r; } connective;
+		// FORALL, EXISTS, UNIQUE, FORALLFUNC, FORALLPRED (`arity` is ignored for the first three)
+		struct { unsigned int id, arity; Node* r; } quantifier;
+	}; // 16B (64-bit)
+
+	Node* s; // Next sibling (for children of PRED and FUNC nodes only)
 
 	// Implicitly-defined default constructor does nothing: https://en.cppreference.com/w/cpp/language/default_constructor
 	// The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
 	Node(): symbol(EMPTY), s(nullptr) {}
 	Node(Symbol sym): symbol(sym), s(nullptr) {
 		switch (sym) {
-		case EMPTY: break;
-		case CONSTANT: constant.id = 0; break;
-		case VARIABLE: variable.id = 0; break;
-		case FUNCTION: function.id = 0; function.c = nullptr; break;
-		case PREDICATE: predicate.id = 0; predicate.c = nullptr; break;
-		case ABSURDITY: case NEGATION: case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
+		case VAR: case FUNC: case PRED:
+			atom.c = nullptr; break;
+		case TRUE: case FALSE: case NOT: case AND: case OR: case IMPLIES: case IFF:
 			connective.l = connective.r = nullptr; break;
-		case UNIVERSAL: case EXISTENTIAL: quantifier.l = 0; quantifier.r = nullptr; break;
+		case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case FORALLPRED:
+			quantifier.r = nullptr; break;
 		}
 	}
 	// Implicitly-defined copy constructor copies all non-static members: https://en.cppreference.com/w/cpp/language/copy_constructor
@@ -167,26 +123,25 @@ public:
 	// Node& operator= (Node&&) = default;
 	// Implicitly-defined destructor does nothing: https://en.cppreference.com/w/cpp/language/destructor
 	// ~Node() = default;
-	
+
 	// Count the number of child nodes
-	// Pre: symbol is FUNCTION of PREDICATE; all nonzero pointers are valid
+	// Pre: symbol is FUNC of PRED; all nonzero pointers are valid
 	unsigned int arity() const {
-		if (symbol != FUNCTION && symbol != PREDICATE) return 0;
+		if (symbol != FUNC && symbol != PRED) return 0;
 		unsigned int res = 0;
-		const Node* p = (symbol == FUNCTION? function.c : predicate.c);
+		const Node* p = atom.c;
 		while (p) p = p->s, res++;
 		return res;
 	}
 
 	// Attach children (no-copy)
 	// Each node may only be attached to **one** parent node at a time!
-	// Pre: symbol is FUNCTION of PREDICATE
+	// Pre: symbol is FUNC of PRED
 	void attachChildrenUnsafe(const std::initializer_list<Node*>& nodes) {
-		if (symbol != FUNCTION && symbol != PREDICATE) return;
+		if (symbol != FUNC && symbol != PRED) return;
 		Node* last = nullptr;
 		for (Node* node: nodes) {
-			if (last) last->s = node;
-			else (symbol == FUNCTION? function.c : predicate.c) = node;
+			(last? last->s : atom.c) = node;
 			last = node;
 		}
 	}
@@ -197,11 +152,11 @@ public:
 	Node* treeClone(Allocator<Node>& pool) const {
 		Node* res = &pool.push_back(*this);
 		switch (symbol) {
-		case EMPTY: case CONSTANT: case VARIABLE:
+		case EMPTY: case VAR:
 			break;
-		case FUNCTION: case PREDICATE: {
-			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
-			Node** last = (symbol == FUNCTION? &(res->function.c) : &(res->predicate.c));
+		case FUNC: case PRED: {
+			const Node* p = atom.c;
+			Node** last = &(res->atom.c);
 			while (p) {
 				// *p: next node to be copied
 				// *last: the pointer that should be set to point to the copy
@@ -212,274 +167,185 @@ public:
 			}
 			}
 			break;
-		case ABSURDITY: case NEGATION: case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
+		case TRUE: case FALSE: case NOT: case AND: case OR: case IMPLIES: case IFF:
 			if (connective.l) res->connective.l = (connective.l)->treeClone(pool);
 			if (connective.r) res->connective.r = (connective.r)->treeClone(pool);
 			break;
-		case UNIVERSAL: case EXISTENTIAL:
+		case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case FORALLPRED:
 			if (quantifier.r) res->quantifier.r = (quantifier.r)->treeClone(pool);
 			break;
 		}
 		return res;
 	}
 
-	// Syntactical equality
-	// Pre: all nonzero pointers are valid
-	// O(size)
-	bool operator==(const Node& rhs) const {
-		if (symbol != rhs.symbol) return false;
-		// symbol == rhs.symbol
-		switch (symbol) {
-		case EMPTY: return true;
-		case CONSTANT: return constant.id == rhs.constant.id;
-		case VARIABLE: return variable.id == rhs.variable.id;
-		case FUNCTION: case PREDICATE: {
-			const Node *p, *prhs;
-			if (symbol == FUNCTION) {
-				if (function.id != rhs.function.id) return false;
-				p = function.c;
-				prhs = rhs.function.c;
-			} else {
-				if (predicate.id != rhs.predicate.id) return false;
-				p = predicate.c;
-				prhs = rhs.predicate.c;
-			}
-			while (p && prhs) {
-				if (!(*p == *prhs)) return false;
-				p = p->s;
-				prhs = prhs->s;
-			}
-			if (p || prhs) return false; // Both pointers must be empty at the same time
-			}
-			return true;
-		case ABSURDITY: case NEGATION: case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			if (connective.l && rhs.connective.l) {
-				if (!(*(connective.l) == *(rhs.connective.l))) return false;
-			} else if (connective.l || rhs.connective.l) return false;
-			if (connective.r && rhs.connective.r) {
-				if (!(*(connective.r) == *(rhs.connective.r))) return false;
-			} else if (connective.r || rhs.connective.r) return false;
-			return true;
-		case UNIVERSAL: case EXISTENTIAL:
-			if (quantifier.l != rhs.quantifier.l) return false;
-			if (quantifier.r && rhs.quantifier.r) {
-				if (!(*(quantifier.r) == *(rhs.quantifier.r))) return false;
-			} else if (quantifier.r || rhs.quantifier.r) return false;
-			return true;
-		}
-		return false; // Unreachable
-	}
-	bool operator!=(const Node& rhs) const { return !(*this == rhs); }
-
 	// Attach children (copies each node in the list)
-	// Pre: symbol is FUNCTION of PREDICATE
+	// Pre: symbol is FUNC of PRED
 	void attachChildren(const std::initializer_list<const Node*>& nodes, Allocator<Node>& pool) {
-		if (symbol != FUNCTION && symbol != PREDICATE) return;
+		if (symbol != FUNC && symbol != PRED) return;
 		Node* last = nullptr;
 		for (const Node* cnode: nodes) {
 			Node* node = cnode->treeClone(pool);
-			if (last) last->s = node;
-			else (symbol == FUNCTION? function.c : predicate.c) = node;
+			(last? last->s : atom.c) = node;
 			last = node;
 		}
 	}
 
-	// Pre: symbol is NEGATION, UNIVERSAL or EXISTENTIAL
+	// Pre: symbol is NOT, FORALL, EXISTS, UNIQUE, FORALLFUNC or FORALLPRED
 	void attach(const Node* c, Allocator<Node>& pool) {
 		switch (symbol) {
-		case NEGATION: connective.l = c->treeClone(pool); break;
-		case UNIVERSAL: case EXISTENTIAL: quantifier.r = c->treeClone(pool); break;
+		case NOT:
+			connective.l = c->treeClone(pool); break;
+		case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case FORALLPRED:
+			quantifier.r = c->treeClone(pool); break;
 		}
 	}
 
-	// Pre: symbol is CONJUNCTION, DISJUNCTION, IMPLICATION or EQUIVALENCE
+	// Pre: symbol is AND, OR, IMPLIES or IFF
 	void attachL(const Node* c, Allocator<Node>& pool) {
 		switch (symbol) {
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			connective.l = c->treeClone(pool);
-			break;
+		case AND: case OR: case IMPLIES: case IFF:
+			connective.l = c->treeClone(pool); break;
 		}
 	}
 
-	// Pre: symbol is CONJUNCTION, DISJUNCTION, IMPLICATION or EQUIVALENCE
+	// Pre: symbol is AND, OR, IMPLIES or IFF
 	void attachR(const Node* c, Allocator<Node>& pool) {
 		switch (symbol) {
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			connective.r = c->treeClone(pool);
-			break;
+		case AND: case OR: case IMPLIES: case IFF:
+			connective.r = c->treeClone(pool); break;
 		}
 	}
 
 	// Check if the subtree is a well-formed term (cf. definition 2.3.1)
 	// Pre: all nonzero pointers are valid
 	// O(size)
-	bool isTerm(const Signature& sig) const {
-		if (symbol == CONSTANT || symbol == VARIABLE) return true;
-		if (symbol == FUNCTION) {
-			const Node* p = function.c;
+	bool isTerm(const Context& ctx, const vector<Type>& stk) const {
+		switch (symbol) {
+		case VAR:
+			if (atom.free) return atom.id < ctx.size() && ctx[atom.id].first            == Type(VAR, 0);
+			else           return atom.id < stk.size() && stk[stk.size() - 1 - atom.id] == Type(VAR, 0);
+		case FUNC: {
+			const Node* p = atom.c;
 			unsigned int arity = 0;
 			while (p) {
-				if (!p->isTerm(sig)) return false;
+				if (!p->isTerm(ctx, stk)) return false;
 				p = p->s;
 				arity++;
 			}
-			// Check if the arity is correct
-			// Function metavariables are NOT checked here, although if the same variable has different arities across
-			// a formula, it should be considered as ill-formed. Since these variables can never be instantiated, they
-			// seem to be only a minor problem; I will add checks for them later.
-			return function.id < 0 || arity == sig.functionArity(function.id);
+			if (atom.free) return atom.id < ctx.size() && ctx[atom.id].first            == Type(FUNC, arity);
+			else           return atom.id < stk.size() && stk[stk.size() - 1 - atom.id] == Type(FUNC, arity);
+			}
 		}
 		return false;
 	}
 
 	// Check if the subtree is a well-formed formula (cf. definition 2.3.2)
 	// Pre: all nonzero pointers are valid
+	// Post: stk will be unchanged
 	// O(size)
-	bool isForm(const Signature& sig) const {
-		if (symbol == PREDICATE) {
-			const Node* p = predicate.c;
+	bool isForm(const Context& ctx, vector<Type>& stk) const {
+		switch (symbol) {
+		case PRED: {
+			const Node* p = atom.c;
 			unsigned int arity = 0;
 			while (p) {
-				if (!p->isTerm(sig)) return false;
+				if (!p->isTerm(ctx, stk)) return false;
 				p = p->s;
 				arity++;
 			}
-			// Check if the arity is correct
-			// Predicate metavariables are NOT checked here, although if the same variable has different arities across
-			// a formula, it should be considered as ill-formed. Since these variables can never be instantiated, they
-			// seem to be only a minor problem; I will add checks for them later.
-			return predicate.id < 0 || arity == sig.predicateArity(predicate.id);
+			if (atom.free) return atom.id < ctx.size() && ctx[atom.id].first            == Type(PRED, arity);
+			else           return atom.id < stk.size() && stk[stk.size() - 1 - atom.id] == Type(PRED, arity);
+			}
+		case TRUE: case FALSE:
+			return true;
+		case NOT:
+			return connective.l && connective.l->isForm(ctx, stk);
+		case AND: case OR: case IMPLIES: case IFF:
+			return connective.l && connective.r && connective.l->isForm(ctx, stk) && connective.r->isForm(ctx, stk);
+		case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case FORALLPRED: {
+			// Push the current binder onto the stack
+			switch (symbol) {
+			case FORALLFUNC: stk.push_back(Type(FUNC, quantifier.arity)); break;
+			case FORALLPRED: stk.push_back(Type(PRED, quantifier.arity)); break;
+			default:         stk.push_back(Type(VAR, 0));                 break;
+			}
+			// Check recursively
+			bool res = quantifier.r && quantifier.r->isForm(ctx, stk);
+			// Pop stack and return
+			stk.pop_back();
+			return res;
 		}
-		if (symbol == ABSURDITY && !connective.l && !connective.r) return true;
-		if (symbol == NEGATION && (connective.l && connective.l->isForm(sig)) && !connective.r) return true;
-		if ((symbol == CONJUNCTION || symbol == DISJUNCTION || symbol == IMPLICATION || symbol == EQUIVALENCE)
-			&& (connective.l && connective.l->isForm(sig)) && (connective.r && connective.r->isForm(sig))) return true;
-		if ((symbol == UNIVERSAL || symbol == EXISTENTIAL) && (quantifier.r && quantifier.r->isForm(sig))) return true;
+		}
 		return false;
 	}
 
-	// Returns the set of free variables (cf. definitions 2.3.6, 2.3.7)
+	// Syntactical equality
 	// Pre: (*this) must be a well-formed term or formula
-	// O(size * log(number of vars))
-	set<unsigned int> FV() const {
-		set<unsigned int> res, upperbv;
-		FV_(res, upperbv);
-		return res;
-	}
-
-private:
-
-	void FV_(set<unsigned int>& res, set<unsigned int>& upperbv) const {
+	// O(size)
+	bool operator==(const Node& rhs) const {
+		if (symbol != rhs.symbol) return false;
+		// symbol == rhs.symbol
 		switch (symbol) {
-		case CONSTANT:
-			break;
-		case VARIABLE:
-			if (upperbv.find(variable.id) == upperbv.end()) res.insert(variable.id); // Insert if not bound
-			break;
-		case FUNCTION: case PREDICATE: {
-			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
-			while (p) {
-				p->FV_(res, upperbv);
-				p = p->s;
+		case VAR: return atom.free == rhs.atom.free && atom.id == rhs.atom.id;
+		case FUNC: case PRED: {
+			if (atom.free != rhs.atom.free || atom.id != rhs.atom.id) return false;
+			const Node* p = atom.c, * prhs = rhs.atom.c;
+			while (p && prhs) {
+				if (!(*p == *prhs)) return false;
+				p = p->s; prhs = prhs->s;
 			}
+			if (p || prhs) return false; // Both pointers must be empty at the same time
 			}
-			break;
-		case ABSURDITY:
-			break;
-		case NEGATION:
-			if (connective.l) connective.l->FV_(res, upperbv);
-			break;
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			if (connective.l) connective.l->FV_(res, upperbv);
-			if (connective.r) connective.r->FV_(res, upperbv);
-			break;
-		case UNIVERSAL: case EXISTENTIAL:
-			bool modified = upperbv.insert(quantifier.l).second;
-			if (quantifier.r) quantifier.r->FV_(res, upperbv);
-			if (modified) upperbv.erase(quantifier.l);
-			break;
+			return true;
+		case TRUE: case FALSE:
+			return true;
+		case NOT:
+			return *(connective.l) == *(rhs.connective.l);
+		case AND: case OR: case IMPLIES: case IFF:
+			return *(connective.l) == *(rhs.connective.l) && *(connective.r) == *(rhs.connective.r);
+		case FORALL: case EXISTS: case UNIQUE:
+			// (No need to compare quantifier.id, it serves to improve readability only!)
+			return *(quantifier.r) == *(rhs.quantifier.r);
+		case FORALLFUNC: case FORALLPRED:
+			// (No need to compare quantifier.id, it serves to improve readability only!)
+			return quantifier.arity == rhs.quantifier.arity && *(quantifier.r) == *(rhs.quantifier.r);
 		}
+		return false; // Unreachable
 	}
-	
-public:
+	bool operator!=(const Node& rhs) const { return !(*this == rhs); }
 
-	// Returns the set of bound variables (cf. definitions 2.3.6, 2.3.7)
-	// Pre: (*this) must be a well-formed term or formula
-	// O(size * log(number of vars))
-	set<unsigned int> BV() const {
-		set<unsigned int> res;
-		BV_(res);
-		return res;
-	}
-
-private:
-
-	void BV_(set<unsigned int>& res) const {
-		switch (symbol) {
-		case CONSTANT: case VARIABLE:
-			break;
-		case FUNCTION: case PREDICATE: {
-			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
-			while (p) {
-				p->BV_(res);
-				p = p->s;
-			}
-			}
-			break;
-		case ABSURDITY:
-			break;
-		case NEGATION:
-			if (connective.l) connective.l->BV_(res);
-			break;
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			if (connective.l) connective.l->BV_(res);
-			if (connective.r) connective.r->BV_(res);
-			break;
-		case UNIVERSAL: case EXISTENTIAL:
-			res.insert(quantifier.l);
-			if (quantifier.r) quantifier.r->BV_(res);
-			break;
-		}
-	}
-
-public:
-
-	// Test if x_i is a free variable (cf. definitions 2.3.6, 2.3.7)
+	// Check if `i` is a free variable (cf. definitions 2.3.6, 2.3.7)
 	// Pre: (*this) must be a well-formed term or formula
 	// O(size)
 	bool isFV(unsigned int i) const {
 		switch (symbol) {
-		case CONSTANT: return false;
-		case VARIABLE: return variable.id == i;
-		case FUNCTION: case PREDICATE: {
-			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
+		case VAR:
+			return atom.free && atom.id == i;
+		case FUNC: case PRED: {
+			const Node* p = atom.c;
 			while (p) { if (p->isFV(i)) return true; p = p->s; }
 			}
 			return false;
-		case ABSURDITY: return false;
-		case NEGATION: case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
+		case TRUE: case FALSE:
+			return false;
+		case NOT:
+			return connective.l->isFV(i);
+		case AND: case OR: case IMPLIES: case IFF:
 			return connective.l->isFV(i) || connective.r->isFV(i);
-		case UNIVERSAL: case EXISTENTIAL:
-			return quantifier.l != i && quantifier.r->isFV(i);
+		case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case FORALLPRED:
+			return quantifier.r->isFV(i);
 		}
 		return false;
 	}
 
-	// Check if (*this) is a closed term or formula (cf. definitions 2.3.8)
-	// Pre: (*this) must be a well-formed term or formula
-	bool isClosedTerm(const Signature& sig) { return isTerm(sig) && FV().empty(); }
-	bool isClosedForm(const Signature& sig) { return isForm(sig) && FV().empty(); }
-	
-	// In-place simultaneous replacement of variables by terms: s[t.../xi...] or φ[t.../xi...] (cf. definitions 2.3.9, 2.3.10)
+	// In-place simultaneous replacement of free variables by terms: s[t.../xi...] or φ[t.../xi...] (cf. definitions 2.3.9, 2.3.10)
 	// The nodes given in the map will not be used directly; it will only be copied
 	// Pre: (*this) must be a well-formed term or formula; t's must be well-formed terms
 	// O(size * log(number of replacements))
 	Node* replaceVariables(const map<unsigned int, const Node*>& reps, Allocator<Node>& pool) {
 		switch (symbol) {
-		case CONSTANT:
-			break;
-		case VARIABLE: {
-			auto it = reps.find(variable.id);
+		case VAR: {
+			auto it = reps.find(atom.id);
 			if (it != reps.end()) return it->second->treeClone(pool);
 			}
 			break;
@@ -547,153 +413,6 @@ public:
 		}
 		return this;
 	}
-
-	// Check whether t is "free for" xi in this subtree (cf. definition 2.3.12, lemma 2.3.13)
-	// Pre: (*this) must be a well-formed term or formula
-	// O(size * log(size of FV(t)))
-	bool variableIsFreeFor(const Node* t, unsigned int i) const { return variableIsFreeFor_(t->FV(), i).first; }
-	bool variableIsFreeFor(const set<unsigned int>& fvt, unsigned int i) const { return variableIsFreeFor_(fvt, i).first; }
-	
-private:
-
-	// Returns: (current result, whether a replacement will occur in subtree)
-	pair<bool, bool> variableIsFreeFor_(const set<unsigned int>& fvt, unsigned int i) const {
-		switch (symbol) {
-		case CONSTANT: break;
-		case VARIABLE: return make_pair(true, variable.id == i);
-		case FUNCTION: case PREDICATE: {
-			bool replaced = false;
-			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
-			while (p) {
-				if (p->variableIsFreeFor_(fvt, i).second) replaced = true;
-				p = p->s;
-			}
-			return make_pair(true, replaced);
-			}
-		case ABSURDITY: break;
-		case NEGATION:
-			return connective.l->variableIsFreeFor_(fvt, i);
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE: {
-			pair<bool, bool> lres = connective.l->variableIsFreeFor_(fvt, i);
-			pair<bool, bool> rres = connective.r->variableIsFreeFor_(fvt, i);
-			return make_pair(lres.first && rres.first, lres.second || rres.second);
-			}
-		case UNIVERSAL: case EXISTENTIAL: {
-			if (quantifier.l == i) break; // No replacement occurs in tree
-			pair<bool, bool> rres = quantifier.r->variableIsFreeFor_(fvt, i);
-			bool ok = ((!rres.second || fvt.find(quantifier.l) == fvt.end()) && rres.first);
-			bool replaced = rres.second;
-			return make_pair(ok, replaced);
-			}
-		}
-		return make_pair(true, false); // When no replacement occurs in tree
-	}
-
-public:
-
-	// Check whether ψ is "free for" $i in this subtree (cf. definition 2.3.14, lemma 2.3.15)
-	// Pre: (*this) must be a well-formed formula
-	// O(size * log(size of FV(ψ)))
-	bool propositionIsFreeFor(const Node* psi, unsigned int i) const { return propositionIsFreeFor_(psi->FV(), i).first; }
-	bool propositionIsFreeFor(const set<unsigned int>& fvpsi, unsigned int i) const { return propositionIsFreeFor_(fvpsi, i).first; }
-
-private:
-
-	// Returns: (current result, whether a replacement will occur in subtree)
-	pair<bool, bool> propositionIsFreeFor_(const set<unsigned int>& fvpsi, unsigned int i) const {
-		switch (symbol) {
-		case CONSTANT: case VARIABLE: case FUNCTION: break;
-		case PREDICATE: return make_pair(true, predicate.id == i);
-		case ABSURDITY: break;
-		case NEGATION:
-			return connective.l->propositionIsFreeFor_(fvpsi, i);
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE: {
-			pair<bool, bool> lres = connective.l->propositionIsFreeFor_(fvpsi, i);
-			pair<bool, bool> rres = connective.r->propositionIsFreeFor_(fvpsi, i);
-			return make_pair(lres.first && rres.first, lres.second || rres.second);
-			}
-		case UNIVERSAL: case EXISTENTIAL: {
-			pair<bool, bool> rres = quantifier.r->propositionIsFreeFor_(fvpsi, i);
-			bool ok = ((!rres.second || fvpsi.find(quantifier.l) == fvpsi.end()) && rres.first);
-			bool replaced = rres.second;
-			return make_pair(ok, replaced);
-			}
-		}
-		return make_pair(true, false); // When no replacement occurs in tree
-	}
-
-public:
-/*
-	// In-place simultaneous replacement of function metavariables by terms (see explanations below, in `Derivation::check_`)
-	// The nodes given in the map will not be used directly; it will only be copied
-	// Pre: (*this) must be a well-formed term or formula; t's must be well-formed terms
-	// O(size * log(number of replacements)) ?????
-	Node* replaceFunctionsMeta(const map<unsigned int, const Node*>& reps, Allocator<Node>& pool) {
-		switch (symbol) {
-		case CONSTANT: case VARIABLE:
-			break;
-		case FUNCTION: {
-			
-			}
-			break;
-		case PREDICATE: {
-			Node* p = predicate.c;
-			Node** last = &predicate.c;
-			while (p) {
-				// *p: next node to be processed
-				// *last: the pointer that should be set to point to the new node
-				Node* curr = p->replaceFunctionsMeta(reps, pool); // replaceVariables() does not affect `p->s`
-				*last = curr; // Does not affect `p->s`
-				last = &(curr->s); // Does not affect `p->s`
-				p = p->s;
-			}
-			}
-			break;
-		case ABSURDITY:
-			break;
-		case NEGATION:
-			connective.l = connective.l->replaceFunctionsMeta(reps, pool);
-			break;
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			connective.l = connective.l->replaceFunctionsMeta(reps, pool);
-			connective.r = connective.r->replaceFunctionsMeta(reps, pool);
-			break;
-		case UNIVERSAL: case EXISTENTIAL: {
-			quantifier.r = quantifier.r->replaceFunctionsMeta(reps, pool);
-			break;
-		}
-		return this;
-	}
-	
-	// In-place simultaneous replacement of predicates by formulas: φ[ψ.../$i...] (cf. definition 2.3.11)
-	// The nodes given in the map will not be used directly; it will only be copied
-	// Pre: (*this) must be a well-formed formula; ψ's must be well-formed formulas
-	// O(size * log(number of replacements))
-	Node* replacePropositions(const map<unsigned int, const Node*>& reps, Allocator<Node>& pool) {
-		switch (symbol) {
-		case CONSTANT: case VARIABLE: case FUNCTION:
-			break;
-		case PREDICATE: {
-			auto it = reps.find(predicate.id);
-			if (it != reps.end()) return it->second->treeClone(pool);
-			}
-			break;
-		case ABSURDITY:
-			break;
-		case NEGATION:
-			if (connective.l) connective.l = connective.l->replacePropositions(reps, pool);
-			break;
-		case CONJUNCTION: case DISJUNCTION: case IMPLICATION: case EQUIVALENCE:
-			if (connective.l) connective.l = connective.l->replacePropositions(reps, pool);
-			if (connective.r) connective.r = connective.r->replacePropositions(reps, pool);
-			break;
-		case UNIVERSAL: case EXISTENTIAL:
-			if (quantifier.r) quantifier.r = quantifier.r->replacePropositions(reps, pool);
-			break;
-		}
-		return this;
-	}
-*/
 
 	// Print
 	// Displays "[ERROR]" if not a well-formed term / formula
