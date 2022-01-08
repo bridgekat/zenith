@@ -338,6 +338,7 @@ public:
 		return false;
 	}
 
+/*
 	// In-place simultaneous replacement of free variables by terms: s[t.../xi...] or φ[t.../xi...] (cf. definitions 2.3.9, 2.3.10)
 	// The nodes given in the map will not be used directly; it will only be copied
 	// Pre: (*this) must be a well-formed term or formula; t's must be well-formed terms
@@ -413,47 +414,74 @@ public:
 		}
 		return this;
 	}
+*/
 
 	// Print
-	// Displays "[ERROR]" if not a well-formed term / formula
-	string toString(const Signature& sig) const {
+	// Displays "[ERROR]" iff not a well-formed term / formula
+	// Pre: all nonzero pointers are valid
+	// Post: stk will be unchanged
+	string toString(const Context& ctx, vector<pair<Type, string> >& stk, const vector<string>& boundNames) const {
 		switch (symbol) {
-		case CONSTANT: return sig.constantSymbol(constant.id);
-		case VARIABLE: return sig.variableSymbol(variable.id);
-		case FUNCTION: case PREDICATE: {
+		case VAR:
+			if (atom.free) { if (atom.id < ctx.size() && ctx[atom.id].first                  == Type(VAR, 0)) return ctx[atom.id].second; }
+			else           { if (atom.id < stk.size() && stk[stk.size() - 1 - atom.id].first == Type(VAR, 0)) return stk[stk.size() - 1 - atom.id].second; }
+			break;
+		case FUNC: case PRED: {
 			string res;
-			int id = 0;
-			bool meta = false; // Is metavariable?
-			if (symbol == FUNCTION) {
-				id = function.id;
-				meta = (id >= 0);
-				res = (meta? sig.functionSymbol(id) : sig.functionMetaSymbol(-id));
-			} else {
-				id = predicate.id;
-				meta = (id >= 0);
-				res = (meta? sig.predicateSymbol(id) : sig.predicateMetaSymbol(-id));
-			}
-			res += "(";
-			const Node* p = (symbol == FUNCTION? function.c : predicate.c);
+			const Node* p = atom.c;
 			unsigned int arity = 0;
 			while (p) {
-				res += p->toString(sig);
+				res += " " + p->toString(ctx, stk, boundNames);
 				p = p->s;
-				if (p) res += ", ";
 				arity++;
 			}
-			res += ")";
-			if (!meta && arity != (symbol == FUNCTION? sig.functionArity(id) : sig.predicateArity(id))) break;
-			return res;
+			if (atom.free) { if (atom.id < ctx.size() && ctx[atom.id].first                  == Type(symbol, arity)) return "(" + ctx[atom.id].second + res + ")"; }
+			else           { if (atom.id < stk.size() && stk[stk.size() - 1 - atom.id].first == Type(symbol, arity)) return "(" + stk[stk.size() - 1 - atom.id].second + res + ")"; }
+			break;
 			}
-		case ABSURDITY: return "⊥";
-		case NEGATION: if (!connective.l) break; return "(¬" + connective.l->toString(sig) + ")";
-		case CONJUNCTION: if (!connective.l || !connective.r) break; return "(" + connective.l->toString(sig) + " ∧ " + connective.r->toString(sig) + ")";
-		case DISJUNCTION: if (!connective.l || !connective.r) break; return "(" + connective.l->toString(sig) + " ∨ " + connective.r->toString(sig) + ")";
-		case IMPLICATION: if (!connective.l || !connective.r) break; return "(" + connective.l->toString(sig) + " → " + connective.r->toString(sig) + ")";
-		case EQUIVALENCE: if (!connective.l || !connective.r) break; return "(" + connective.l->toString(sig) + " ↔ " + connective.r->toString(sig) + ")";
-		case UNIVERSAL: if (!quantifier.r) break; return "(∀" + sig.variableSymbol(quantifier.l) + ", " + quantifier.r->toString(sig) + ")";
-		case EXISTENTIAL: if (!quantifier.r) break;	return "(∃" + sig.variableSymbol(quantifier.l) + ", " + quantifier.r->toString(sig) + ")";
+		case TRUE:
+			return "⊤";
+		case FALSE:
+			return "⊥";
+		case NOT:
+			if (connective.l) return "¬" + connective.l->toString(ctx, stk, boundNames);
+			break;
+		case AND: case OR: case IMPLIES: case IFF:
+			if (connective.l && connective.r) {
+				string ch;
+				switch (symbol) {
+					case AND:     ch = " ∧ "; break;
+					case OR:      ch = " ∨ "; break;
+					case IMPLIES: ch = " → "; break;
+					case IFF:     ch = " ↔ "; break;
+				}
+				return "(" + connective.l->toString(ctx, stk, boundNames) + ch + connective.r->toString(ctx, stk, boundNames) + ")";
+			}
+			break;
+		case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case FORALLPRED:
+			if (quantifier.r && quantifier.id < boundNames.size()) {
+				string ch, name = boundNames[quantifier.id], res;
+				switch (symbol) {
+					case FORALL:     ch = "∀ ";  break;
+					case EXISTS:     ch = "∃ ";  break;
+					case UNIQUE:     ch = "∃! "; break;
+					case FORALLFUNC: ch = "∀# "; break;
+					case FORALLPRED: ch = "∀$ "; break;
+				}
+				res = "(" + ch + name;
+				// Push the current binder onto the stack
+				switch (symbol) {
+				case FORALLFUNC: stk.push_back(make_pair(Type(FUNC, quantifier.arity), name)); res += "/" + std::to_string(quantifier.arity); break;
+				case FORALLPRED: stk.push_back(make_pair(Type(PRED, quantifier.arity), name)); res += "/" + std::to_string(quantifier.arity); break;
+				default:         stk.push_back(make_pair(Type(VAR, 0),                 name));                                                break;
+				}
+				// Print recursively
+				res += ", " + quantifier.r->toString(ctx, stk, boundNames) + ")";
+				// Pop stack and return
+				stk.pop_back();
+				return res;
+			}
+			break;
 		}
 		return "[ERROR]";
 	}
@@ -465,26 +493,24 @@ Node* newNode(Node::Symbol sym, Allocator<Node>& pool) {
 	return &pool.push_back(Node(sym));
 }
 
-// Derivation (schema) tree node, and related syntactic operations
+// (Non-context-changing) derivation tree node, and related syntactic operations
 class Derivation {
 public:
-	// Natural Deduction rules for classical FOL + equality
-	// ("Derived rules" are marked for destruction!)
+	// (Non-context-changing) Natural Deduction rules for classical FOL + equality + metavariables
 	enum Rule: unsigned int {
 		EMPTY = 0,
-		THEOREM, ASSUMPTION,
-		PREDICATE_S, FUNCTION_S, // Specialization of metavariables
-		CONJUNCTION_I, CONJUNCTION_E,
-		DISJUNCTION_I, DISJUNCTION_E,
-		IMPLICATION_I, IMPLICATION_E,
-		NEGATION_I, NEGATION_E,
-		EQUIVALENCE_I, EQUIVALENCE_E,
-		EQUIVALENCE_SYMM, EQUIVALENCE_TRANS, // Derived rules for equivalence
-		EFQ, RAA,
-		UNIVERSAL_I, UNIVERSAL_E,
-		EXISTENTIAL_I, EXISTENTIAL_E,
-		EQUALITY_I, EQUALITY_E,
-		EQUALITY_SYMM, EQUALITY_TRANS // Derived rules for equality
+		AND_I, AND_L, AND_R,
+		OR_L, OR_R, OR_E,
+		IMPLIES_E,
+		NOT_I, NOT_E,
+		IFF_I, IFF_L, IFF_R,
+		EQ_I, EQ_E,
+		FORALL_E,
+		EXISTS_I, EXISTS_E,
+		UNIQUE_I, UNIQUE_E,
+		FORALLFUNC_E,
+		FORALLPRED_E,
+		TRUE_I, FALSE_E, RAA
 	} const rule;
 	
 	// Conclusion

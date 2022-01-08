@@ -39,7 +39,7 @@ namespace real private {
   
   // The real field in ApiMu (ASSUMED)
   // (TODO: two copies of each theorem on leaving "any" scope: "compact" and "full")
-  any x y z assume (x ∈ ℝ) (y ∈ ℝ) (z ∈ ℝ) {
+  any x y z assume (x ∈ ℝ) (y ∈ ℝ) (z ∈ ℝ) private {
     
     => (is_field                  real add_fn zero neg_fn mul_fn one inv_fn);
     => (is_ordered_field          real add_fn zero neg_fn mul_fn one inv_fn le_fn);
@@ -103,7 +103,7 @@ namespace real private {
   }
   
   // Some corollaries (ASSUMED)
-  any x y k assume (x ∈ ℝ) (y ∈ ℝ) (k ∈ ℝ) {
+  any x y k assume (x ∈ ℝ) (y ∈ ℝ) (k ∈ ℝ) private {
     => (k + x = k + y -> x = y);      => (x + k = y + k -> x = y);
     => (k + x = k     -> x = 0);      => (x + k =     k -> x = 0);
     => (k + x =   0   -> x = -k);     => (x + k =   0   -> x = -k);

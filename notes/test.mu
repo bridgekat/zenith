@@ -1,18 +1,17 @@
-#ai none // Unifies with given premises only
+#ai none // Proof terms only
 any x y z {
   assume (x = y) (y = z) name h1 h2 {
-    => (x = z) name h by eq.trans h1 h2;
+    => (x = z) name h proof eq.trans h1 h2; // Use `proof` to provide proof terms
     #ls // h : (x = z)
   }
   #ls // h : (x = y -> y = z -> x = z)
 }
 #ls // h : (forall x y z, x = y -> y = z -> x = z)
 
-#ai local // Try to unify with everything currently in context! Less names are required.
+#ai search_simple // Analytic tableaux activated
 any x y z {
   assume (x = y) (y = z) {
-    => (x = z) by eq.trans _ _; // AI will try to fill in the _
-    => (x = z) by eq.trans; // Trailing _'s can be omitted
+    => (x = z) by eq.trans; // Use `by` to provide hints to the AI
     => (x = z) by "transitivity of equality"; // Use of complex names is also supported (fuzzy matching, and you can search by this)
   }
 }
@@ -42,7 +41,7 @@ anypred r/2 {
 // This is actually a "second-order" forall.e...
 
 // In ApiMu, only limited second-order reasoning is supported (I guess this removes some burden from the AI (and me)).
-// Namely, every `forallpred` and `forallfunc` must appear at the beginning of a formula; any violations will be removed (e.g. when leaving from a scope).
+// Namely, every `forallpred` and `forallfunc` must appear at the beginning of a formula.
 // Also, there is no second-order `exists`...
 any x {
   assume (x = x) {
@@ -54,7 +53,7 @@ any x {
   anyfunc f/2 anypred p/1 any a b { => (p (f a b) <-> p (f a b)); }
   #ls // ? : forallfunc f/2, forallpred p/1, forall a b, p (f a b) <-> p (f a b)
 }
-#ls // (the above ? vanishes)
+#ls // ? : forallfunc f/2, forallpred p/1, forall x a b, p (f a b) <-> p (f a b)
 
 assume (forallpred p/0, p) name h {
   => (false) by forallpred.e h false;
@@ -139,7 +138,7 @@ and.i and.l and.r           and        ∧
 or.l or.r or.e              or         ∨
 implies.e                   implies    →
 not.i not.e                 not        ¬
-iff.i iff.e iff.l iff.r     iff        ↔
+iff.i iff.l iff.r           iff        ↔
 eq.i eq.e eq.symm eq.trans  eq         =
 forall.e                    forall     ∀
 exists.i exists.e           exists     ∃
