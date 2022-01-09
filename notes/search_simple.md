@@ -5,9 +5,6 @@ Maintains a set of theorems on every level; inner level theorems have higher "pr
 - The search procedure will be based on the method of analytic tableaux (i.e. sequent calculus without cuts).
   - By stating out each step, the user is actually guiding the insertion of cuts.
   - To improve efficiency, store the tableau using an efficient data structure. (In most existing theorem provers, tactics cannot persist their states across different invocations!)
-- Though it is possible for the library to grow huge, most theorems start with either $\forall$ or $\rightarrow$.
-  - $\rightarrow$-prefixed theorems become usable only if we had the necessary preconditions.
-    - Many theorems have common preconditions; expand them all simultaneously. (Otherwise the size of the tableau may grow exponentially...)
-    - Furthermore, the (→L) rule may be optimized... (And branching rules should be delayed in general)
-  - $\forall$-prefixed theorems are dealt with using unification.
-  - In the future, neural-network-guided searching may become possible.
+- It is possible for the library to grow huge (I'm aiming to support 10³~10⁴ theorems... If I'm not mistaken, Lean's mathlib contains approximately ~6×10⁴ in total, but not all of them are imported in typical situations), and most theorems start with either `∀` or `→`.
+
+(TODO: how to integrate resolution (or other bottom-up approaches) into an interactive UI...?)
