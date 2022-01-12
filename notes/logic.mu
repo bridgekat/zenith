@@ -46,3 +46,31 @@ anypred φ/1 private {
   => ()
 }
 
+
+// Flexible proof-terms
+
+anypred p/0 {
+  // Lemma:
+  => (p or not p)
+  name lem
+  proof {
+    raa
+      assume (not (p or not p)) name h {
+        assume (p) name hp {
+          => (false) proof not.e h (or.l hp) name t2;
+        }
+        => (not p) proof not.i t2 name t3;
+        => (p or not p) proof or.r t3 name t4;
+        => (false) proof not.e h t4;
+      }
+  };
+}
+
+// Lemma:
+=> (forall x y, x = y or not x = y)
+name decidable_eq
+proof {
+  any x y
+    => (x = y or not x = y) proof lem (x = y);
+};
+

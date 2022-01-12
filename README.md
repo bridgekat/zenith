@@ -25,6 +25,8 @@ definitions are already enough for this...)
   - [ ] User-defined connectives
 - [ ] The elaborator
   - [ ] Boilerplate code & CLI
+  - [ ] Parser & pretty-printer
+    - [ ] Customizable syntax
   - [ ] Notation support
   - [ ] Interactive proof-searching
     - [ ] Sequent calculus (analytic tableaux) with optimizations

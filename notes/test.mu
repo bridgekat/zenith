@@ -45,12 +45,12 @@ anypred r/2 {
 // Also, there is no second-order `exists`...
 any x {
   assume (x = x) {
-    anyfunc f/2 anypred p/1 any a b { => (p (f a b) <-> p (f a b)); }
+    anyfunc f/2 anypred p/1 any a b => (p (f a b) <-> p (f a b));
     #ls // ? : forallfunc f/2, forallpred p/1, forall a b, p (f a b) <-> p (f a b)
   }
   #ls // (the above ? vanishes)
   
-  anyfunc f/2 anypred p/1 any a b { => (p (f a b) <-> p (f a b)); }
+  anyfunc f/2 anypred p/1 any a b => (p (f a b) <-> p (f a b));
   #ls // ? : forallfunc f/2, forallpred p/1, forall a b, p (f a b) <-> p (f a b)
 }
 #ls // ? : forallfunc f/2, forallpred p/1, forall x a b, p (f a b) <-> p (f a b)
@@ -99,6 +99,7 @@ undef phi;
 // Alternatively...
 any x y def phi :<-> (x = y and y = x) name phi_def;
 #ls // phi_def : (forall x y, phi x y <-> (x = y and y = x))
+def phi :<-> (any x y (x = y and y = x)) name phi_def;
 
 // Combining `def` and `assume` gives partial functions!
 // (Assuming we have defined a function with infix notation `+`...)
@@ -113,9 +114,10 @@ any x y assume (x = y) {
 
 // One could do "inline definitions" using something similar to the "lambda notation"!
 // This saves some typing by avoiding defining and undefining named functions / predicates. They are not necessary to the theory.
-// Note that the `a` `b` here are all individual variables (looking carefully at the rules, one could find that higher-order functions are not needed).
-=> (forall x y, x + y = 2 or not x + y = 2) by random_lemma (a b | a + b = 2);
+// Note that the `a` `b` here are all individual variables.
+=> (forall x y, x + y = 2 or not x + y = 2) by random_lemma (any a b (a + b = 2));
 // (TODO: similar notation for in/definite description)
+// (any x y (def z :: (x + y) by ...))
 
 
 
