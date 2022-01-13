@@ -1,14 +1,16 @@
--- ApiMu/HOL verifier v0.1 (Haskell version)
--- Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
-
+-- Simple type theory / higher-order logic for experimentation
 -- This variant of HOL is largely based on William M. Farmer's *The Seven Virtues of Simple Type Theory*...
 
 module HOL (Type(..), Expr(..), Context(..), Judgment(..),
-            weaken, mkVar, mkApp, mkLam, mkEq, mkIota,
+            freeVars,
+            weaken, varMk, appMk, lamMk, eqMk, iotaMk,
             Theorem, thmJudgment, thmContext, thmExpr, thmType) where
 
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
+
 
 data Type =
     TVar
@@ -43,10 +45,28 @@ showE (Iota x t e) = "(I " ++ x ++ " : " ++ showT t ++ ", " ++ showE e ++ ")"
 instance Show Expr where
   show = showE
 
--- Assuming structural rules: contraction and permutation
--- Weakening is stated below
+
+{-
+freeVars :: Expr -> Set String
+freeVars (Var x) = Set.singleton x
+freeVars (App e1 e2) = Set.union (freeVars e1) (freeVars e2)
+freeVars (Lam x t e) = Set.delete x (freeVars e)
+freeVars (Eq e1 e2) = Set.union (freeVars e1) (freeVars e2)
+freeVars (Iota x t e) = Set.delete x (freeVars e)
+-}
+
+freeVars :: Expr -> [String]
+freeVars (Var x) = [x]
+freeVars (App e1 e2) = freeVars e1 ++ freeVars e2
+freeVars (Lam x t e) = filter (/= x) (freeVars e)
+freeVars (Eq e1 e2) = freeVars e1 ++ freeVars e2
+freeVars (Iota x t e) = filter (/= x) (freeVars e)
+
+
+-- Assuming structural rules: contraction and permutation; weakening is stated below
 type Context = Map String Type
 
+-- `context ⊢ expr : type`
 type Judgment = (Context, Expr, Type)
 
 newtype Theorem = Theorem Judgment
@@ -66,35 +86,36 @@ thmType (Theorem (_, _, t)) = t
 weaken :: Theorem -> (String, Type) -> Theorem
 weaken (Theorem (ctx, e, te)) (x, tx) = Theorem (Map.insert x tx ctx, e, te)
 
+
 -- Formation rules
 
-mkVar :: Context -> String -> Theorem
-mkVar ctx s = case Map.lookup s ctx of
+varMk :: Context -> String -> Theorem
+varMk ctx s = case Map.lookup s ctx of
   Nothing  -> error ("Variable not in context: " ++ s)
   (Just t) -> Theorem (ctx, Var s, t)
 
-mkApp :: Theorem -> Theorem -> Theorem
-mkApp (Theorem (ctx1, e1, t1)) (Theorem (ctx2, e2, t2)) = case t1 of
+appMk :: Theorem -> Theorem -> Theorem
+appMk (Theorem (ctx1, e1, t1)) (Theorem (ctx2, e2, t2)) = case t1 of
   (TLam l r)
     | l == t2   -> Theorem (Map.union ctx1 ctx2, App e1 e2, r)
     | otherwise -> error ("Incompatible types in function application: " ++ show l ++ ", " ++ show t2)
   _ -> error ("Not a function type: " ++ show t1)
 
-mkLam :: String -> Type -> Theorem -> Theorem
-mkLam x tx (Theorem (ctx, e, te)) = Theorem (ctx', Lam x tx e, TLam tx te)
+lamMk :: String -> Type -> Theorem -> Theorem
+lamMk x tx (Theorem (ctx, e, te)) = Theorem (ctx', Lam x tx e, TLam tx te)
   where
     ctx' = case Map.lookup x ctx of
       (Just tx')
         | tx' == tx -> Map.delete x ctx
       _             -> ctx -- Weakening is assumed
 
-mkEq :: Theorem -> Theorem -> Theorem
-mkEq (Theorem (ctx1, e1, t1)) (Theorem (ctx2, e2, t2))
+eqMk :: Theorem -> Theorem -> Theorem
+eqMk (Theorem (ctx1, e1, t1)) (Theorem (ctx2, e2, t2))
   | t1 == t2  = Theorem (Map.union ctx1 ctx2, Eq e1 e2, TProp)
   | otherwise = error ("Incompatible types in equality: " ++ show t1 ++ ", " ++ show t2)
 
-mkIota :: String -> Type -> Theorem -> Theorem
-mkIota x tx (Theorem (ctx, e, te))
+iotaMk :: String -> Type -> Theorem -> Theorem
+iotaMk x tx (Theorem (ctx, e, te))
   | te /= TProp = error ("Not a proposition type: " ++ show te)
   | otherwise   = Theorem (ctx', Iota x tx e, tx)
   where
@@ -103,7 +124,8 @@ mkIota x tx (Theorem (ctx, e, te))
         | tx' == tx -> Map.delete x ctx
       _             -> ctx -- Weakening is assumed (though useless here)
 
--- TODO: encoding logical connectives, quantifiers, & proof system
 
+-- TODO: inference rules
 
+-- eqSubst :: Theorem -> Expr -> Theorem
 
