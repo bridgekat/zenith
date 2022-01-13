@@ -6,6 +6,8 @@
 
 module FOL where
 
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Map (Map, union, unions)
 import qualified Data.Map as Map
 
@@ -34,31 +36,39 @@ data Expr =
 -- | ForallPred String Int Expr
   deriving (Eq)
 
+newName :: String -> Set String -> String
+newName x used
+  | Set.notMember x used = x
+  | otherwise            = newName (x ++ "'") used
+
 showName :: [String] -> VarName -> String
 showName st (Free s)  = s
 showName st (Bound i) = st !! i
 
-showE :: [String] -> Expr -> String
-showE st e = case e of
+showE :: Set String -> [String] -> Expr -> String
+showE used st e = case e of
   (Var x) -> showName st x
-  (Func x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE st) as ++ ")"
-  (Pred x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE st) as ++ ")"
-  (Equals t1 t2) -> "(" ++ showE st t1 ++ " = " ++ showE st t2 ++ ")"
+  (Func x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE used st) as ++ ")"
+  (Pred x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE used st) as ++ ")"
+  (Equals t1 t2) -> "(" ++ showE used st t1 ++ " = " ++ showE used st t2 ++ ")"
   Top -> "true"
   Bottom -> "false"
-  (Not e) -> "not " ++ showE st e
-  (And e1 e2) -> "(" ++ showE st e1 ++ " and " ++ showE st e2 ++ ")"
-  (Or e1 e2) -> "(" ++ showE st e1 ++ " or " ++ showE st e2 ++ ")"
-  (Implies e1 e2) -> "(" ++ showE st e1 ++ " implies " ++ showE st e2 ++ ")"
-  (Iff e1 e2) -> "(" ++ showE st e1 ++ " iff " ++ showE st e2 ++ ")"
-  (Forall x e) -> "(forall " ++ x ++ ", " ++ showE (x : st) e ++ ")"
-  (Exists x e) -> "(exists " ++ x ++ ", " ++ showE (x : st) e ++ ")"
-  (Unique x e) -> "(unique " ++ x ++ ", " ++ showE (x : st) e ++ ")"
+  (Not e) -> "not " ++ showE used st e
+  (And e1 e2) -> "(" ++ showE used st e1 ++ " and " ++ showE used st e2 ++ ")"
+  (Or e1 e2) -> "(" ++ showE used st e1 ++ " or " ++ showE used st e2 ++ ")"
+  (Implies e1 e2) -> "(" ++ showE used st e1 ++ " implies " ++ showE used st e2 ++ ")"
+  (Iff e1 e2) -> "(" ++ showE used st e1 ++ " iff " ++ showE used st e2 ++ ")"
+  (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (Set.insert x' used) (x' : st) e ++ ")" where x' = newName x used
+  (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (Set.insert x' used) (x' : st) e ++ ")" where x' = newName x used
+  (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (Set.insert x' used) (x' : st) e ++ ")" where x' = newName x used
 -- (ForallFunc x k e) -> "(forallfunc " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : st) e ++ ")"
 -- (ForallPred x k e) -> "(forallpred " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : st) e ++ ")"
 
+inContextShowE :: Context -> Expr -> String
+inContextShowE (Context map) = showE (Map.keysSet map) []
+
 instance Show Expr where
-  show = showE []
+  show = showE Set.empty []
 
 -- n = (number of binders on top of current node)
 updateVars :: Int -> (Int -> VarName -> Expr) -> Expr -> Expr
