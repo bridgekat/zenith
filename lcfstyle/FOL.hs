@@ -10,70 +10,97 @@ import Data.Map (Map, union, unions)
 import qualified Data.Map as Map
 
 
--- TODO: locally nameless variables
-data Term =
-    Var String
-  | Func String [Term]
+-- Bound variables are represented using de Brujin indices
+-- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
+data VarName = Free String | Bound Int
   deriving (Eq)
 
-showT :: Term -> String
-showT (Var x) = x
-showT (Func x as) = "(" ++ x ++ concatMap ((" " ++) . showT) as ++ ")"
-
-instance Show Term where
-  show = showT
-
-data Formula =
-    Pred String [Term]
-  | Equals Term Term
+data Expr =
+    Var VarName
+  | Func VarName [Expr]
+  | Pred VarName [Expr]
+  | Equals Expr Expr
   | Top
   | Bottom
-  | Not Formula
-  | And Formula Formula
-  | Or Formula Formula
-  | Implies Formula Formula
-  | Iff Formula Formula
-  | Forall String Formula
-  | Exists String Formula
-  | Unique String Formula
--- | ForallFunc String Int Formula
--- | ForallPred String Int Formula
+  | Not Expr
+  | And Expr Expr
+  | Or Expr Expr
+  | Implies Expr Expr
+  | Iff Expr Expr
+  | Forall String Expr
+  | Exists String Expr
+  | Unique String Expr
+-- | ForallFunc String Int Expr
+-- | ForallPred String Int Expr
   deriving (Eq)
 
-showF :: Formula -> String
-showF (Pred x as) = "(" ++ x ++ concatMap ((" " ++) . showT) as ++ ")"
-showF (Equals t1 t2) = "(" ++ showT t1 ++ " = " ++ showT t2 ++ ")"
-showF Top = "true"
-showF Bottom = "false"
-showF (Not e) = "not " ++ showF e
-showF (And e1 e2) = "(" ++ showF e1 ++ " and " ++ showF e2 ++ ")"
-showF (Or e1 e2) = "(" ++ showF e1 ++ " or " ++ showF e2 ++ ")"
-showF (Implies e1 e2) = "(" ++ showF e1 ++ " implies " ++ showF e2 ++ ")"
-showF (Iff e1 e2) = "(" ++ showF e1 ++ " iff " ++ showF e2 ++ ")"
-showF (Forall x e) = "(forall " ++ x ++ ", " ++ showF e ++ ")"
-showF (Exists x e) = "(exists " ++ x ++ ", " ++ showF e ++ ")"
-showF (Unique x e) = "(unique " ++ x ++ ", " ++ showF e ++ ")"
--- showF (ForallFunc x k e) = "(forallfunc " ++ x ++ "/" ++ show k ++ ", " ++ showF e ++ ")"
--- showF (ForallPred x k e) = "(forallpred " ++ x ++ "/" ++ show k ++ ", " ++ showF e ++ ")"
+showName :: [String] -> VarName -> String
+showName st (Free s)  = s
+showName st (Bound i) = st !! i
 
-instance Show Formula where
-  show = showF
+showE :: [String] -> Expr -> String
+showE st e = case e of
+  (Var x) -> showName st x
+  (Func x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE st) as ++ ")"
+  (Pred x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE st) as ++ ")"
+  (Equals t1 t2) -> "(" ++ showE st t1 ++ " = " ++ showE st t2 ++ ")"
+  Top -> "true"
+  Bottom -> "false"
+  (Not e) -> "not " ++ showE st e
+  (And e1 e2) -> "(" ++ showE st e1 ++ " and " ++ showE st e2 ++ ")"
+  (Or e1 e2) -> "(" ++ showE st e1 ++ " or " ++ showE st e2 ++ ")"
+  (Implies e1 e2) -> "(" ++ showE st e1 ++ " implies " ++ showE st e2 ++ ")"
+  (Iff e1 e2) -> "(" ++ showE st e1 ++ " iff " ++ showE st e2 ++ ")"
+  (Forall x e) -> "(forall " ++ x ++ ", " ++ showE (x : st) e ++ ")"
+  (Exists x e) -> "(exists " ++ x ++ ", " ++ showE (x : st) e ++ ")"
+  (Unique x e) -> "(unique " ++ x ++ ", " ++ showE (x : st) e ++ ")"
+-- (ForallFunc x k e) -> "(forallfunc " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : st) e ++ ")"
+-- (ForallPred x k e) -> "(forallpred " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : st) e ++ ")"
 
-{-
-replaceVarT :: Term -> String -> Term -> Term
-replaceVarT a x t = case a of
-  (Var x')
-    | x == x'   -> t
-    | otherwise -> a
+instance Show Expr where
+  show = showE []
 
--}
+-- n = (number of binders on top of current node)
+updateVars :: Int -> (Int -> VarName -> Expr) -> Expr -> Expr
+updateVars n f e = case e of
+  (Var x) -> f n x
+  (Func x es) -> Func x (map (updateVars n f) es)
+  (Pred x es) -> Pred x (map (updateVars n f) es)
+  (Equals e1 e2) -> Equals (updateVars n f e1) (updateVars n f e2)
+  Top -> e
+  Bottom -> e
+  (Not e1) -> Not (updateVars n f e1)
+  (And e1 e2) -> And (updateVars n f e1) (updateVars n f e2)
+  (Or e1 e2) -> Or (updateVars n f e1) (updateVars n f e2)
+  (Implies e1 e2) -> Implies (updateVars n f e1) (updateVars n f e2)
+  (Iff e1 e2) -> Iff (updateVars n f e1) (updateVars n f e2)
+  (Forall x e1) -> Forall x (updateVars (n + 1) f e1)
+  (Exists x e1) -> Exists x (updateVars (n + 1) f e1)
+  (Unique x e1) -> Unique x (updateVars (n + 1) f e1)
+
+-- Replace occurrences of a free variable by a given term
+-- Pre: t is a well-formed term
+replaceVar :: String -> Expr -> Expr -> Expr
+replaceVar id t = updateVars 0 (\_ x -> if x == Free id then t else Var x)
+
+-- Note that the resulting expression is not well-formed until one additional layer of binder is added
+makeBound :: String -> Expr -> Expr
+makeBound id = updateVars 0 (\n x -> if x == Free id then Var (Bound n) else Var x)
+
+-- Input expression can be a subexpression which is not well-formed by itself
+makeFree :: String -> Expr -> Expr
+makeFree id = updateVars 0 (\n x -> if x == Bound n then Var (Free id) else Var x)
+
+-- Input expression can be a subexpression which is not well-formed by itself
+makeReplace :: Expr -> Expr -> Expr
+makeReplace t = updateVars 0 (\n x -> if x == Bound n then t else Var x)
 
 
 data Type =
     TVar
   | TFunc Int
   | TPred Int
-  | TProp Formula
+  | TProp Expr
   deriving (Eq, Show)
 
 -- Assuming structural rules: contraction and permutation; weakening is stated below
@@ -103,10 +130,10 @@ ctxAssumption id (Theorem (Context ctx', IsFormula p)) (Context ctx)
 
 
 data Judgment =
-    IsTerm Term
-  | IsFormula Formula
-  | IsSchema Formula
-  | Provable Formula
+    IsTerm Expr
+  | IsFormula Expr
+  | IsSchema Expr
+  | Provable Expr
   deriving (Eq, Show)
 
 -- (TODO: hide this constructor when exporting)
@@ -131,13 +158,13 @@ weaken (Theorem (ctx, j)) ctx' =
 varMk :: Context -> String -> Theorem
 varMk ctx id = case Map.lookup id (ctxMap ctx) of
   (Just t)
-    | t == TVar -> Theorem (ctx, IsTerm (Var id))
+    | t == TVar -> Theorem (ctx, IsTerm (Var (Free id)))
 
 funcMk :: Context -> String -> [Theorem] -> Theorem
 funcMk ctx id js = case Map.lookup id (ctxMap ctx) of
   (Just t)
     | t == TFunc (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, IsTerm (Func id as))
+        Theorem (ctx, IsTerm (Func (Free id) as))
     where
       (ctxs, as) = unzip . map (\x -> let Theorem (c, IsTerm t) = x in (c, t)) $ js
 
@@ -145,7 +172,7 @@ predMk :: Context -> String -> [Theorem] -> Theorem
 predMk ctx id js = case Map.lookup id (ctxMap ctx) of
   (Just t)
     | t == TPred (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, IsFormula (Pred id as))
+        Theorem (ctx, IsFormula (Pred (Free id) as))
     where
       (ctxs, as) = unzip . map (\x -> let Theorem (c, IsTerm t) = x in (c, t)) $ js
 
@@ -182,17 +209,17 @@ iffMk (Theorem (ctx, IsFormula e1)) (Theorem (ctx', IsFormula e2))
 forallMk :: String -> Theorem -> Theorem
 forallMk id (Theorem (Context map, IsFormula e)) =
   case Map.lookup id map of
-    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Forall id e))
+    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Forall id (makeBound id e)))
 
 existsMk :: String -> Theorem -> Theorem
 existsMk id (Theorem (Context map, IsFormula e)) =
   case Map.lookup id map of
-    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Exists id e))
+    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Exists id (makeBound id e)))
 
 uniqueMk :: String -> Theorem -> Theorem
 uniqueMk id (Theorem (Context map, IsFormula e)) =
   case Map.lookup id map of
-    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Unique id e))
+    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Unique id (makeBound id e)))
 
 {-
 schemaMk :: Theorem -> Theorem
@@ -202,22 +229,22 @@ schemaMk (Theorem (ctx, IsFormula e)) =
 forallfuncMk :: String -> Theorem -> Theorem
 forallfuncMk id (Theorem (Context map, IsSchema e)) =
   case Map.lookup id map of
-    Just (TFunc k) -> Theorem (Context (Map.delete id map), IsSchema (ForallFunc id k e))
+    Just (TFunc k) -> Theorem (Context (Map.delete id map), IsSchema (ForallFunc id k undefined))
 
 forallpredMk :: String -> Theorem -> Theorem
 forallpredMk id (Theorem (Context map, IsSchema e)) =
   case Map.lookup id map of
-    Just (TPred k) -> Theorem (Context (Map.delete id map), IsSchema (ForallPred id k e))
+    Just (TPred k) -> Theorem (Context (Map.delete id map), IsSchema (ForallPred id k undefined))
 -}
 
 
 -- Inference rules
 -- Pre & post: `Provable ctx p` => `IsFormula ctx p`
 
-assumption :: Context -> String -> Theorem -> Theorem
-assumption ctx id (Theorem (ctx', IsFormula p))
-  | ctx == ctx' && Map.lookup id (ctxMap ctx) == Just (TProp p) =
-      Theorem (ctx, Provable p)
+assumption :: Context -> String -> Theorem
+assumption ctx id =
+  case Map.lookup id (ctxMap ctx) of
+    Just (TProp p) -> Theorem (ctx, Provable p)
 
 andIntro :: Theorem -> Theorem -> Theorem
 andIntro (Theorem (ctx,  Provable p))
@@ -272,7 +299,7 @@ impliesElim (Theorem (ctx,  Provable (Implies p q)))
 forallIntro :: Theorem -> String -> Theorem
 forallIntro (Theorem (Context map, Provable p)) id =
   case t' of
-    (Just TVar) -> Theorem (Context map', Provable (Forall id p))
+    (Just TVar) -> Theorem (Context map', Provable (Forall id (makeBound id p)))
     _           -> Theorem (Context map, Provable p)
   where
     t' = Map.lookup id map
@@ -282,6 +309,6 @@ forallElim :: Theorem -> Theorem -> Theorem
 forallElim (Theorem (ctx,  Provable (Forall x q)))
            (Theorem (ctx', IsTerm t))
            | ctx == ctx' =
-            Theorem (ctx,  Provable undefined {- ... -})
+            Theorem (ctx,  Provable (makeReplace t q))
 
 
