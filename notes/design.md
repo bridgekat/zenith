@@ -23,18 +23,24 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
     - For any element `p/n ∈ P` and terms `t₁, t₂, ..., tₙ` under `F`, the expression `(p t₁ t₂ ... tₙ)` is an (atomic) formula. This also includes the case `n = 0`.
     - If `t₁` and `t₂` are terms under `F`, then `(t₁ = t₂)` is an (atomic) formula.
     - `true` and `false` are formulas.
+      
       > Alternatively written as `⊤` and `⊥`.
     - If `e` is a formula under `F` and `P`, then so is `(not e)`.
+      
       > Alternatively written as `(¬e)`.
     - If `e₁` and `e₂` are formulas under `F` and `P`, then so are `(e₁ and e₂)`, `(e₁ or e₂)`, `(e₁ implies e₂)` and `(e₁ iff e₂)`.
+      
       > Alternatively written as `(e₁ ∧ e₂)`, `(e₁ ∨ e₂)`, `(e₁ → e₂)` and `(e₁ ↔ e₂)`.
     - For any string `x` not occurring in `F`, if `e` is a formula under `F ∪ {x/0}` and `P`, then `(forall x, e)`, `(exists x, e)` and `(unique x, e)` are formulas under `F` and `P`.
+      
       > Alternatively written as `(∀ x, e)`, `(∃ x, e)` and `(∃! x, e)`.
   - The set of "formula schemas" (expression schemas of type `*`) under some `F` and `P` is inductively defined as:
     - Any formula under `F` and `P` is also a formula schema.
     - For any string `f` not occurring in `F`, and any positive integer `n`, if `e` is a formula schema under `F ∪ {f/n}` and `P`, then `(forallfunc f/n, e)` is a formula schema under `F` and `P`. (The `n = 0` case is already covered in the previous rule, so it's not included here.)
+      
       > Alternatively written as `(∀# f/n, e)`.
     - For any string `p` not occurring in `P`, and any nonnegative integer `n`, if `e` is a formula schema under `F` and `P ∪ {p/n}`, then `(forallpred p/n, e)` is a formula schema under `F` and `P`.
+      
       > Alternatively written as `(∀$ p/n, e)`.
   - The last two rules should be understood as a way to express "formula schemas" (infinite sets of formulas obtained by specializing those function and predicate variables). Although they could as well represent second-order quantifications, I'm not going to fully support second-order logic (you can see there's no second-order existential quantifiers, and the `∀#` and `∀$` must appear at the beginning). Instead I will use sets to represent functions and higher-order functions...
 - As explained above, the definition of a formula schema depends on `F` and `P`. A context `(F, P, Γ)` is well-formed only if all formula schemas in `Γ` are well-formed under `F` and `P`.
@@ -78,9 +84,11 @@ The introduction rules for `implies`, `forall`, `forallfunc` and `forallpred` ar
 
 - When leaving from `assume (h : <assumption>)` section, for every theorem (schema) `...φ` in `Δ'`, the theorem (schema) `...(<assumption> → φ)` will be added back to `Δ''`.
   - The "second-order quantifiers" will remain in the front. (This can be understood as simultaneously putting assumptions in front of an infinite family of formulas.)
+    - This rule is seemingly useless and it is not the same as normal higher-order rules; will not be implemented...
   - **Exception: if `<assumption>` itself contains "second-order quantifiers", nothing will be added back!** First-order logic is not sufficient to express such outcomes, and "assuming an infinite set of propositions" is only useful in expressing axiom schemas...
 - When leaving from `any x` section, for every theorem (schema) `...φ` in `Δ'`, the theorem (schema) `...(forall x, φ)` will be added back to `Δ''`.
   - The "second-order quantifiers" will remain in the front. (This can be understood as simultaneously putting quantifiers in front of an infinite family of formulas.)
+    - This rule is seemingly useless and it is not the same as normal higher-order rules; will not be implemented...
 - When leaving from `anyfunc f/n` section, for every theorem (schema) `...φ` in `Δ'`, the theorem (schema) `(forallfunc f/n, ...φ)` will be added back to `Δ''`.
 - When leaving from `anypred p/n` section, for every theorem (schema) `...φ` in `Δ'`, the theorem (schema) `(forallpred p/n, ...φ)` will be added back to `Δ''`.
 

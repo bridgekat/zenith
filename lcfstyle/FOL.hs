@@ -6,10 +6,7 @@
 
 module FOL where
 
-import Data.Set (Set)
-import qualified Data.Set as Set
-import Data.Map (Map, union, unions)
-import qualified Data.Map as Map
+import Data.List
 
 
 -- Bound variables are represented using de Brujin indices
@@ -21,7 +18,7 @@ data Expr =
     Var VarName
   | Func VarName [Expr]
   | Pred VarName [Expr]
-  | Equals Expr Expr
+  | Eq Expr Expr
   | Top
   | Bottom
   | Not Expr
@@ -34,23 +31,40 @@ data Expr =
   | Unique String Expr
 -- | ForallFunc String Int Expr
 -- | ForallPred String Int Expr
-  deriving (Eq)
 
-newName :: String -> Set String -> String
+-- Ignore the names of bound variables while comparing
+instance Eq Expr where
+  (==) (Var x1)        (Var y1)        = x1 == y1
+  (==) (Func x1 x2)    (Func y1 y2)    = x1 == y1 && x2 == y2
+  (==) (Pred x1 x2)    (Pred y1 y2)    = x1 == y1 && x2 == y2
+  (==) (Eq x1 x2)      (Eq y1 y2)      = x1 == y1 && x2 == y2
+  (==) Top             Top             = True
+  (==) Bottom          Bottom          = True
+  (==) (Not x1)        (Not y1)        = x1 == y1
+  (==) (And x1 x2)     (And y1 y2)     = x1 == y1 && x2 == y2
+  (==) (Or x1 x2)      (Or y1 y2)      = x1 == y1 && x2 == y2
+  (==) (Implies x1 x2) (Implies y1 y2) = x1 == y1 && x2 == y2
+  (==) (Iff x1 x2)     (Iff y1 y2)     = x1 == y1 && x2 == y2
+  (==) (Forall _ x1)   (Forall _ y1)   = x1 == y1
+  (==) (Exists _ x1)   (Exists _ y1)   = x1 == y1
+  (==) (Unique _ x1)   (Unique _ y1)   = x1 == y1
+
+
+newName :: String -> [String] -> String
 newName x used
-  | Set.notMember x used = x
-  | otherwise            = newName (x ++ "'") used
+  | x `notElem` used = x
+  | otherwise        = newName (x ++ "'") used
 
 showName :: [String] -> VarName -> String
 showName st (Free s)  = s
 showName st (Bound i) = st !! i
 
-showE :: Set String -> [String] -> Expr -> String
+showE :: [String] -> [String] -> Expr -> String
 showE used st e = case e of
   (Var x) -> showName st x
   (Func x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE used st) as ++ ")"
   (Pred x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE used st) as ++ ")"
-  (Equals t1 t2) -> "(" ++ showE used st t1 ++ " = " ++ showE used st t2 ++ ")"
+  (Eq t1 t2) -> "(" ++ showE used st t1 ++ " = " ++ showE used st t2 ++ ")"
   Top -> "true"
   Bottom -> "false"
   (Not e) -> "not " ++ showE used st e
@@ -58,17 +72,17 @@ showE used st e = case e of
   (Or e1 e2) -> "(" ++ showE used st e1 ++ " or " ++ showE used st e2 ++ ")"
   (Implies e1 e2) -> "(" ++ showE used st e1 ++ " implies " ++ showE used st e2 ++ ")"
   (Iff e1 e2) -> "(" ++ showE used st e1 ++ " iff " ++ showE used st e2 ++ ")"
-  (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (Set.insert x' used) (x' : st) e ++ ")" where x' = newName x used
-  (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (Set.insert x' used) (x' : st) e ++ ")" where x' = newName x used
-  (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (Set.insert x' used) (x' : st) e ++ ")" where x' = newName x used
+  (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (x' : used) (x' : st) e ++ ")" where x' = newName x used
+  (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (x' : used) (x' : st) e ++ ")" where x' = newName x used
+  (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (x' : used) (x' : st) e ++ ")" where x' = newName x used
 -- (ForallFunc x k e) -> "(forallfunc " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : st) e ++ ")"
 -- (ForallPred x k e) -> "(forallpred " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : st) e ++ ")"
 
 inContextShowE :: Context -> Expr -> String
-inContextShowE (Context map) = showE (Map.keysSet map) []
+inContextShowE (Context ls) = showE (map fst ls) []
 
 instance Show Expr where
-  show = showE Set.empty []
+  show = showE [] []
 
 -- n = (number of binders on top of current node)
 updateVars :: Int -> (Int -> VarName -> Expr) -> Expr -> Expr
@@ -76,7 +90,7 @@ updateVars n f e = case e of
   (Var x) -> f n x
   (Func x es) -> Func x (map (updateVars n f) es)
   (Pred x es) -> Pred x (map (updateVars n f) es)
-  (Equals e1 e2) -> Equals (updateVars n f e1) (updateVars n f e2)
+  (Eq e1 e2) -> Eq (updateVars n f e1) (updateVars n f e2)
   Top -> e
   Bottom -> e
   (Not e1) -> Not (updateVars n f e1)
@@ -110,33 +124,36 @@ data Type =
     TVar
   | TFunc Int
   | TPred Int
-  | TProp Expr
+  | THyp Expr
   deriving (Eq, Show)
 
--- Assuming structural rules: contraction and permutation; weakening is stated below
+-- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
 -- If there are naming clashes, later names will override
 -- (TODO: hide this constructor when exporting)
-newtype Context = Context (Map String Type)
-  deriving (Eq, Show)
+newtype Context = Context [(String, Type)]
+  deriving (Eq)
 
-ctxMap :: Context -> Map String Type
-ctxMap (Context map) = map
+instance Show Context where
+  show (Context ls) = foldl (\acc (id, t) -> id ++ " : " ++ show t ++ "\n" ++ acc) "" ls
+
+
+ctxList :: Context -> [(String, Type)]
+ctxList (Context ls) = ls
 
 ctxEmpty :: Context
-ctxEmpty = Context Map.empty
+ctxEmpty = Context []
 
 ctxVar :: String -> Context -> Context
-ctxVar id (Context ctx) = Context (Map.insert id TVar ctx)
+ctxVar id (Context ctx) = Context ((id, TVar) : ctx)
 
 ctxFunc :: String -> Int -> Context -> Context
-ctxFunc id arity (Context ctx) = Context (Map.insert id (TFunc arity) ctx)
+ctxFunc id arity (Context ctx) = Context ((id, TFunc arity) : ctx)
 
 ctxPred :: String -> Int -> Context -> Context
-ctxPred id arity (Context ctx) = Context (Map.insert id (TPred arity) ctx)
+ctxPred id arity (Context ctx) = Context ((id, TPred arity) : ctx)
 
-ctxAssumption :: String -> Theorem -> Context -> Context
-ctxAssumption id (Theorem (Context ctx', IsFormula p)) (Context ctx)
-  | ctx == ctx' = Context (Map.insert id (TProp p) ctx)
+ctxAssumption :: String -> Theorem -> Context
+ctxAssumption id (Theorem (Context ctx, IsFormula p)) = Context ((id, THyp p) : ctx)
 
 
 data Judgment =
@@ -155,23 +172,24 @@ thmContext (Theorem (c, _)) = c
 thmJudgment :: Theorem -> Judgment
 thmJudgment (Theorem (_, j)) = j
 
+instance Show Theorem where
+  show (Theorem (c, j)) = "\n" ++ show c ++ "\n|- " ++ show j ++ "\n"
+
 
 weaken :: Theorem -> Context -> Theorem
 weaken (Theorem (ctx, j)) ctx' =
-  case isSubset of
+  case ctxList ctx `isSuffixOf` ctxList ctx' of
     True -> Theorem (ctx', j)
-  where
-    isSubset = Map.foldlWithKey (\acc k v -> acc && Map.lookup k (ctxMap ctx') == Just v) True (ctxMap ctx)
 
 -- Formation rules (as in `notes/design.md`)
 
 varMk :: Context -> String -> Theorem
-varMk ctx id = case Map.lookup id (ctxMap ctx) of
+varMk ctx id = case lookup id (ctxList ctx) of
   (Just t)
     | t == TVar -> Theorem (ctx, IsTerm (Var (Free id)))
 
 funcMk :: Context -> String -> [Theorem] -> Theorem
-funcMk ctx id js = case Map.lookup id (ctxMap ctx) of
+funcMk ctx id js = case lookup id (ctxList ctx) of
   (Just t)
     | t == TFunc (length as) && all (== ctx) ctxs ->
         Theorem (ctx, IsTerm (Func (Free id) as))
@@ -179,7 +197,7 @@ funcMk ctx id js = case Map.lookup id (ctxMap ctx) of
       (ctxs, as) = unzip . map (\x -> let Theorem (c, IsTerm t) = x in (c, t)) $ js
 
 predMk :: Context -> String -> [Theorem] -> Theorem
-predMk ctx id js = case Map.lookup id (ctxMap ctx) of
+predMk ctx id js = case lookup id (ctxList ctx) of
   (Just t)
     | t == TPred (length as) && all (== ctx) ctxs ->
         Theorem (ctx, IsFormula (Pred (Free id) as))
@@ -188,7 +206,7 @@ predMk ctx id js = case Map.lookup id (ctxMap ctx) of
 
 eqMk :: Theorem -> Theorem -> Theorem
 eqMk (Theorem (ctx, IsTerm t1)) (Theorem (ctx', IsTerm t2))
-  | ctx == ctx' = Theorem (ctx, IsFormula (Equals t1 t2))
+  | ctx == ctx' = Theorem (ctx, IsFormula (Eq t1 t2))
 
 topMk :: Theorem
 topMk = Theorem (ctxEmpty, IsFormula Top)
@@ -216,45 +234,26 @@ iffMk :: Theorem -> Theorem -> Theorem
 iffMk (Theorem (ctx, IsFormula e1)) (Theorem (ctx', IsFormula e2))
   | ctx == ctx' = Theorem (ctx, IsFormula (Iff e1 e2))
 
-forallMk :: String -> Theorem -> Theorem
-forallMk id (Theorem (Context map, IsFormula e)) =
-  case Map.lookup id map of
-    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Forall id (makeBound id e)))
+forallMk :: Theorem -> Theorem
+forallMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
+  Theorem (Context ls, IsFormula (Forall id (makeBound id e)))
 
-existsMk :: String -> Theorem -> Theorem
-existsMk id (Theorem (Context map, IsFormula e)) =
-  case Map.lookup id map of
-    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Exists id (makeBound id e)))
+existsMk :: Theorem -> Theorem
+existsMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
+  Theorem (Context ls, IsFormula (Exists id (makeBound id e)))
 
-uniqueMk :: String -> Theorem -> Theorem
-uniqueMk id (Theorem (Context map, IsFormula e)) =
-  case Map.lookup id map of
-    Just TVar -> Theorem (Context (Map.delete id map), IsFormula (Unique id (makeBound id e)))
-
-{-
-schemaMk :: Theorem -> Theorem
-schemaMk (Theorem (ctx, IsFormula e)) =
-  Theorem (ctx, IsSchema e)
-
-forallfuncMk :: String -> Theorem -> Theorem
-forallfuncMk id (Theorem (Context map, IsSchema e)) =
-  case Map.lookup id map of
-    Just (TFunc k) -> Theorem (Context (Map.delete id map), IsSchema (ForallFunc id k undefined))
-
-forallpredMk :: String -> Theorem -> Theorem
-forallpredMk id (Theorem (Context map, IsSchema e)) =
-  case Map.lookup id map of
-    Just (TPred k) -> Theorem (Context (Map.delete id map), IsSchema (ForallPred id k undefined))
--}
+uniqueMk :: Theorem -> Theorem
+uniqueMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
+  Theorem (Context ls, IsFormula (Unique id (makeBound id e)))
 
 
--- Inference rules
+-- Introduction & elimination rules
 -- Pre & post: `Provable ctx p` => `IsFormula ctx p`
 
 assumption :: Context -> String -> Theorem
 assumption ctx id =
-  case Map.lookup id (ctxMap ctx) of
-    Just (TProp p) -> Theorem (ctx, Provable p)
+  case lookup id (ctxList ctx) of
+    Just (THyp p) -> Theorem (ctx, Provable p)
 
 andIntro :: Theorem -> Theorem -> Theorem
 andIntro (Theorem (ctx,  Provable p))
@@ -284,41 +283,102 @@ orInr (Theorem (ctx,  IsFormula p))
 
 orElim :: Theorem -> Theorem -> Theorem -> Theorem
 orElim (Theorem (ctx,   Provable (Or p q)))
-       (Theorem (ctx',  Provable (Implies p' r)))
-       (Theorem (ctx'', Provable (Implies q' r')))
+       (Theorem (ctx',  Provable (p' `Implies` r)))
+       (Theorem (ctx'', Provable (q' `Implies` r')))
        | ctx == ctx' && ctx == ctx'' && p == p' && q == q' && r == r' =
         Theorem (ctx,   Provable r)
 
-impliesIntro :: Theorem -> String -> Theorem
-impliesIntro (Theorem (Context map, Provable q)) id =
-  case p' of
-    (Just (TProp p)) -> Theorem (Context map', Provable (Implies p q))
-    _                -> Theorem (Context map, Provable q)
-  where
-    p' = Map.lookup id map
-    map' = Map.delete id map
+-- (Context-changing rule)
+impliesIntro :: Theorem -> Theorem
+impliesIntro (Theorem (Context ((_, THyp p) : ls), Provable q)) =
+              Theorem (Context ls, Provable (p `Implies` q))
 
 impliesElim :: Theorem -> Theorem -> Theorem
-impliesElim (Theorem (ctx,  Provable (Implies p q)))
+impliesElim (Theorem (ctx,  Provable (p `Implies` q)))
             (Theorem (ctx', Provable p'))
             | ctx == ctx' && p == p' =
              Theorem (ctx,  Provable q)
 
--- ...
+notIntro :: Theorem -> Theorem
+notIntro (Theorem (ctx, Provable (p `Implies` Bottom))) =
+          Theorem (ctx, Provable (Not p))
 
-forallIntro :: Theorem -> String -> Theorem
-forallIntro (Theorem (Context map, Provable p)) id =
-  case t' of
-    (Just TVar) -> Theorem (Context map', Provable (Forall id (makeBound id p)))
-    _           -> Theorem (Context map, Provable p)
-  where
-    t' = Map.lookup id map
-    map' = Map.delete id map
+notElim :: Theorem -> Theorem -> Theorem
+notElim (Theorem (ctx,  Provable (Not p)))
+        (Theorem (ctx', Provable p'))
+        | ctx == ctx' && p == p' =
+         Theorem (ctx,  Provable Bottom)
+
+iffIntro :: Theorem -> Theorem -> Theorem
+iffIntro (Theorem (ctx,  Provable (p `Implies` q)))
+         (Theorem (ctx', Provable (q' `Implies` p')))
+         | ctx == ctx' && p == p' && q == q' =
+          Theorem (ctx,  Provable (p `Iff` q))
+
+iffLeft :: Theorem -> Theorem -> Theorem
+iffLeft (Theorem (ctx,  Provable (p `Iff` q)))
+        (Theorem (ctx', Provable p'))
+        | ctx == ctx' && p == p' =
+         Theorem (ctx,  Provable q)
+
+iffRight :: Theorem -> Theorem -> Theorem
+iffRight (Theorem (ctx,  Provable (p `Iff` q)))
+         (Theorem (ctx', Provable q'))
+         | ctx == ctx' && q == q' =
+          Theorem (ctx,  Provable p)
+
+falseElim :: Theorem -> Theorem -> Theorem
+falseElim (Theorem (ctx,  Provable Bottom))
+          (Theorem (ctx', IsFormula p))
+          | ctx == ctx' =
+           Theorem (ctx,  Provable p)
+
+raa :: Theorem -> Theorem
+raa (Theorem (ctx, Provable (Not p `Implies` Bottom))) =
+     Theorem (ctx, Provable p)
+
+-- (Context-changing rule)
+forallIntro :: Theorem -> Theorem
+forallIntro (Theorem (Context ((id, TVar) : ls), Provable p)) =
+             Theorem (Context ls, Provable (Forall id (makeBound id p)))
 
 forallElim :: Theorem -> Theorem -> Theorem
 forallElim (Theorem (ctx,  Provable (Forall x q)))
            (Theorem (ctx', IsTerm t))
            | ctx == ctx' =
             Theorem (ctx,  Provable (makeReplace t q))
+
+existsIntro :: Theorem -> Theorem -> Theorem -> Theorem
+existsIntro (Theorem (ctx,   Provable pt))
+            (Theorem (ctx',  IsFormula (Exists x p)))
+            (Theorem (ctx'', IsTerm t))
+            | ctx == ctx' && pt == makeReplace t p =
+             Theorem (ctx,   Provable (Exists x p))
+
+existsElim :: Theorem -> Theorem -> Theorem -> Theorem
+existsElim (Theorem (ctx,   Provable (Exists x p)))
+           (Theorem (ctx',  Provable (Forall y (p' `Implies` q))))
+           (Theorem (ctx'', IsFormula q'))
+           | ctx == ctx' && ctx == ctx'' && p == p' && q == q' =
+            Theorem (ctx,   Provable q)
+
+
+-- Derivation trees (aka. proof terms)
+data Proof =
+    Assumption String
+  | AndI Proof Proof
+  | AndL Proof
+  | AndR Proof
+  | OrL Proof Theorem
+  | OrR Theorem Proof
+  | OrE Proof Proof Proof
+  | ImpliesI Proof
+-- ...
+
+checkProof :: Context -> Proof -> Theorem
+checkProof ctx p = case p of
+  (Assumption s) -> assumption ctx s
+  (AndI p' q') -> andIntro (checkProof ctx p') (checkProof ctx q')
+-- ...
 
 

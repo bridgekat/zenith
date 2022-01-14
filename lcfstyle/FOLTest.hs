@@ -10,7 +10,7 @@ convertAndCheck' ctx e = case e of
   (Var (Free x)) -> varMk ctx x
   (Func (Free f) ts) -> funcMk ctx f (map (convertAndCheck ctx) ts)
   (Pred (Free p) ts) -> predMk ctx p (map (convertAndCheck ctx) ts)
-  (Equals t1 t2) -> eqMk (convertAndCheck ctx t1) (convertAndCheck ctx t1)
+  (Eq t1 t2) -> eqMk (convertAndCheck ctx t1) (convertAndCheck ctx t2)
   Top -> topMk
   Bottom -> bottomMk
   (Not e) -> notMk (convertAndCheck ctx e)
@@ -18,9 +18,9 @@ convertAndCheck' ctx e = case e of
   (Or e1 e2) -> orMk (convertAndCheck ctx e1) (convertAndCheck ctx e2)
   (Implies e1 e2) -> impliesMk (convertAndCheck ctx e1) (convertAndCheck ctx e2)
   (Iff e1 e2) -> iffMk (convertAndCheck ctx e1) (convertAndCheck ctx e2)
-  (Forall x e) -> forallMk x (convertAndCheck (ctxVar x ctx) e)
-  (Exists x e) -> existsMk x (convertAndCheck (ctxVar x ctx) e)
-  (Unique x e) -> uniqueMk x (convertAndCheck (ctxVar x ctx) e)
+  (Forall x e) -> forallMk (convertAndCheck (ctxVar x ctx) e)
+  (Exists x e) -> existsMk (convertAndCheck (ctxVar x ctx) e)
+  (Unique x e) -> uniqueMk (convertAndCheck (ctxVar x ctx) e)
 
 convertAndCheck :: Context -> Expr -> Theorem
 convertAndCheck ctx e = weaken (convertAndCheck' ctx e) ctx
@@ -32,36 +32,132 @@ var = Var . Free
 func = Func . Free
 pred = Pred . Free
 
-ctx1 :: Context
-ctx1 = ctxPred "<" 2 $ ctxFunc "+" 2 $ ctxVar "0" ctxEmpty
+{-
+ctx' :: Context
+ctx' = ctxPred "<" 2 $ ctxFunc "+" 2 $ ctxVar "0" ctxEmpty
 
 e1 = Forall "e" (pred "<" [var "0", var "e"] `Implies` Exists "N" (Forall "n" (pred "<" [var "N", var "n"] `Implies` Bottom)))
-wff1 = convertAndCheck ctx1 e1
+wff1 = convertAndCheck ctx' e1
 
 
-ctx1' :: Context
-ctx1' = ctxAssumption "h" wff1 ctx1
+ctx :: Context
+ctx = ctxAssumption "h" wff1
 
-thm1p = assumption ctx1' "h"
+thm1 = assumption ctx "h"
 
 t1 = func "+" [func "+" [var "0", var "0"], var "0"]
-wft1 = convertAndCheck ctx1' t1
+wft1 = convertAndCheck ctx t1
 
--- `thmJudgment (forallElim thm1p wft1)` outputs:
+-- `thmJudgment (forallElim thm1 wft1)` outputs:
 -- Provable ((< 0 (+ (+ 0 0) 0)) implies (exists N, (forall n, ((< N n) implies false))))
+-}
+
+ctx' :: Context
+ctx' = ctxPred "L" 2 $ ctxPred "B" 3 $ ctxVar "Q" ctxEmpty
+
+e1 = Forall "x" (Forall "y" (pred "L" [var "x", var "y"] `Implies` Forall "z" (Not (Eq (var "z") (var "y")) `Implies` Not (pred "L" [var "x", var "z"]))))
+wff1 = convertAndCheck ctx' e1
+e2 = Forall "x" (Forall "y" (Forall "z" (pred "B" [var "x", var "y", var "z"] `Implies` (pred "L" [var "x", var "z"] `Implies` pred "L" [var "x", var "y"]))))
+wff2 = convertAndCheck ctx' e2
+e3 = Exists "x" (Not (Eq (var "x") (var "Q")) `And` Forall "y" (pred "B" [var "y", var "x", var "Q"]))
+wff3 = convertAndCheck ctx' e3
+e4 = Not (Exists "x" (pred "L" [var "x", var "Q"]))
+wff4 = convertAndCheck ctx' e4
+
+ctx :: Context
+ctx =
+  ctxAssumption "h3" . flip convertAndCheck e3 $
+  ctxAssumption "h2" . flip convertAndCheck e2 $
+  ctxAssumption "h1" . flip convertAndCheck e1 $
+  ctxVar "Q" $
+  ctxPred "B" 3 $
+  ctxPred "L" 2 $
+  ctxEmpty
+
+h1 = assumption ctx "h1"
+h2 = assumption ctx "h2"
+h3 = assumption ctx "h3"
+
+ctx1 =
+  ctxAssumption "hc" . flip convertAndCheck
+    (Not (Eq (var "c") (var "Q")) `And` Forall "x" (pred "B" [var "x", var "c", var "Q"])) $
+  ctxVar "c" $
+  ctx
+hc = assumption ctx1 "hc"
+hc1 = andLeft hc
+hc2 = andRight hc
+
+ctx2 =
+  ctxAssumption "hex" . flip convertAndCheck
+    (Exists "x" (pred "L" [var "x", var "Q"])) $
+  ctx1
+hex = assumption ctx2 "hex"
+
+ctx3 =
+  ctxAssumption "hx" . flip convertAndCheck
+    (pred "L" [var "x", var "Q"]) $
+  ctxVar "x" $
+  ctx2
+hx = assumption ctx3 "hx"
+
+t1 =
+  impliesElim
+    (forallElim
+      (forallElim
+        (weaken h1 ctx3)
+        (convertAndCheck ctx3 (var "x")))
+      (convertAndCheck ctx3 (var "Q")))
+    (weaken hx ctx3)
+
+t2 =
+  impliesElim
+    (forallElim
+      (weaken t1 ctx3)
+      (convertAndCheck ctx3 (var "c")))
+    (weaken hc1 ctx3)
+
+t3 =
+  forallElim
+    (weaken hc2 ctx3)
+    (convertAndCheck ctx3 (var "x"))
+
+t4 =
+  impliesElim
+    (impliesElim
+      (forallElim
+        (forallElim
+          (forallElim
+            (weaken h2 ctx3)
+            (convertAndCheck ctx3 (var "x")))
+          (convertAndCheck ctx3 (var "c")))
+        (convertAndCheck ctx3 (var "Q")))
+      (weaken t3 ctx3))
+    (weaken hx ctx3)
+
+t5 = notElim t2 t4
+
+[t1', t2', t3', t4', t5'] = map (forallIntro . impliesIntro) [t1, t2, t3, t4, t5]
+
+t6' = existsElim (weaken hex ctx2) t5' (convertAndCheck ctx2 Bottom)
+
+[t1'', t2'', t3'', t4'', t5'', t6''] = map impliesIntro [t1', t2', t3', t4', t5', t6']
+
+t7'' = notIntro t6''
+
+[t1''', t2''', t3''', t4''', t5''', t6''', t7'''] = map (forallIntro . impliesIntro) [t1'', t2'', t3'', t4'', t5'', t6'', t7'']
+
+t8''' = existsElim (weaken h3 ctx) t7''' (convertAndCheck ctx (Not (Exists "x" (pred "L" [var "x", var "Q"]))))
 
 
-ctx2 :: Context
-ctx2 = ctxPred "L" 2 $ ctxPred "B" 3 $ ctxVar "Q" ctxEmpty
+-- TEMP CODE
 
-e2 = Forall "x" (Forall "y" (pred "L" [var "x", var "y"] `Implies` Forall "z" (Not (Equals (var "z") (var "y")) `Implies` Not (pred "L" [var "x", var "z"]))))
-wff2 = convertAndCheck ctx2 e2
-e3 = Forall "x" (Forall "y" (Forall "z" (pred "B" [var "x", var "y", var "z"] `Implies` (pred "L" [var "x", var "z"] `Implies` pred "L" [var "x", var "y"]))))
-wff3 = convertAndCheck ctx2 e3
-e4 = Exists "x" (Forall "y" (pred "B" [var "y", var "x", var "Q"]))
-wff4 = convertAndCheck ctx2 e4
-e5 = Not (Exists "x" (pred "L" [var "x", var "Q"]))
-wff5 = convertAndCheck ctx2 e5
-
+data BlockExpr =
+    Empty
+  | Assertion String Type {- Proof -} BlockExpr
+  | PredDef String Type Expr BlockExpr
+  | FuncDef String Type Expr BlockExpr
+  | FuncDDef String Type Expr BlockExpr
+  | Any String Type BlockExpr BlockExpr
+  | Assume String Expr BlockExpr BlockExpr
 
 
