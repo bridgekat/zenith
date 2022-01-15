@@ -1,6 +1,8 @@
 -- Simple type theory / higher-order logic for experimentation
 -- This variant of HOL is largely based on William M. Farmer's *The Seven Virtues of Simple Type Theory*...
 
+-- {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+
 module HOL where
 
 import Data.List
@@ -39,6 +41,7 @@ instance Eq Expr where
   (==) (Lam _ x1 x2)  (Lam _ y1 y2)  = x1 == y1 && x2 == y2
   (==) (Eq x1 x2)     (Eq y1 y2)     = x1 == y1 && x2 == y2
   (==) (Iota _ x1 x2) (Iota _ y1 y2) = x1 == y1 && x2 == y2
+  (==) _              _              = False
 
 newName :: String -> [String] -> String
 newName x used

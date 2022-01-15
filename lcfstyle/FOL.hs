@@ -5,6 +5,8 @@
 -- To keep in line with the proof language, some context-changing rules are now represented in terms of
 -- `impliesIntro` and `forallIntro`; Additional features are described in `notes/design.md`.
 
+-- {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+
 module FOL where
 
 import Data.List
@@ -49,6 +51,7 @@ instance Eq Expr where
   (==) (Forall _ x1)   (Forall _ y1)   = x1 == y1
   (==) (Exists _ x1)   (Exists _ y1)   = x1 == y1
   (==) (Unique _ x1)   (Unique _ y1)   = x1 == y1
+  (==) _               _               = False
 
 newName :: String -> [String] -> String
 newName x used
