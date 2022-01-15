@@ -1,74 +1,116 @@
 -- Simple type theory / higher-order logic for experimentation
 -- This variant of HOL is largely based on William M. Farmer's *The Seven Virtues of Simple Type Theory*...
 
-module HOL (Type(..), Expr(..), Context(..), Judgment(..),
-            freeVars,
-            weaken, varMk, appMk, lamMk, eqMk, iotaMk,
-            Theorem, thmJudgment, thmContext, thmExpr, thmType) where
+module HOL where
 
-import Data.Set (Set)
-import qualified Data.Set as Set
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.List
 
 
 data Type =
     TVar
   | TProp
-  | TLam Type Type
+  | TFun Type Type
   deriving (Eq)
 
 showT :: Type -> String
 showT TVar = "ι"
 showT TProp = "*"
-showT (TLam t1 t2) = "(" ++ showT t1 ++ " → " ++ showT t2 ++ ")"
+showT (TFun t1 t2) = "(" ++ showT t1 ++ " → " ++ showT t2 ++ ")"
 
 instance Show Type where
   show = showT
 
--- TODO: locally nameless variables
+-- Bound variables are represented using de Brujin indices
+-- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
+data VarName = Free String | Bound Int
+  deriving (Eq)
+
 data Expr =
-    Var String
+    Var VarName
   | App Expr Expr
   | Lam String Type Expr
   | Eq Expr Expr
   | Iota String Type Expr
-  deriving (Eq)
 
-showE :: Expr -> String
-showE (Var x) = x
-showE (App e1 e2) = "(" ++ showE e1 ++ " " ++ showE e2 ++ ")"
-showE (Lam x t e) = "(λ " ++ x ++ " : " ++ showT t ++ ", " ++ showE e ++ ")"
-showE (Eq e1 e2) = "(" ++ showE e1 ++ " = " ++ showE e2 ++ ")"
-showE (Iota x t e) = "(I " ++ x ++ " : " ++ showT t ++ ", " ++ showE e ++ ")"
+-- Ignore the names of bound variables when comparing
+instance Eq Expr where
+  (==) (Var x1)       (Var y1)       = x1 == y1
+  (==) (App x1 x2)    (App y1 y2)    = x1 == y1 && x2 == y2
+  (==) (Lam _ x1 x2)  (Lam _ y1 y2)  = x1 == y1 && x2 == y2
+  (==) (Eq x1 x2)     (Eq y1 y2)     = x1 == y1 && x2 == y2
+  (==) (Iota _ x1 x2) (Iota _ y1 y2) = x1 == y1 && x2 == y2
+
+newName :: String -> [String] -> String
+newName x used
+  | x `notElem` used = x
+  | otherwise        = newName (x ++ "'") used
+
+showName :: [String] -> VarName -> String
+showName stk (Free s)  = s
+showName stk (Bound i) = stk !! i
+
+showE :: [String] -> [String] -> Expr -> String
+showE used stk e = case e of
+  (Var x)      -> showName stk x
+  (App e1 e2)  -> "(" ++ showE used stk e1 ++ " " ++ showE used stk e2 ++ ")"
+  (Lam x t e)  -> "(λ " ++ x' ++ " : " ++ showT t ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (Eq e1 e2)   -> "(" ++ showE used stk e1 ++ " = " ++ showE used stk e2 ++ ")"
+  (Iota x t e) -> "(I " ++ x' ++ " : " ++ showT t ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+
+inContextShowE :: Context -> Expr -> String
+inContextShowE (Context ls) = showE (map fst ls) []
 
 instance Show Expr where
-  show = showE
+  show = showE [] []
 
+-- n = (number of binders on top of current node)
+updateVars :: Int -> (Int -> VarName -> Expr) -> Expr -> Expr
+updateVars n f e = case e of
+  (Var x)      -> f n x
+  (App e1 e2)  -> App (updateVars n f e1) (updateVars n f e2)
+  (Lam x t e)  -> Lam x t (updateVars (n + 1) f e)
+  (Eq e1 e2)   -> Eq (updateVars n f e1) (updateVars n f e2)
+  (Iota x t e) -> Iota x t (updateVars (n + 1) f e)
 
-{-
-freeVars :: Expr -> Set String
-freeVars (Var x) = Set.singleton x
-freeVars (App e1 e2) = Set.union (freeVars e1) (freeVars e2)
-freeVars (Lam x t e) = Set.delete x (freeVars e)
-freeVars (Eq e1 e2) = Set.union (freeVars e1) (freeVars e2)
-freeVars (Iota x t e) = Set.delete x (freeVars e)
--}
+-- Replace occurrences of a free variable by a given term
+-- Pre: t is a well-formed term
+replaceVar :: String -> Expr -> Expr -> Expr
+replaceVar id t = updateVars 0 (\_ x -> if x == Free id then t else Var x)
 
-freeVars :: Expr -> [String]
-freeVars (Var x) = [x]
-freeVars (App e1 e2) = freeVars e1 ++ freeVars e2
-freeVars (Lam x t e) = filter (/= x) (freeVars e)
-freeVars (Eq e1 e2) = freeVars e1 ++ freeVars e2
-freeVars (Iota x t e) = filter (/= x) (freeVars e)
+-- Note that the resulting expression is not well-formed until one additional layer of binder is added
+makeBound :: String -> Expr -> Expr
+makeBound id = updateVars 0 (\n x -> if x == Free id then Var (Bound n) else Var x)
 
+-- Input expression can be a subexpression which is not well-formed by itself
+makeFree :: String -> Expr -> Expr
+makeFree id = updateVars 0 (\n x -> if x == Bound n then Var (Free id) else Var x)
 
--- Assuming structural rules: contraction and permutation; weakening is stated below
-type Context = Map String Type
+-- Input expression can be a subexpression which is not well-formed by itself
+makeReplace :: Expr -> Expr -> Expr
+makeReplace t = updateVars 0 (\n x -> if x == Bound n then t else Var x)
 
--- `context ⊢ expr : type`
+-- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
+-- If there are naming clashes, later names will override
+-- (TODO: hide this constructor when exporting)
+newtype Context = Context [(String, Type)]
+  deriving (Eq)
+
+instance Show Context where
+  show (Context ls) = foldl (\acc (id, t) -> id ++ " : " ++ show t ++ "\n" ++ acc) "" ls
+
+ctxList :: Context -> [(String, Type)]
+ctxList (Context ls) = ls
+
+ctxEmpty :: Context
+ctxEmpty = Context []
+
+ctxVar :: (String, Type) -> Context -> Context
+ctxVar (id, t) (Context ctx) = Context ((id, t) : ctx)
+
+-- `Context ⊢ (Expr : Type)`
 type Judgment = (Context, Expr, Type)
 
+-- (TODO: hide this constructor when exporting)
 newtype Theorem = Theorem Judgment
 
 thmJudgment :: Theorem -> Judgment
@@ -83,47 +125,38 @@ thmExpr (Theorem (_, e, _)) = e
 thmType :: Theorem -> Type
 thmType (Theorem (_, _, t)) = t
 
-weaken :: Theorem -> (String, Type) -> Theorem
-weaken (Theorem (ctx, e, te)) (x, tx) = Theorem (Map.insert x tx ctx, e, te)
+instance Show Theorem where
+  show (Theorem (c, e, t)) = "\n" ++ show c ++ "\n|- " ++ show e ++ " : " ++ show t ++ "\n"
 
+
+weaken :: Theorem -> Context -> Theorem
+weaken (Theorem (ctx, e, t)) ctx' =
+  case ctxList ctx `isSuffixOf` ctxList ctx' of
+    True -> Theorem (ctx', e, t)
 
 -- Formation rules
 
 varMk :: Context -> String -> Theorem
-varMk ctx s = case Map.lookup s ctx of
-  Nothing  -> error ("Variable not in context: " ++ s)
-  (Just t) -> Theorem (ctx, Var s, t)
+varMk (Context ls) s = case lookup s ls of
+  (Just t) -> Theorem (Context ls, Var (Free s), t)
 
 appMk :: Theorem -> Theorem -> Theorem
-appMk (Theorem (ctx1, e1, t1)) (Theorem (ctx2, e2, t2)) = case t1 of
-  (TLam l r)
-    | l == t2   -> Theorem (Map.union ctx1 ctx2, App e1 e2, r)
-    | otherwise -> error ("Incompatible types in function application: " ++ show l ++ ", " ++ show t2)
-  _ -> error ("Not a function type: " ++ show t1)
+appMk (Theorem (ctx, e1, TFun l r)) (Theorem (ctx', e2, l'))
+  | ctx == ctx' && l == l' =
+    Theorem (ctx, App e1 e2, r)
 
-lamMk :: String -> Type -> Theorem -> Theorem
-lamMk x tx (Theorem (ctx, e, te)) = Theorem (ctx', Lam x tx e, TLam tx te)
-  where
-    ctx' = case Map.lookup x ctx of
-      (Just tx')
-        | tx' == tx -> Map.delete x ctx
-      _             -> ctx -- Weakening is assumed
+lamMk :: Theorem -> Theorem
+lamMk (Theorem (Context ((x, tx) : ls), e, te)) =
+  Theorem (Context ls, Lam x tx (makeBound x e), TFun tx te)
 
 eqMk :: Theorem -> Theorem -> Theorem
-eqMk (Theorem (ctx1, e1, t1)) (Theorem (ctx2, e2, t2))
-  | t1 == t2  = Theorem (Map.union ctx1 ctx2, Eq e1 e2, TProp)
-  | otherwise = error ("Incompatible types in equality: " ++ show t1 ++ ", " ++ show t2)
+eqMk (Theorem (ctx, e1, t1)) (Theorem (ctx', e2, t2))
+  | ctx == ctx' && t1 == t2 =
+    Theorem (ctx, Eq e1 e2, TProp)
 
-iotaMk :: String -> Type -> Theorem -> Theorem
-iotaMk x tx (Theorem (ctx, e, te))
-  | te /= TProp = error ("Not a proposition type: " ++ show te)
-  | otherwise   = Theorem (ctx', Iota x tx e, tx)
-  where
-    ctx' = case Map.lookup x ctx of
-      (Just tx')
-        | tx' == tx -> Map.delete x ctx
-      _             -> ctx -- Weakening is assumed (though useless here)
-
+iotaMk :: Theorem -> Theorem
+iotaMk (Theorem (Context ((x, tx) : ls), e, te)) =
+  Theorem (Context ls, Iota x tx (makeBound x e), tx)
 
 -- TODO: inference rules
 

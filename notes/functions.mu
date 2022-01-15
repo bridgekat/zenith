@@ -40,7 +40,7 @@ private {
       => (b = d);
     }
     // (TODO: automatic permutation of quantifiers and assumptions - or some kind of normal form?)
-    // (TODO: no, unification is all you need!)
+    // (TODO: no, tableau + unification is all you need!)
     public => (forall a b c d, x = pair_mk a b -> x = pair_mk c d -> a = c and b = d);
   }
   // Eliminator ("recursor")
@@ -108,7 +108,7 @@ any f assume (function f) {
 => (forall function f, forall x ∈ domain f, forall y, ([x, y] ∈ f <-> y = funapp f x));
 => (forall function f, forall x ∈ domain f, [x, funapp f x] ∈ f); // (The <- direction, useful to consider as a separate lemma)
 
-#el operator_notation ↑ funapp
+prefix ↑ funapp;
 // Now we may write (↑f x) for any f and x to mean (funapp f x)! (No space needed between ↑ and f...)
 // As for other language-level partial functions, you can apply ↑ to any set, regardless of whether function holds for it;
 // But you can only use the following theorems if function holds for it...

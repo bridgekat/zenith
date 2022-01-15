@@ -2,7 +2,8 @@
 -- Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
 
 -- This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
--- Additional features are described in `notes/design.md`.
+-- To keep in line with the proof language, some context-changing rules are now represented in terms of
+-- `impliesIntro` and `forallIntro`; Additional features are described in `notes/design.md`.
 
 module FOL where
 
@@ -18,9 +19,9 @@ data Expr =
     Var VarName
   | Func VarName [Expr]
   | Pred VarName [Expr]
-  | Eq Expr Expr
-  | Top
-  | Bottom
+  | Eq Expr Expr --
+  | Top    -- To avoid naming clashes I did not use `True` here
+  | Bottom -- Also here
   | Not Expr
   | And Expr Expr
   | Or Expr Expr
@@ -28,11 +29,11 @@ data Expr =
   | Iff Expr Expr
   | Forall String Expr
   | Exists String Expr
-  | Unique String Expr
+  | Unique String Expr --
 -- | ForallFunc String Int Expr
 -- | ForallPred String Int Expr
 
--- Ignore the names of bound variables while comparing
+-- Ignore the names of bound variables when comparing
 instance Eq Expr where
   (==) (Var x1)        (Var y1)        = x1 == y1
   (==) (Func x1 x2)    (Func y1 y2)    = x1 == y1 && x2 == y2
@@ -49,34 +50,33 @@ instance Eq Expr where
   (==) (Exists _ x1)   (Exists _ y1)   = x1 == y1
   (==) (Unique _ x1)   (Unique _ y1)   = x1 == y1
 
-
 newName :: String -> [String] -> String
 newName x used
   | x `notElem` used = x
   | otherwise        = newName (x ++ "'") used
 
 showName :: [String] -> VarName -> String
-showName st (Free s)  = s
-showName st (Bound i) = st !! i
+showName stk (Free s)  = s
+showName stk (Bound i) = stk !! i
 
 showE :: [String] -> [String] -> Expr -> String
-showE used st e = case e of
-  (Var x) -> showName st x
-  (Func x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE used st) as ++ ")"
-  (Pred x as) -> "(" ++ showName st x ++ concatMap ((" " ++) . showE used st) as ++ ")"
-  (Eq t1 t2) -> "(" ++ showE used st t1 ++ " = " ++ showE used st t2 ++ ")"
+showE used stk e = case e of
+  (Var x) -> showName stk x
+  (Func x as) -> "(" ++ showName stk x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
+  (Pred x as) -> "(" ++ showName stk x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
+  (Eq t1 t2) -> "(" ++ showE used stk t1 ++ " = " ++ showE used stk t2 ++ ")"
   Top -> "true"
   Bottom -> "false"
-  (Not e) -> "not " ++ showE used st e
-  (And e1 e2) -> "(" ++ showE used st e1 ++ " and " ++ showE used st e2 ++ ")"
-  (Or e1 e2) -> "(" ++ showE used st e1 ++ " or " ++ showE used st e2 ++ ")"
-  (Implies e1 e2) -> "(" ++ showE used st e1 ++ " implies " ++ showE used st e2 ++ ")"
-  (Iff e1 e2) -> "(" ++ showE used st e1 ++ " iff " ++ showE used st e2 ++ ")"
-  (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (x' : used) (x' : st) e ++ ")" where x' = newName x used
-  (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (x' : used) (x' : st) e ++ ")" where x' = newName x used
-  (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (x' : used) (x' : st) e ++ ")" where x' = newName x used
--- (ForallFunc x k e) -> "(forallfunc " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : st) e ++ ")"
--- (ForallPred x k e) -> "(forallpred " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : st) e ++ ")"
+  (Not e) -> "not " ++ showE used stk e
+  (And e1 e2) -> "(" ++ showE used stk e1 ++ " and " ++ showE used stk e2 ++ ")"
+  (Or e1 e2) -> "(" ++ showE used stk e1 ++ " or " ++ showE used stk e2 ++ ")"
+  (Implies e1 e2) -> "(" ++ showE used stk e1 ++ " implies " ++ showE used stk e2 ++ ")"
+  (Iff e1 e2) -> "(" ++ showE used stk e1 ++ " iff " ++ showE used stk e2 ++ ")"
+  (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+-- (ForallFunc x k e) -> "(forallfunc " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : stk) e ++ ")"
+-- (ForallPred x k e) -> "(forallpred " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : stk) e ++ ")"
 
 inContextShowE :: Context -> Expr -> String
 inContextShowE (Context ls) = showE (map fst ls) []
@@ -135,7 +135,6 @@ newtype Context = Context [(String, Type)]
 
 instance Show Context where
   show (Context ls) = foldl (\acc (id, t) -> id ++ " : " ++ show t ++ "\n" ++ acc) "" ls
-
 
 ctxList :: Context -> [(String, Type)]
 ctxList (Context ls) = ls
@@ -269,17 +268,17 @@ andRight :: Theorem -> Theorem
 andRight (Theorem (ctx, Provable (And p q))) =
           Theorem (ctx, Provable q)
 
-orInl :: Theorem -> Theorem -> Theorem
-orInl (Theorem (ctx,  Provable p))
-      (Theorem (ctx', IsFormula q))
-      | ctx == ctx' =
-       Theorem (ctx,  Provable (Or p q))
+orLeft :: Theorem -> Theorem -> Theorem
+orLeft (Theorem (ctx,  Provable p))
+       (Theorem (ctx', IsFormula q))
+       | ctx == ctx' =
+        Theorem (ctx,  Provable (Or p q))
 
-orInr :: Theorem -> Theorem -> Theorem
-orInr (Theorem (ctx,  IsFormula p))
-      (Theorem (ctx', Provable q))
-      | ctx == ctx' =
-       Theorem (ctx,  Provable (Or p q))
+orRight :: Theorem -> Theorem -> Theorem
+orRight (Theorem (ctx,  IsFormula p))
+        (Theorem (ctx', Provable q))
+        | ctx == ctx' =
+         Theorem (ctx,  Provable (Or p q))
 
 orElim :: Theorem -> Theorem -> Theorem -> Theorem
 orElim (Theorem (ctx,   Provable (Or p q)))
@@ -327,6 +326,9 @@ iffRight (Theorem (ctx,  Provable (p `Iff` q)))
          | ctx == ctx' && q == q' =
           Theorem (ctx,  Provable p)
 
+trueIntro :: Theorem
+trueIntro = Theorem (ctxEmpty, Provable Top)
+
 falseElim :: Theorem -> Theorem -> Theorem
 falseElim (Theorem (ctx,  Provable Bottom))
           (Theorem (ctx', IsFormula p))
@@ -369,10 +371,11 @@ data Proof =
   | AndI Proof Proof
   | AndL Proof
   | AndR Proof
-  | OrL Proof Theorem
-  | OrR Theorem Proof
+  | OrL Proof Expr
+  | OrR Expr Proof
   | OrE Proof Proof Proof
   | ImpliesI Proof
+  | ImpliesE Proof
 -- ...
 
 checkProof :: Context -> Proof -> Theorem
