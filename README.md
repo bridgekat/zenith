@@ -1,4 +1,4 @@
-# ApiMu/FOL
+# ApiMu/FOL+
 
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
