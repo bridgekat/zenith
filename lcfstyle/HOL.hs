@@ -8,6 +8,29 @@ module HOL where
 import Data.List
 
 
+-- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
+-- If there are naming clashes, later names will override
+-- (TODO: hide this constructor when exporting)
+newtype Context = Context [(String, Type)]
+  deriving (Eq)
+
+instance Show Context where
+  show (Context ls) = foldl (\acc (id, t) -> id ++ " : " ++ show t ++ "\n" ++ acc) "" ls
+
+ctxList :: Context -> [(String, Type)]
+ctxList (Context ls) = ls
+
+ctxEmpty :: Context
+ctxEmpty = Context []
+
+ctxVar :: (String, Type) -> Context -> Context
+ctxVar (id, t) (Context ctx) = Context ((id, t) : ctx)
+
+-- Bound variables are represented using de Brujin indices
+-- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
+data VarName = Free String | Bound Int
+  deriving (Eq)
+
 data Type =
     TVar
   | TProp
@@ -21,11 +44,6 @@ showT (TFun t1 t2) = "(" ++ showT t1 ++ " → " ++ showT t2 ++ ")"
 
 instance Show Type where
   show = showT
-
--- Bound variables are represented using de Brujin indices
--- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
-data VarName = Free String | Bound Int
-  deriving (Eq)
 
 data Expr =
     Var VarName
@@ -92,23 +110,6 @@ makeFree id = updateVars 0 (\n x -> if x == Bound n then Var (Free id) else Var 
 makeReplace :: Expr -> Expr -> Expr
 makeReplace t = updateVars 0 (\n x -> if x == Bound n then t else Var x)
 
--- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
--- If there are naming clashes, later names will override
--- (TODO: hide this constructor when exporting)
-newtype Context = Context [(String, Type)]
-  deriving (Eq)
-
-instance Show Context where
-  show (Context ls) = foldl (\acc (id, t) -> id ++ " : " ++ show t ++ "\n" ++ acc) "" ls
-
-ctxList :: Context -> [(String, Type)]
-ctxList (Context ls) = ls
-
-ctxEmpty :: Context
-ctxEmpty = Context []
-
-ctxVar :: (String, Type) -> Context -> Context
-ctxVar (id, t) (Context ctx) = Context ((id, t) : ctx)
 
 -- `Context ⊢ (Expr : Type)`
 type Judgment = (Context, Expr, Type)

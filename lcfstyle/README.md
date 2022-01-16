@@ -1,3 +1,3 @@
-## Experiments and LCF-style verifiers
+# Experiments and LCF-style verifiers
 
-Most things in this folder are irrelevant to the project...?
+Most things in this folder are irrelevant to the project...

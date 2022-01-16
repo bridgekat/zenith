@@ -12,10 +12,44 @@ module FOL where
 import Data.List
 
 
+-- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
+-- If there are naming clashes, later names will override
+-- (TODO: hide this constructor when exporting)
+newtype Context = Context [(String, Type)]
+  deriving (Eq)
+
+instance Show Context where
+  show (Context ls) = foldl (\acc (id, t) -> id ++ " : " ++ show t ++ "\n" ++ acc) "" ls
+
+ctxList :: Context -> [(String, Type)]
+ctxList (Context ls) = ls
+
+ctxEmpty :: Context
+ctxEmpty = Context []
+
+ctxVar :: String -> Context -> Context
+ctxVar id (Context ctx) = Context ((id, TVar) : ctx)
+
+ctxFunc :: String -> Int -> Context -> Context
+ctxFunc id arity (Context ctx) = Context ((id, TFunc arity) : ctx)
+
+ctxPred :: String -> Int -> Context -> Context
+ctxPred id arity (Context ctx) = Context ((id, TPred arity) : ctx)
+
+ctxAssumption :: String -> Theorem -> Context
+ctxAssumption id (Theorem (Context ctx, IsFormula p)) = Context ((id, THyp p) : ctx)
+
 -- Bound variables are represented using de Brujin indices
 -- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
 data VarName = Free String | Bound Int
   deriving (Eq)
+
+data Type =
+    TVar
+  | TFunc Int
+  | TPred Int
+  | THyp Expr
+  deriving (Eq, Show)
 
 data Expr =
     Var VarName
@@ -121,41 +155,6 @@ makeFree id = updateVars 0 (\n x -> if x == Bound n then Var (Free id) else Var 
 -- Input expression can be a subexpression which is not well-formed by itself
 makeReplace :: Expr -> Expr -> Expr
 makeReplace t = updateVars 0 (\n x -> if x == Bound n then t else Var x)
-
-
-data Type =
-    TVar
-  | TFunc Int
-  | TPred Int
-  | THyp Expr
-  deriving (Eq, Show)
-
--- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
--- If there are naming clashes, later names will override
--- (TODO: hide this constructor when exporting)
-newtype Context = Context [(String, Type)]
-  deriving (Eq)
-
-instance Show Context where
-  show (Context ls) = foldl (\acc (id, t) -> id ++ " : " ++ show t ++ "\n" ++ acc) "" ls
-
-ctxList :: Context -> [(String, Type)]
-ctxList (Context ls) = ls
-
-ctxEmpty :: Context
-ctxEmpty = Context []
-
-ctxVar :: String -> Context -> Context
-ctxVar id (Context ctx) = Context ((id, TVar) : ctx)
-
-ctxFunc :: String -> Int -> Context -> Context
-ctxFunc id arity (Context ctx) = Context ((id, TFunc arity) : ctx)
-
-ctxPred :: String -> Int -> Context -> Context
-ctxPred id arity (Context ctx) = Context ((id, TPred arity) : ctx)
-
-ctxAssumption :: String -> Theorem -> Context
-ctxAssumption id (Theorem (Context ctx, IsFormula p)) = Context ((id, THyp p) : ctx)
 
 
 data Judgment =

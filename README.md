@@ -3,7 +3,7 @@
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
 Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too
-difficult to learn (at least for most undergraduates)...
+difficult to learn...
 
 (I am not aiming to make any serious ITP software! This is just a "toy" system
 for inexperienced users (and AI) to interact with, so I will just try to make

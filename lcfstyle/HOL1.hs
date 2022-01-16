@@ -13,6 +13,14 @@ import Data.List
 import Data.Char
 import Control.Monad
 
+
+data Info =
+    HasKind Kind
+  | HasType Type
+  deriving (Eq)
+
+type Context = [(String, Info)]
+
 data Kind =
     Star
   deriving (Eq)
@@ -34,13 +42,6 @@ instance Show Kind where
 
 instance Show Type where
   show = showT
-
-data Info =
-    HasKind Kind
-  | HasType Type
-  deriving (Eq)
-
-type Context = [(String, Info)]
 
 -- Bound variables are represented using de Brujin indices
 -- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)

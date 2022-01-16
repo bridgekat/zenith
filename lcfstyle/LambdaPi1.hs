@@ -110,7 +110,7 @@ inferType stk ctx (Var (Free x)) =
 inferType stk ctx (Var (Bound i)) =
   return (stk !! i)
 inferType stk ctx (Star) =
-  return VStar -- (n + 1)
+  return VStar
 inferType stk ctx (Pi e1 e2) =
   do  checkType stk ctx e1 VStar;
       checkType (e1' : stk) ctx e2 VStar;
