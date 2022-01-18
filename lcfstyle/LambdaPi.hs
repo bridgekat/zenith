@@ -151,10 +151,18 @@ varMk (Context ls) s = case lookup s ls of
   (Just t) -> Theorem (Context ls, Var (Free s), t)
   Nothing  -> error ("Unknown identifier: " ++ s)
 
+-- This rule can be tweaked in a PTS...
 sortMk :: Int -> Theorem
 sortMk n = Theorem (ctxEmpty, Sort n, Sort (n + 1))
 
 {-
+The m, n, k = max m n here can be tweaked in a PTS...
+If the only allowed rule is (m = 0, n = 0, k = 0) then we go back to STT...?
+(See: https://en.wikipedia.org/wiki/Pure_type_system)
+(See: https://rqy.moe/Type-Theory/TT2/)
+(See: https://en.wikipedia.org/wiki/Lambda_cube)
+(Their `*` and `□` corresponds to `Sort 0` and `Sort 1` here...)
+
 Π-formation:
 If   `Γ          ⊢ (α               : Sort m)`
      `Γ, (x : α) ⊢ (β(x)            : Sort n)`
@@ -185,20 +193,23 @@ letMk _ _ _ _ = error "Illegal application of letMk"
 
 {-
 Π-introduction:
-If   `Γ, (x : α) ⊢ (b(x) : β(x))`
+If   `Γ, (x : α) ⊢ (b(x)            : β(x))`
+     `Γ          ⊢ (Π (x : α), β(x) : Sort n)`          (Only needed in general PTS. In MLTT/CIC this is always true)
 Then `Γ          ⊢ (λ (x : α), b(x) : Π (x : α), β(x))`
 -}
-piIntro :: Theorem -> Theorem
-piIntro (Theorem (Context ((x, α) : ls), b,                       β)) =
+piIntro :: Theorem -> Theorem -> Theorem
+piIntro (Theorem (Context ((x, α) : ls), b,                       β))
+        (Theorem (Context ls',           Pi _ α' β',              Sort _))
+        | ls == ls' && α == α' && β' == makeBound x β =
          Theorem (Context ls,            Lam x α (makeBound x b), Pi x α (makeBound x β))
-piIntro _ = error "Illegal application of piIntro"
+piIntro _ _ = error "Illegal application of piIntro"
 
 -- Elimination rules
 
 {-
 Π-elimination:
-If   `Γ          ⊢ (f : Π (x : α), β(x))`
-     `Γ          ⊢ (a : α)`
+If   `Γ          ⊢ (f   : Π (x : α), β(x))`
+     `Γ          ⊢ (a   : α)`
 Then `Γ          ⊢ (f a : β(a))`
 -}
 piElim :: Theorem -> Theorem -> Theorem
@@ -239,16 +250,12 @@ defeq x y
   | reduce x == reduce y = True
 defeq _ _ = False
 
--- Congruence w.r.t. terms in typing judgments
-defeqCongrTerm :: Theorem -> Expr -> Theorem
-defeqCongrTerm (Theorem (ctx, t, α)) t'
-               | t `defeq` t' =
-                Theorem (ctx, t', α)
-defeqCongrTerm _ _ = error "Illegal application of defeqCongrTerm"
+-- "Congruence w.r.t. terms in typing judgments" is not necessary, just reduce and checkType
 
 -- Congruence w.r.t. types in typing judgments
-defeqCongrType :: Theorem -> Expr -> Theorem
-defeqCongrType (Theorem (ctx, t, α)) α'
+defeqCongrType :: Theorem -> Theorem -> Theorem
+defeqCongrType (Theorem (ctx,  t,  α))
+               (Theorem (ctx', α', Sort _))
                | α `defeq` α' =
                 Theorem (ctx, t, α')
 defeqCongrType _ _ = error "Illegal application of defeqCongrType"

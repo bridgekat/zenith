@@ -41,9 +41,16 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
 - For simplicity we assume that no two elements in `F`, `P` or `Γ` share the same name. Below, context extensions like `Γ ∪ {h : p ∧ q}` are assumed to be well-formed (no duplicate names).
   - (In the actual implementation, later names will "override" earlier names)
 - The domain of discourse `ι` is considered to be non-empty (inhabited). The individual variable `initial : ι` can be used anywhere.
-- For convenience in writing proofs, I will also define a kind of "lambda expressions" (anonymous first-order functions and predicates)...
-  - For any list of strings `xᵢ` each not occurring in `F`, if `t` is a term under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | t)` is an n-ary function (expression of type `ι → ι → ... → ι`) under `F` and `P`.
-  - For any list of strings `xᵢ` each not occurring in `F`, if `e` is a formula under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | e)` is an n-ary predicate (expression of type `ι → ι → ... → *`) under `F` and `P`.
+- For convenience in writing proofs, I will also define a kind of "lambda expressions" (they are all first-order, though)...
+  - Nullary functions are well-formed terms. The following definitions are compatible with the previous definition of well-formed terms.
+  - (Context) For any `f/n` in `F`, `f` itself is also an n-ary function. Similarly for `p/n` in `P`.
+  - (Abstraction)
+    - For any list of strings `xᵢ` each not occurring in `F`, if `t` is a term under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | t)` is an n-ary function (expression of type `ι → ι → ... → ι`) under `F` and `P`.
+    - For any list of strings `xᵢ` each not occurring in `F`, if `e` is a formula under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | e)` is an n-ary predicate (expression of type `ι → ι → ... → *`) under `F` and `P`.
+  - (Application)
+    - For any n-ary function `f` with n > 0 and term `t`, `(f t)` is an (n-1)-ary function.
+    - For any n-ary predicate `p` with n > 0 and term `t`, `(p t)` is an (n-1)-ary predicate.
+    - (Possible feature: for any nullary function (term) `f` and another term `t`, `(f t)` is the same as `(funapp f t)`, where `funapp` is a binary function assigned using the `#el +implicit_funapp` preprocessor command.)
 
 
 
@@ -57,7 +64,7 @@ This would translate (assuming the AI is powerful enough, and ignoring some loss
 
 ![](example_2.png)
 
-(This is like to rely heavily on `section`s and `parameter`s in Lean, but those `any`s and `assume`s interact better with definitions, and using FOL + ZFC makes it more cumbersome in dealing with higher-order functions)
+(This is like to rely heavily on `section`s and `parameter`s in Lean, but those `any`s and `assume`s interact better with definitions, and using FOL + ZFC makes it more cumbersome in dealing with higher-order functions.)
 
 Just like in Lean, the important cases here are `implies` and `forall`. In ApiMu, their introduction rules are "context-changing" (you open up a new scope, get a new assumption/variable, then prove the consequence/property). Other similar rules in natural deduction (like or-elimination, exists-elimination) can be defined in terms of them.
 
@@ -69,12 +76,28 @@ Context-changing keywords:
 - `anyfunc f/n {...}`
 - `anypred p/n { ... }`
 
-The other rules are represented in something like "derivation trees" or "proof terms", e.g. if you have assumptions/theorems `h1 : p`, `h2 : q implies r` and `h3 : q`, then `and.i h1 (implies.e h2 h3)` is a proof of `p and r`. A syntactic sugar: due to their frequent use, `implies.e`, `forall.e`, `forallfunc.e` and `forallpred.e` can be omitted! So `implies.e h2 h3` can be shortened to `h2 h3`. Kinda like in intuitionistic type theories, but not quite (there is only "partial support", namely only the 1.5th-order fragment is available, and higher-order things should be represented as sets).
+The other rules are represented in something like "derivation trees" or "proof terms", e.g. if you have assumptions/theorems `h1 : p`, `h2 : q implies r` and `h3 : q`, then `and.i h1 (implies.e h2 h3)` is a proof of `p and r`. A syntactic sugar: due to their frequent use, `implies.e`, `forall.e`, `forallfunc.e` and `forallpred.e` can be omitted! So `implies.e h2 h3` can be shortened to `h2 h3`. Kinda like in intuitionistic type theories, but not quite (only the 1.5th-order fragment is available, and higher-order things should be represented as sets).
 
-To prove a theorem using non-context-changing rules, write `=> (<theorem-statement>) name <name> proof <proof-term>;` where `<theorem-statement>` is a formula schema, `<name>` is an identifier, **and `<proof-term>` is inductively defined w.r.t. the local context `(F, P, Γ)` and known theorems `Δ` by:**
+To prove a theorem, write `=> (<theorem-statement>) name <name> proof <proof-term>;` where `<theorem-statement>` is a formula schema, `<name>` is an identifier, **and `<proof-term>` is inductively defined w.r.t. the local context `(F, P, Γ)` and known theorems `Δ` by:**
 
 - Any name in `Γ` or `Δ` is a proof of its corresponding proposition.
-- 
+- (And-intro) If `hp` is a proof of `P` and `hq` is a proof of `Q`, then `(and.i hp hq)` is a proof of `(P and Q)`.
+- (And-elim) If `hpq` is a proof of `(P and Q)`, then `(and.l hpq)` is a proof of `P`, and `(and.r hpq)` is a proof of `Q`.
+- (Or-intro) ... `or.l` ... `or.r` ...
+- (Or-elim) ... `or.e` ...
+- (Implies-intro) For any new name `hp`, if, under the context `(F, P, Γ ∪ {hp : P})`, the expression `hq` is a proof of `Q`, then `(assume P name hp { => (Q) by hq; })` is a proof of `(P implies Q)` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted. For details see below.
+- (Implies-elim) If `hpq` is a proof of `(P implies Q)` and `hp` is a proof of `P`, then both `(implies.e hpq hp)` and `(hpq hp)` are proofs of `Q`.
+- (Not-intro) ... `not.i` ...
+- (Not-elim) ... `not.e` ...
+- (Iff-intro) ... `iff.i` ...
+- (Iff-elim) ... `iff.l` ... `iff.r` ...
+- (True-intro) ... `true.i` ...
+- (False-elim, aka. *ex falso quodlibet*) ... `false.e` ...
+- (Stronger false-elim, aka. *reductio ad absurdum*) ... `raa` ...
+- (Forall-intro) 
+- (Forall-elim) If `hpx` is a proof of `(forall x, P(x))` and `t` is a well-formed term (expression of type `ι`), then both `(forall.e hpx t)` and `(hpx t)` are proofs of `P(t)`, where `P(t) := P(x)[t/x]` (replace all "free occurrences" of `x` in `P` by `t`).
+- (Forallpred-intro)
+- (Forallpred-elim) If `hpφ` is a proof schema of `(forallpred φ/n, P(φ))` and `ψ` is a well-formed n-ary predicate (expression of type ``)
 
 After proof-checking, this theorem will be added back into the "known theorem pool" `Δ` maintained by ApiMu. This is like the `Γ` in the context, but not the same thing; it represents a set of theorems derivable under the current context and assumptions, including but not limited to the assumptions themselves. ApiMu will guarantee that every explicitly stated theorem gets added to `Δ`, but there may also be additional theorems generated by the inference engines.
 

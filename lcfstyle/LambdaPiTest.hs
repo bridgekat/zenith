@@ -22,7 +22,11 @@ checkType' ctx e = case e of
   (Var (Bound i)) -> undefined -- Unreachable
   (Sort n) -> sortMk n
   (Pi x t e) -> piMk wft (checkType (ctxVar x wft) (makeFree x e)) where wft = checkType ctx t
-  (Lam x t e) -> piIntro (checkType (ctxVar x wft) (makeFree x e)) where wft = checkType ctx t
+  (Lam x t e) -> piIntro wfte wftpi
+    where
+      wft = checkType ctx t
+      wfte = checkType (ctxVar x wft) (makeFree x e)
+      wftpi = checkType ctx (Pi x t (makeBound x (thmType wfte)))
   (App e1 e2) -> piElim (checkType ctx e1) (checkType ctx e2)
   (Let x e1 e2) -> letMk x (makeFree x e2) (checkType ctx e1) (checkType ctx (makeReplace e1 e2))
 
@@ -48,17 +52,17 @@ ctx =
 e1 = convert [] $ App id' (var "Bool")
 ex1 = checkType ctx e1
 -- ((λ α : Sort 0, (λ a : α, a)) Bool) : (Π a : Bool, Bool)
-ex1' = defeqCongrTerm ex1 (reduce (thmExpr ex1))
+ex1' = checkType ctx (reduce (thmExpr ex1))
 -- (λ a : Bool, a) : (Π a : Bool, Bool)
 e2 = convert [] $ App (App id' (var "Bool")) (var "False")
 ex2 = checkType ctx e2
 -- (((λ α : Sort 0, (λ a : α, a)) Bool) False) : Bool
-ex2' = defeqCongrTerm ex2 (reduce (thmExpr ex2))
+ex2' = checkType ctx (reduce (thmExpr ex2))
 -- False : Bool
 e3 = convert [] $ Let "Bool1" (var "Bool") $ Let "False1" (var "False") $ App (App id' (var "Bool1")) (var "False1")
 ex3 = checkType ctx e3
 -- (let Bool1 := Bool in (let False1 := False in (((λ α : Sort 0, (λ a : α, a)) Bool1) False1))) : Bool
-ex3' = defeqCongrTerm ex3 (reduce (thmExpr ex3))
+ex3' = checkType ctx (reduce (thmExpr ex3))
 -- False : Bool
 
 
