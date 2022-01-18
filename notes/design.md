@@ -13,7 +13,7 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
 - Each element of `F` and `P` is a pair of a string (name) and a nonnegative integer (arity).
   - These will be written as `φ/2`, `f/3`, etc.
     - In type theories (higher-order logics), these can be written as `φ : ι → ι → *`, `f : ι → ι → ι → ι`, etc. where `ι` stands for the type of individuals and `*` the type/universe of propositions.
-  - Nullary functions like `x/0` (`x : ι`) stand for individual variables. These are different from other functions in a first-order theory (e.g. they can be universally or existentially quantified over).
+  - Nullary functions like `x/0` (`x : ι`) stand for individual variables. These are different from other functions in a first-order system (e.g. they can be universally or existentially quantified over).
   - Nullary predicates like `p/0` (`p : *`) stand for propositions.
 - Each element of `Γ` is a pair of a string (name) and a well-formed "formula" or "formula schema" defined w.r.t. `F` and `P`.
   - These will be written as `name : p ∧ q`, etc. like in type theories.
@@ -23,42 +23,43 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
     - For any element `p/n ∈ P` and terms `t₁, t₂, ..., tₙ` under `F`, the expression `(p t₁ t₂ ... tₙ)` is an (atomic) formula. This also includes the case `n = 0`.
     - If `t₁` and `t₂` are terms under `F`, then `(t₁ = t₂)` is an (atomic) formula.
     - `true` and `false` are formulas.
-      
       > Alternatively written as `⊤` and `⊥`.
     - If `e` is a formula under `F` and `P`, then so is `(not e)`.
-      
       > Alternatively written as `(¬e)`.
     - If `e₁` and `e₂` are formulas under `F` and `P`, then so are `(e₁ and e₂)`, `(e₁ or e₂)`, `(e₁ implies e₂)` and `(e₁ iff e₂)`.
-      
       > Alternatively written as `(e₁ ∧ e₂)`, `(e₁ ∨ e₂)`, `(e₁ → e₂)` and `(e₁ ↔ e₂)`.
     - For any string `x` not occurring in `F`, if `e` is a formula under `F ∪ {x/0}` and `P`, then `(forall x, e)`, `(exists x, e)` and `(unique x, e)` are formulas under `F` and `P`.
-      
       > Alternatively written as `(∀ x, e)`, `(∃ x, e)` and `(∃! x, e)`.
   - The set of "formula schemas" (expression schemas of type `*`) under some `F` and `P` is inductively defined as:
-    - Any formula under `F` and `P` is also a formula schema.
-    - For any string `f` not occurring in `F`, and any positive integer `n`, if `e` is a formula schema under `F ∪ {f/n}` and `P`, then `(forallfunc f/n, e)` is a formula schema under `F` and `P`. (The `n = 0` case is already covered in the previous rule, so it's not included here.)
-      
+    - ~~Any formula under `F` and `P` is also a formula schema.~~
+    - For any string `f` not occurring in `F`, and any positive integer `n`, if `e` is a formula or schema under `F ∪ {f/n}` and `P`, then `(forallfunc f/n, e)` is a formula schema under `F` and `P`. (The `n = 0` case is already covered in the previous rule, so it's not included here.)
       > Alternatively written as `(∀# f/n, e)`.
-    - For any string `p` not occurring in `P`, and any nonnegative integer `n`, if `e` is a formula schema under `F` and `P ∪ {p/n}`, then `(forallpred p/n, e)` is a formula schema under `F` and `P`.
-      
+    - For any string `p` not occurring in `P`, and any nonnegative integer `n`, if `e` is a formula or schema under `F` and `P ∪ {p/n}`, then `(forallpred p/n, e)` is a formula schema under `F` and `P`.
       > Alternatively written as `(∀$ p/n, e)`.
   - The last two rules should be understood as a way to express "formula schemas" (infinite sets of formulas obtained by specializing those function and predicate variables). Although they could as well represent second-order quantifications, I'm not going to fully support second-order logic (you can see there's no second-order existential quantifiers, and the `∀#` and `∀$` must appear at the beginning). Instead I will use sets to represent functions and higher-order functions...
 - As explained above, the definition of a formula schema depends on `F` and `P`. A context `(F, P, Γ)` is well-formed only if all formula schemas in `Γ` are well-formed under `F` and `P`.
 - For simplicity we assume that no two elements in `F`, `P` or `Γ` share the same name. Below, context extensions like `Γ ∪ {h : p ∧ q}` are assumed to be well-formed (no duplicate names).
   - (In the actual implementation, later names will "override" earlier names)
 - The domain of discourse `ι` is considered to be non-empty (inhabited). The individual variable `initial : ι` can be used anywhere.
-- For later convenience, I will also define some kind of "lambda expressions"...
-  - (TODO: complete) (Maybe I will end up implementing some kind of λΠ...?)
+- For convenience in writing proofs, I will also define a kind of "lambda expressions" (anonymous first-order functions and predicates)...
+  - For any list of strings `xᵢ` each not occurring in `F`, if `t` is a term under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | t)` is an n-ary function (expression of type `ι → ι → ... → ι`) under `F` and `P`.
+  - For any list of strings `xᵢ` each not occurring in `F`, if `e` is a formula under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | e)` is an n-ary predicate (expression of type `ι → ι → ... → *`) under `F` and `P`.
 
 
 
 ## "Natural deduction" rules
 
-When I was doing an assignment of IUM, I found this style of writing makes proofs especially clear... #####
+When I was doing an assignment of IUM, I found this style of writing makes proofs particularly clear...
 
-Now I came up with this: ##### (This is like `section`s and `parameter`s in Lean, but interacts better with definitions)
+![](example_1.png)
 
-Just like in Lean, the important cases here are `implies` and `forall`. In ApiMu, their introduction rules are "context-changing" (you get a new hypothesis/variable, then prove the consequence/property). Other similar rules in natural deduction (like or-elimination, exists-elimination) can be defined in terms of them.
+This would translate (assuming the AI is powerful enough, and ignoring some loss of generality? idk) to something "more formal":
+
+![](example_2.png)
+
+(This is like to rely heavily on `section`s and `parameter`s in Lean, but those `any`s and `assume`s interact better with definitions, and using FOL + ZFC makes it more cumbersome in dealing with higher-order functions)
+
+Just like in Lean, the important cases here are `implies` and `forall`. In ApiMu, their introduction rules are "context-changing" (you open up a new scope, get a new assumption/variable, then prove the consequence/property). Other similar rules in natural deduction (like or-elimination, exists-elimination) can be defined in terms of them.
 
 Context-changing keywords:
 
@@ -68,15 +69,14 @@ Context-changing keywords:
 - `anyfunc f/n {...}`
 - `anypred p/n { ... }`
 
-The other rules are represented in something like "proof terms". (TODO: complete) (Maybe I will end up implementing some kind of λΠ...?)
+The other rules are represented in something like "derivation trees" or "proof terms", e.g. if you have assumptions/theorems `h1 : p`, `h2 : q implies r` and `h3 : q`, then `and.i h1 (implies.e h2 h3)` is a proof of `p and r`. A syntactic sugar: due to their frequent use, `implies.e`, `forall.e`, `forallfunc.e` and `forallpred.e` can be omitted! So `implies.e h2 h3` can be shortened to `h2 h3`. Kinda like in intuitionistic type theories, but not quite (there is only "partial support", namely only the 1.5th-order fragment is available, and higher-order things should be represented as sets).
 
 To prove a theorem using non-context-changing rules, write `=> (<theorem-statement>) name <name> proof <proof-term>;` where `<theorem-statement>` is a formula schema, `<name>` is an identifier, **and `<proof-term>` is inductively defined w.r.t. the local context `(F, P, Γ)` and known theorems `Δ` by:**
 
-(TODO: type out the ND rules...)
+- Any name in `Γ` or `Δ` is a proof of its corresponding proposition.
+- 
 
-(TODO: do I need some kind of "lambda expressions" to represent context-changing rules...?)
-
-After proof-checking, this theorem will be added into a "known theorem pool" `Δ` maintained by ApiMu. This is like the `Γ` in the context, but not the same thing; it represents a set of theorems derivable under the current context and assumptions, including but not limited to the assumptions themselves. ApiMu will guarantee that every explicitly stated theorem gets added to `Δ`, but there may also be additional theorems generated by the inference engines.
+After proof-checking, this theorem will be added back into the "known theorem pool" `Δ` maintained by ApiMu. This is like the `Γ` in the context, but not the same thing; it represents a set of theorems derivable under the current context and assumptions, including but not limited to the assumptions themselves. ApiMu will guarantee that every explicitly stated theorem gets added to `Δ`, but there may also be additional theorems generated by the inference engines.
 
 - `Δ` is also stored in a stack. Denote its top layer by `Δ'`, and the second-to-top layer by `Δ''`.
 
@@ -84,11 +84,11 @@ The introduction rules for `implies`, `forall`, `forallfunc` and `forallpred` ar
 
 - When leaving from `assume (h : <assumption>)` section, for every theorem (schema) `...φ` in `Δ'`, the theorem (schema) `...(<assumption> → φ)` will be added back to `Δ''`.
   - The "second-order quantifiers" will remain in the front. (This can be understood as simultaneously putting assumptions in front of an infinite family of formulas.)
-    - This rule is seemingly useless and it is not the same as normal higher-order rules; will not be implemented...
+    - This rule is seemingly useless and it is not the same as normal higher-order rules; will not be implemented... (New rule: schemas cannot escape from `assume` sections.)
   - **Exception: if `<assumption>` itself contains "second-order quantifiers", nothing will be added back!** First-order logic is not sufficient to express such outcomes, and "assuming an infinite set of propositions" is only useful in expressing axiom schemas...
 - When leaving from `any x` section, for every theorem (schema) `...φ` in `Δ'`, the theorem (schema) `...(forall x, φ)` will be added back to `Δ''`.
   - The "second-order quantifiers" will remain in the front. (This can be understood as simultaneously putting quantifiers in front of an infinite family of formulas.)
-    - This rule is seemingly useless and it is not the same as normal higher-order rules; will not be implemented...
+    - This rule is seemingly useless and it is not the same as normal higher-order rules; will not be implemented... (New rule: schemas cannot escape from `any` sections.)
 - When leaving from `anyfunc f/n` section, for every theorem (schema) `...φ` in `Δ'`, the theorem (schema) `(forallfunc f/n, ...φ)` will be added back to `Δ''`.
 - When leaving from `anypred p/n` section, for every theorem (schema) `...φ` in `Δ'`, the theorem (schema) `(forallpred p/n, ...φ)` will be added back to `Δ''`.
 
