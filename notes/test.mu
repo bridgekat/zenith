@@ -144,7 +144,7 @@ iff.i iff.l iff.r           iff        ↔
 eq.i eq.e eq.symm eq.trans  eq         =
 forall.e                    forall     ∀
 exists.i exists.e           exists     ∃
-unique.i unique.e           unique     ∃!
+unique.i unique.l unique.r  unique     ∃!
 forallfunc.e                forallfunc ∀#       // (Only used on a few instances)
 forallpred.e                forallpred ∀$       // (Only used on a few instances)
 true.i                      true       ⊤

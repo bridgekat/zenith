@@ -37,20 +37,21 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
     - For any string `p` not occurring in `P`, and any nonnegative integer `n`, if `e` is a formula or schema under `F` and `P ∪ {p/n}`, then `(forallpred p/n, e)` is a formula schema under `F` and `P`.
       > Alternatively written as `(∀$ p/n, e)`.
   - The last two rules should be understood as a way to express "formula schemas" (infinite sets of formulas obtained by specializing those function and predicate variables). Although they could as well represent second-order quantifications, I'm not going to fully support second-order logic (you can see there's no second-order existential quantifiers, and the `∀#` and `∀$` must appear at the beginning). Instead I will use sets to represent functions and higher-order functions...
-- As explained above, the definition of a formula schema depends on `F` and `P`. A context `(F, P, Γ)` is well-formed only if all formula schemas in `Γ` are well-formed under `F` and `P`.
+- As explained above, the definition of a formula/schema depends on `F` and `P`. A context `(F, P, Γ)` is well-formed only if all formulas/schemas in `Γ` are well-formed under `F` and `P`.
 - For simplicity we assume that no two elements in `F`, `P` or `Γ` share the same name. Below, context extensions like `Γ ∪ {h : p ∧ q}` are assumed to be well-formed (no duplicate names).
   - (In the actual implementation, later names will "override" earlier names)
 - The domain of discourse `ι` is considered to be non-empty (inhabited). The individual variable `initial : ι` can be used anywhere.
-- For convenience in writing proofs, I will also define a kind of "lambda expressions" (they are all first-order, though)...
-  - Nullary functions are well-formed terms. The following definitions are compatible with the previous definition of well-formed terms.
+- For convenience in writing proofs, I will also define the set of well-formed n-ary functions/predicates, generalizing the previous definition of well-formed terms/formulas.
+  - Well-formed terms/formulas themselves are nullary functions/predicates.
   - (Context) For any `f/n` in `F`, `f` itself is also an n-ary function. Similarly for `p/n` in `P`.
   - (Abstraction)
-    - For any list of strings `xᵢ` each not occurring in `F`, if `t` is a term under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | t)` is an n-ary function (expression of type `ι → ι → ... → ι`) under `F` and `P`.
-    - For any list of strings `xᵢ` each not occurring in `F`, if `e` is a formula under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | e)` is an n-ary predicate (expression of type `ι → ι → ... → *`) under `F` and `P`.
+    - For any list of strings `xᵢ` each not occurring in `F`, if `t` is an m-ary function under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | t)` is an (n+m)-ary function (expression of type `ι → ι → ... → ι`) under `F` and `P`.
+    - For any list of strings `xᵢ` each not occurring in `F`, if `e` is an m-ary predicate under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | e)` is an (n+m)-ary predicate (expression of type `ι → ι → ... → *`) under `F` and `P`.
   - (Application)
-    - For any n-ary function `f` with n > 0 and term `t`, `(f t)` is an (n-1)-ary function.
-    - For any n-ary predicate `p` with n > 0 and term `t`, `(p t)` is an (n-1)-ary predicate.
+    - For any n-ary function `f` with n > 0 and term `t`, `(f t)` is an (n-1)-ary function, the same as replacing `x₁` by `t` in the body of `f`.
+    - For any n-ary predicate `p` with n > 0 and term `t`, `(p t)` is an (n-1)-ary predicate, the same as replacing `x₁` by `t` in the body of `p`.
     - (Possible feature: for any nullary function (term) `f` and another term `t`, `(f t)` is the same as `(funapp f t)`, where `funapp` is a binary function assigned using the `#el +implicit_funapp` preprocessor command.)
+  - These look like a kind of "lambda expressions", but are all first-order so very trivial (I will store them in normal forms). They are weaker than the "function definition rules" introduced below, since they must be total, and cannot utilize definite/indefinite descriptions. (Probably I will need to unify these two ways of specifying functions, by e.g. supporting inline iota/epsilon operators... but for now I just want to make a working demo so don't care)
 
 
 
@@ -78,7 +79,7 @@ Context-changing keywords:
 
 The other rules are represented in something like "derivation trees" or "proof terms", e.g. if you have assumptions/theorems `h1 : p`, `h2 : q implies r` and `h3 : q`, then `and.i h1 (implies.e h2 h3)` is a proof of `p and r`. A syntactic sugar: due to their frequent use, `implies.e`, `forall.e`, `forallfunc.e` and `forallpred.e` can be omitted! So `implies.e h2 h3` can be shortened to `h2 h3`. Kinda like in intuitionistic type theories, but not quite (only the 1.5th-order fragment is available, and higher-order things should be represented as sets).
 
-To prove a theorem, write `=> (<theorem-statement>) name <name> proof <proof-term>;` where `<theorem-statement>` is a formula schema, `<name>` is an identifier, **and `<proof-term>` is inductively defined w.r.t. the local context `(F, P, Γ)` and known theorems `Δ` by:**
+To prove a theorem, write `=> (<theorem-statement>) name <name> proof <proof-term>;` where `<theorem-statement>` is a formula or schema, `<name>` is an identifier, **and `<proof-term>` is inductively defined w.r.t. the local context `(F, P, Γ)` and known theorems `Δ` by:**
 
 - Any name in `Γ` or `Δ` is a proof of its corresponding proposition.
 - (And-intro) If `hp` is a proof of `P` and `hq` is a proof of `Q`, then `(and.i hp hq)` is a proof of `(P and Q)`.
@@ -94,12 +95,28 @@ To prove a theorem, write `=> (<theorem-statement>) name <name> proof <proof-ter
 - (True-intro) ... `true.i` ...
 - (False-elim, aka. *ex falso quodlibet*) ... `false.e` ...
 - (Stronger false-elim, aka. *reductio ad absurdum*) ... `raa` ...
-- (Forall-intro) 
-- (Forall-elim) If `hpx` is a proof of `(forall x, P(x))` and `t` is a well-formed term (expression of type `ι`), then both `(forall.e hpx t)` and `(hpx t)` are proofs of `P(t)`, where `P(t) := P(x)[t/x]` (replace all "free occurrences" of `x` in `P` by `t`).
-- (Forallpred-intro)
-- (Forallpred-elim) If `hpφ` is a proof schema of `(forallpred φ/n, P(φ))` and `ψ` is a well-formed n-ary predicate (expression of type ``)
+- (Equals-intro) For any well-formed term `t`, the expression `(eq.i t)` is a proof of `(t = t)`.
+- **(Equals-elim)** For any well-formed n-ary predicate `P`, if `heqᵢ` are proofs of `(aᵢ = bᵢ)`, and `hpa` is a proof of `(P a₁ a₂ ... aₙ)`, then the expression `(eq.e heq₁ heq₂ ... heqₙ P hpa)` is a proof of `(P b₁ b₂ ... bₙ)` (this is a rule with a variable number of arguments; the arity `n` can be determined by `P`).
+- (Forall-intro) For any new name `x`, if, under the context `(F ∪ {x/0}, P, Γ)`, the expression `hp` is a proof of `P(x)`, then `(any x { => (P) by hp; })` is a proof of `(forall x, P(x))` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted. For details see below.
+- **(Forall-elim)** If `hpx` is a proof of `(forall x, P(x))` and `t` is a well-formed term (expression of type `ι`), then both `(forall.e hpx t)` and `(hpx t)` are proofs of `P(t)`, where `P(t) := P(x)[t/x]` (replace all "free occurrences" of `x` in `P` by `t`. Bound variables are automatically renamed to prevent naming clashes.)
+- **(Exists-intro)** If `hpt` is a proof of `P(t)` where `P` is a well-formed unary predicate (expression of type `ι → *`), then `(exists.i P hpt)` is a proof of `(exists x, P(x))`.
+- (Exists-elim) If `hex` is a proof of `(exists x, P(x))` and `hq` is a proof of `(forall x, P(x) → Q)` where `x` does not occur free in `Q`, then `(exists.e hex hq)` is a proof of `Q`. **(Most of the time when you want to use AC, this rule is actually more suitable.)**
+- (Unique-intro) If `hex` is a proof of `(exists x, P(x))` and `hone` is a proof of `(forall x, forall y, P(x) → P(y) → x = y)`, then `(unique.i hex hone)` is a proof of `(unique x, P(x))`.
+- (Unique-elim) If `h` is a proof of `(unique x, P(x))`, then `(unique.l h)` is a proof of `(exists x, P(x))` and `(unique.r h)` is a proof of `(forall x, forall y, P(x) → P(y) → x = y)`.
+- (Forallfunc-intro) For any new name `f`, if, under the context `(F ∪ {x/n}, P, Γ)`, the expression `hp` is a proof of `P(f)`, then `(anyfunc f/n { => (P) by hp; })` is a **proof schema** of `(forallfunc f, P(f))` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted. For details see below.
+- **(Forallfunc-elim)** If `hpf` is a proof schema of `(forallpred f/n, P(f))` and `g` is a well-formed n-ary function (expression of type `ι → ι → ... → ι`), then both `(forallfunc.e hpf g)` and `(hpf g)` are proofs of `P(g)`, where `P(g) := P(f)[g/f]` (replace all "free occurrences" of `f` in `P` by `g`, keeping original parameters. Bound variables are automatically renamed to prevent naming clashes. This is most easily implemented using de Brujin indices.)
+- (Forallpred-intro) ... `(anypred p/n { => (P) by hp; })` ...
+- **(Forallpred-elim)** ... `(forallpred.e hpp q)` and `(hpp q)` ...
 
-After proof-checking, this theorem will be added back into the "known theorem pool" `Δ` maintained by ApiMu. This is like the `Γ` in the context, but not the same thing; it represents a set of theorems derivable under the current context and assumptions, including but not limited to the assumptions themselves. ApiMu will guarantee that every explicitly stated theorem gets added to `Δ`, but there may also be additional theorems generated by the inference engines.
+In general, the major premise(s) appear before the minor premise(s). Five "hard" rules are marked in bold font.
+
+- "Equals-elimination" require second-order specialization, but there seems to be some methods that deal with equational theories more efficiently (?).
+- "Forall-elimination" and "exists-introduction" can be solved by adding unification to the tablau method. An intuitive explanation is, instead of enumerating all possible specializations (terms/formulas), one can instead enumerate known theorems/rules and find out which specializations can make the theorems applicable later on (represented in a most general unifier), and apply the theorems until the goal can be directly solved. This avoids going over "useless" specializations, at least...
+- "Forallfunc-elimination" and "forallpred-elimination" both require second-order specialization. These should be used only in specific situations, like the axiom schemas of separation/replacement in ZFC or the priciple of induction on the naturals, and most of the time we actually want to provide explicit specializations... They are hard even for humans!
+
+(TODO: context-changing keywords, scopes, last line etc.)
+
+After proof-checking, a theorem will be added back into the "known theorem pool" `Δ` maintained by ApiMu. This is like the `Γ` in the context, but not the same thing; it represents a set of theorems derivable under the current context and assumptions, including but not limited to the assumptions themselves. ApiMu will guarantee that every explicitly stated theorem gets added to `Δ`, but there may also be additional theorems generated by the inference engines.
 
 - `Δ` is also stored in a stack. Denote its top layer by `Δ'`, and the second-to-top layer by `Δ''`.
 
@@ -141,7 +158,7 @@ The introduction rules for `implies`, `forall`, `forallfunc` and `forallpred` ar
 
 
 
-That's all for the foundations.
+**That's all for the foundations.**
 
 -----
 
