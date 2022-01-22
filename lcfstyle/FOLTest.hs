@@ -148,16 +148,3 @@ t7'' = notIntro t6''
 
 t8''' = existsElim (weaken h3 ctx) t7''' (convertAndCheck ctx (Not (Exists "x" (pred "L" [var "x", var "Q"]))))
 
-
--- TEMP CODE
-
-data BlockExpr =
-    Empty
-  | Assertion String Type {- Proof -} BlockExpr
-  | PredDef String Type Expr BlockExpr
-  | FuncDef String Type Expr BlockExpr
-  | FuncDDef String Type Expr BlockExpr
-  | Any String Type BlockExpr BlockExpr
-  | Assume String Expr BlockExpr BlockExpr
-
-

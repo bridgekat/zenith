@@ -1,9 +1,5 @@
--- ApiMu/FOL verifier v0.1 (Haskell version)
--- Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
-
+-- First-order logic for experimentation
 -- This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
--- To keep in line with the proof language, some context-changing rules are now represented in terms of
--- `impliesIntro` and `forallIntro`; Additional features are described in `notes/design.md`.
 
 -- {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 
@@ -55,7 +51,7 @@ data Expr =
     Var VarName
   | Func VarName [Expr]
   | Pred VarName [Expr]
-  | Eq Expr Expr --
+  | Eq Expr Expr
   | Top    -- To avoid naming clashes I did not use `True` here
   | Bottom -- Also here
   | Not Expr
@@ -65,9 +61,7 @@ data Expr =
   | Iff Expr Expr
   | Forall String Expr
   | Exists String Expr
-  | Unique String Expr --
--- | ForallFunc String Int Expr
--- | ForallPred String Int Expr
+  | Unique String Expr
 
 -- Ignore the names of bound variables when comparing
 instance Eq Expr where
@@ -112,8 +106,6 @@ showE used stk e = case e of
   (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
--- (ForallFunc x k e) -> "(forallfunc " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : stk) e ++ ")"
--- (ForallPred x k e) -> "(forallpred " ++ x ++ "/" ++ show k ++ ", " ++ showE (x : stk) e ++ ")"
 
 inContextShowE :: Context -> Expr -> String
 inContextShowE (Context ls) = showE (map fst ls) []
@@ -160,7 +152,6 @@ makeReplace t = updateVars 0 (\n x -> if x == Bound n then t else Var x)
 data Judgment =
     IsTerm Expr
   | IsFormula Expr
-  | IsSchema Expr
   | Provable Expr
   deriving (Eq, Show)
 
@@ -341,6 +332,17 @@ raa :: Theorem -> Theorem
 raa (Theorem (ctx, Provable (Not p `Implies` Bottom))) =
      Theorem (ctx, Provable p)
 
+eqIntro :: Theorem -> Theorem
+eqIntro (Theorem (ctx, IsTerm t)) =
+         Theorem (ctx, Provable (t `Eq` t))
+
+eqElim :: Theorem -> Theorem -> Theorem -> Theorem
+eqElim (Theorem (ctx,   IsFormula (Forall x px)))
+       (Theorem (ctx',  Provable (a `Eq` b)))
+       (Theorem (ctx'', Provable pa))
+       | ctx == ctx' && pa == makeReplace a px =
+        Theorem (ctx,   Provable (makeReplace b px))
+
 -- (Context-changing rule)
 forallIntro :: Theorem -> Theorem
 forallIntro (Theorem (Context ((id, TVar) : ls), Provable p)) =
@@ -366,24 +368,18 @@ existsElim (Theorem (ctx,   Provable (Exists x p)))
            | ctx == ctx' && ctx == ctx'' && p == p' && q == q' =
             Theorem (ctx,   Provable q)
 
+uniqueIntro :: Theorem -> Theorem -> Theorem
+uniqueIntro (Theorem (ctx,  Provable (Exists x' px')))
+            (Theorem (ctx', Provable (Forall x (px `Implies` Forall y (py `Implies` (Var (Bound 1) `Eq` Var (Bound 0)))))))
+            | ctx == ctx' && px' == px && px' == py =
+             Theorem (ctx,  Provable (Unique x' px'))
 
--- Derivation trees (aka. proof terms)
-data Proof =
-    Assumption String
-  | AndI Proof Proof
-  | AndL Proof
-  | AndR Proof
-  | OrL Proof Expr
-  | OrR Expr Proof
-  | OrE Proof Proof Proof
-  | ImpliesI Proof
-  | ImpliesE Proof
--- ...
+uniqueLeft :: Theorem -> Theorem
+uniqueLeft (Theorem (ctx, Provable (Unique x px))) =
+            Theorem (ctx, Provable (Exists x px))
 
-checkProof :: Context -> Proof -> Theorem
-checkProof ctx p = case p of
-  (Assumption s) -> assumption ctx s
-  (AndI p' q') -> andIntro (checkProof ctx p') (checkProof ctx q')
--- ...
-
+uniqueRight :: Theorem -> Theorem
+uniqueRight (Theorem (ctx, Provable (Unique x px))) =
+             Theorem (ctx, Provable (Forall x (px `Implies` Forall x' (px `Implies` (Var (Bound 1) `Eq` Var (Bound 0))))))
+  where x' = newName x (x : map fst (ctxList ctx))
 

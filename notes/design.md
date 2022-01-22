@@ -71,22 +71,24 @@ Just like in Lean, the important cases here are `implies` and `forall`. In ApiMu
 
 Context-changing keywords:
 
-- `{ ... }`
-- `assume (...) { ... }`
-- `any x { ... }`
-- `anyfunc f/n {...}`
-- `anypred p/n { ... }`
+- `assume (<formula-or-schema>) name <name> ...`
+- `any <var-name> ...`
+- `anyfunc <func-name>/<arity> ...`
+- `anypred <pred-name>/<arity> ...`
+
+The `...` part can either be one declaration, or a list of declarations inside curly brackets `{ ... }`. Declarations in this part will be checked under an extended context. Unlike in C, these declarations **are still available in the outer scope**, but corresponding introduction rules will be applied on them.
 
 The other rules are represented in something like "derivation trees" or "proof terms", e.g. if you have assumptions/theorems `h1 : p`, `h2 : q implies r` and `h3 : q`, then `and.i h1 (implies.e h2 h3)` is a proof of `p and r`. A syntactic sugar: due to their frequent use, `implies.e`, `forall.e`, `forallfunc.e` and `forallpred.e` can be omitted! So `implies.e h2 h3` can be shortened to `h2 h3`. Kinda like in intuitionistic type theories, but not quite (only the 1.5th-order fragment is available, and higher-order things should be represented as sets).
 
-To prove a theorem, write `=> (<theorem-statement>) name <name> proof <proof-term>;` where `<theorem-statement>` is a formula or schema, `<name>` is an identifier, **and `<proof-term>` is inductively defined w.r.t. the local context `(F, P, Γ)` and known theorems `Δ` by:**
+To prove a theorem **manually**, write `=> (<theorem-statement>) name <name> proof <proof-term>;` where `<theorem-statement>` is a formula or schema, `<name>` is an identifier, **and `<proof-term>` is inductively defined w.r.t. the local context `(F, P, Γ)` and known theorems `Δ` by:**
 
 - Any name in `Γ` or `Δ` is a proof of its corresponding proposition.
+- **(Lemma, aka. "cut rule")** If a block of declarations *ends with a proof of formula* `P`, then the block itself is a proof of formula `P` (i.e. using blocks, we can prove some lemmas before proving `P`).
 - (And-intro) If `hp` is a proof of `P` and `hq` is a proof of `Q`, then `(and.i hp hq)` is a proof of `(P and Q)`.
 - (And-elim) If `hpq` is a proof of `(P and Q)`, then `(and.l hpq)` is a proof of `P`, and `(and.r hpq)` is a proof of `Q`.
 - (Or-intro) ... `or.l` ... `or.r` ...
 - (Or-elim) ... `or.e` ...
-- (Implies-intro) For any new name `hp`, if, under the context `(F, P, Γ ∪ {hp : P})`, the expression `hq` is a proof of `Q`, then `(assume P name hp { => (Q) by hq; })` is a proof of `(P implies Q)` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted. For details see below.
+- (Implies-intro) For any new name `hp`, if, under the context `(F, P, Γ ∪ {hp : P})`, the expression `hq` is a proof of `Q`, then `(assume P name hp { => (Q) by hq; })` is a proof of `(P implies Q)` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted.
 - (Implies-elim) If `hpq` is a proof of `(P implies Q)` and `hp` is a proof of `P`, then both `(implies.e hpq hp)` and `(hpq hp)` are proofs of `Q`.
 - (Not-intro) ... `not.i` ...
 - (Not-elim) ... `not.e` ...
@@ -96,25 +98,24 @@ To prove a theorem, write `=> (<theorem-statement>) name <name> proof <proof-ter
 - (False-elim, aka. *ex falso quodlibet*) ... `false.e` ...
 - (Stronger false-elim, aka. *reductio ad absurdum*) ... `raa` ...
 - (Equals-intro) For any well-formed term `t`, the expression `(eq.i t)` is a proof of `(t = t)`.
-- **(Equals-elim)** For any well-formed n-ary predicate `P`, if `heqᵢ` are proofs of `(aᵢ = bᵢ)`, and `hpa` is a proof of `(P a₁ a₂ ... aₙ)`, then the expression `(eq.e heq₁ heq₂ ... heqₙ P hpa)` is a proof of `(P b₁ b₂ ... bₙ)` (this is a rule with a variable number of arguments; the arity `n` can be determined by `P`).
-- (Forall-intro) For any new name `x`, if, under the context `(F ∪ {x/0}, P, Γ)`, the expression `hp` is a proof of `P(x)`, then `(any x { => (P) by hp; })` is a proof of `(forall x, P(x))` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted. For details see below.
+- **(Equals-elim)** For any well-formed unary predicate `P`, if `heq` is a proof of `(a = b)` and `hpa` is a proof of `(P a)`, then the expression `(eq.e P heq hpa)` is a proof of `(P b)`.
+- (Forall-intro) For any new name `x`, if, under the context `(F ∪ {x/0}, P, Γ)`, the expression `hp` is a proof of `P(x)`, then `(any x { => (P) by hp; })` is a proof of `(forall x, P(x))` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted.
 - **(Forall-elim)** If `hpx` is a proof of `(forall x, P(x))` and `t` is a well-formed term (expression of type `ι`), then both `(forall.e hpx t)` and `(hpx t)` are proofs of `P(t)`, where `P(t) := P(x)[t/x]` (replace all "free occurrences" of `x` in `P` by `t`. Bound variables are automatically renamed to prevent naming clashes.)
 - **(Exists-intro)** If `hpt` is a proof of `P(t)` where `P` is a well-formed unary predicate (expression of type `ι → *`), then `(exists.i P hpt)` is a proof of `(exists x, P(x))`.
 - (Exists-elim) If `hex` is a proof of `(exists x, P(x))` and `hq` is a proof of `(forall x, P(x) → Q)` where `x` does not occur free in `Q`, then `(exists.e hex hq)` is a proof of `Q`. **(Most of the time when you want to use AC, this rule is actually more suitable.)**
-- (Unique-intro) If `hex` is a proof of `(exists x, P(x))` and `hone` is a proof of `(forall x, forall y, P(x) → P(y) → x = y)`, then `(unique.i hex hone)` is a proof of `(unique x, P(x))`.
+- (Unique-intro) If `hex` is a proof of `(exists x, P(x))` and `hone` is a proof of `(forall x, (P(x) → forall y, (P(y) → x = y)))`, then `(unique.i hex hone)` is a proof of `(unique x, P(x))`.
 - (Unique-elim) If `h` is a proof of `(unique x, P(x))`, then `(unique.l h)` is a proof of `(exists x, P(x))` and `(unique.r h)` is a proof of `(forall x, forall y, P(x) → P(y) → x = y)`.
-- (Forallfunc-intro) For any new name `f`, if, under the context `(F ∪ {x/n}, P, Γ)`, the expression `hp` is a proof of `P(f)`, then `(anyfunc f/n { => (P) by hp; })` is a **proof schema** of `(forallfunc f, P(f))` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted. For details see below.
+- (Forallfunc-intro) For any new name `f`, if, under the context `(F ∪ {x/n}, P, Γ)`, the expression `hp` is a proof of `P(f)`, then `(anyfunc f/n { => (P) by hp; })` is a **proof schema** of `(forallfunc f, P(f))` under the context `(F, P, Γ)`. Here the curly brackets and the semicolon can be omitted.
 - **(Forallfunc-elim)** If `hpf` is a proof schema of `(forallpred f/n, P(f))` and `g` is a well-formed n-ary function (expression of type `ι → ι → ... → ι`), then both `(forallfunc.e hpf g)` and `(hpf g)` are proofs of `P(g)`, where `P(g) := P(f)[g/f]` (replace all "free occurrences" of `f` in `P` by `g`, keeping original parameters. Bound variables are automatically renamed to prevent naming clashes. This is most easily implemented using de Brujin indices.)
 - (Forallpred-intro) ... `(anypred p/n { => (P) by hp; })` ...
 - **(Forallpred-elim)** ... `(forallpred.e hpp q)` and `(hpp q)` ...
 
-In general, the major premise(s) appear before the minor premise(s). Five "hard" rules are marked in bold font.
+In general, the major premise(s) appear before the minor premise(s). Six hardest rules are marked in bold font.
 
+- "Lemma / cut rule" is not necessary, but still very important (they are used to avoid proving similar things multiple times; proofs can get exponentially larger without them). In general it is difficult for a computer to come up with suitable lemmas, so the user must explicitly state them.
 - "Equals-elimination" require second-order specialization, but there seems to be some methods that deal with equational theories more efficiently (?).
 - "Forall-elimination" and "exists-introduction" can be solved by adding unification to the tablau method. An intuitive explanation is, instead of enumerating all possible specializations (terms/formulas), one can instead enumerate known theorems/rules and find out which specializations can make the theorems applicable later on (represented in a most general unifier), and apply the theorems until the goal can be directly solved. This avoids going over "useless" specializations, at least...
 - "Forallfunc-elimination" and "forallpred-elimination" both require second-order specialization. These should be used only in specific situations, like the axiom schemas of separation/replacement in ZFC or the priciple of induction on the naturals, and most of the time we actually want to provide explicit specializations... They are hard even for humans!
-
-(TODO: context-changing keywords, scopes, last line etc.)
 
 After proof-checking, a theorem will be added back into the "known theorem pool" `Δ` maintained by ApiMu. This is like the `Γ` in the context, but not the same thing; it represents a set of theorems derivable under the current context and assumptions, including but not limited to the assumptions themselves. ApiMu will guarantee that every explicitly stated theorem gets added to `Δ`, but there may also be additional theorems generated by the inference engines.
 
