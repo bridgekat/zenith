@@ -1,9 +1,13 @@
--- First-order logic for experimentation
+-- ApiMu/FOL verifier v0.1 (Haskell version)
+-- Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
+
 -- This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
+-- To keep in line with the proof language, some context-changing rules are now represented in terms of
+-- `impliesIntro` and `forallIntro`; Additional features are described in `notes/design.md`.
 
--- {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 
-module FOL where
+module FOLPlus where
 
 import Data.List
 
@@ -23,9 +27,6 @@ ctxList (Context ls) = ls
 ctxEmpty :: Context
 ctxEmpty = Context []
 
-ctxVar :: String -> Context -> Context
-ctxVar id (Context ctx) = Context ((id, TVar) : ctx)
-
 ctxFunc :: String -> Int -> Context -> Context
 ctxFunc id arity (Context ctx) = Context ((id, TFunc arity) : ctx)
 
@@ -33,7 +34,7 @@ ctxPred :: String -> Int -> Context -> Context
 ctxPred id arity (Context ctx) = Context ((id, TPred arity) : ctx)
 
 ctxAssumption :: String -> Theorem -> Context
-ctxAssumption id (Theorem (Context ctx, IsFormula p)) = Context ((id, TProof p) : ctx)
+ctxAssumption id (Theorem (Context ctx, IsPredicate 0 p)) = Context ((id, TProof p) : ctx)
 
 -- Bound variables are represented using de Brujin indices
 -- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
@@ -41,8 +42,7 @@ data VarName = Free String | Bound Int
   deriving (Eq)
 
 data Type =
-    TVar
-  | TFunc Int
+    TFunc Int
   | TPred Int
   | TProof Expr
   deriving (Eq, Show)
@@ -62,6 +62,9 @@ data Expr =
   | Forall String Expr
   | Exists String Expr
   | Unique String Expr
+  | ForallFunc String Int Expr --
+  | ForallPred String Int Expr --
+  | Lam String Expr --
 
 -- Ignore the names of bound variables when comparing
 instance Eq Expr where
@@ -79,6 +82,9 @@ instance Eq Expr where
   (==) (Forall _ x1)   (Forall _ y1)   = x1 == y1
   (==) (Exists _ x1)   (Exists _ y1)   = x1 == y1
   (==) (Unique _ x1)   (Unique _ y1)   = x1 == y1
+  (==) (ForallFunc _ x1 x2) (ForallFunc _ y1 y2) = x1 == y1 && x2 == y2
+  (==) (ForallPred _ x1 x2) (ForallPred _ y1 y2) = x1 == y1 && x2 == y2
+  (==) (Lam _ x1)      (Lam _ y1)      = x1 == y1
   (==) _               _               = False
 
 newName :: String -> [String] -> String
@@ -106,6 +112,16 @@ showE used stk e = case e of
   (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (ForallFunc x k e) -> "(forallfunc " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (ForallPred x k e) -> "(forallpred " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (Lam x e) -> case stk of
+    [] -> "(" ++ str ++ ")" -- Outermost layer
+    _  -> str               -- Otherwise
+    where
+      x' = newName x used
+      str = case e of
+        (Lam _ _) -> x' ++ " " ++ showE (x' : used) (x' : stk) e   -- Intermediate layers
+        _         -> x' ++ " | " ++ showE (x' : used) (x' : stk) e -- Innermost layer
 
 inContextShowE :: Context -> Expr -> String
 inContextShowE (Context ls) = showE (map fst ls) []
@@ -130,28 +146,99 @@ updateVars n f e = case e of
   (Forall x e1) -> Forall x (updateVars (n + 1) f e1)
   (Exists x e1) -> Exists x (updateVars (n + 1) f e1)
   (Unique x e1) -> Unique x (updateVars (n + 1) f e1)
+  (ForallFunc x k e1) -> ForallFunc x k (updateVars (n + 1) f e1)
+  (ForallPred x k e1) -> ForallPred x k (updateVars (n + 1) f e1)
+  (Lam x e1) -> Lam x (updateVars (n + 1) f e1)
 
 -- Replace occurrences of a free variable by a given term
 -- Pre: t is a well-formed term
 replaceVar :: String -> Expr -> Expr -> Expr
 replaceVar id t = updateVars 0 (\_ x -> if x == Free id then t else Var x)
 
--- Note that the resulting expression is not well-formed until one additional layer of binder is added
+-- Prepare to bind a free variable
+-- Note that the resulting expression is not well-formed until one additional layer of binder is added (there are "binding overflows by exactly one")
 makeBound :: String -> Expr -> Expr
 makeBound id = updateVars 0 (\n x -> if x == Free id then Var (Bound n) else Var x)
 
--- Input expression can be a subexpression which is not well-formed by itself
+-- Inverse operation of makeBound
+-- Input expression can be a subexpression which is not well-formed by itself (there can be "binding overflows by exactly one")
 makeFree :: String -> Expr -> Expr
 makeFree id = updateVars 0 (\n x -> if x == Bound n then Var (Free id) else Var x)
 
--- Input expression can be a subexpression which is not well-formed by itself
+-- makeFree + replaceVar in one go
+-- Input expression can be a subexpression which is not well-formed by itself (there can be "binding overflows by exactly one")
 makeReplace :: Expr -> Expr -> Expr
 makeReplace t = updateVars 0 (\n x -> if x == Bound n then t else Var x)
 
+-- Prepare to insert k binders around a subexpression
+-- Input expression can be a subexpression which is not well-formed by itself
+makeGap :: Int -> Expr -> Expr
+makeGap k = updateVars 0 (\n x -> case x of Bound m | m >= n -> Var (Bound (m + k)); _ -> Var x)
+
+-- "Enhanced makeReplace" used on lambda function bodies, with t's possibly containing bound variables...
+-- length ts == (the number of lambda binders)
+makeReplace' :: [Expr] -> Expr -> Expr
+makeReplace' ts = updateVars 0 (\n x -> case x of Bound m | m >= n -> makeGap n (ts !! (m - n)); _ -> Var x)
+
+-- n = (number of binders on top of current node)
+updateFunc :: Int -> (Int -> VarName -> [Expr] -> Expr) -> Expr -> Expr
+updateFunc n f e = case e of
+  (Var x) -> e
+  (Func x es) -> f n x args where args = map (updateFunc n f) es
+  (Pred x es) -> Pred x (map (updateFunc n f) es)
+  (Eq e1 e2) -> Eq (updateFunc n f e1) (updateFunc n f e2)
+  Top -> e
+  Bottom -> e
+  (Not e1) -> Not (updateFunc n f e1)
+  (And e1 e2) -> And (updateFunc n f e1) (updateFunc n f e2)
+  (Or e1 e2) -> Or (updateFunc n f e1) (updateFunc n f e2)
+  (Implies e1 e2) -> Implies (updateFunc n f e1) (updateFunc n f e2)
+  (Iff e1 e2) -> Iff (updateFunc n f e1) (updateFunc n f e2)
+  (Forall x e1) -> Forall x (updateFunc (n + 1) f e1)
+  (Exists x e1) -> Exists x (updateFunc (n + 1) f e1)
+  (Unique x e1) -> Unique x (updateFunc (n + 1) f e1)
+  (ForallFunc x k e1) -> ForallFunc x k (updateFunc (n + 1) f e1)
+  (ForallPred x k e1) -> ForallPred x k (updateFunc (n + 1) f e1)
+  (Lam x e1) -> Lam x (updateFunc (n + 1) f e1)
+
+makeBoundFunc :: String -> Expr -> Expr
+makeBoundFunc id = updateFunc 0 (\n f args -> if f == Free id then Func (Bound n) args else Func f args)
+
+makeReplaceFunc :: Int -> Expr -> Expr -> Expr
+makeReplaceFunc k t = updateFunc 0 (\n f args -> if f == Bound n then makeReplace' args t else Func f args)
+
+-- n = (number of binders on top of current node)
+updatePred :: Int -> (Int -> VarName -> [Expr] -> Expr) -> Expr -> Expr
+updatePred n f e = case e of
+  (Var x) -> e
+  (Func x es) -> e
+  (Pred x es) -> f n x es
+  (Eq e1 e2) -> e
+  Top -> e
+  Bottom -> e
+  (Not e1) -> Not (updatePred n f e1)
+  (And e1 e2) -> And (updatePred n f e1) (updatePred n f e2)
+  (Or e1 e2) -> Or (updatePred n f e1) (updatePred n f e2)
+  (Implies e1 e2) -> Implies (updatePred n f e1) (updatePred n f e2)
+  (Iff e1 e2) -> Iff (updatePred n f e1) (updatePred n f e2)
+  (Forall x e1) -> Forall x (updatePred (n + 1) f e1)
+  (Exists x e1) -> Exists x (updatePred (n + 1) f e1)
+  (Unique x e1) -> Unique x (updatePred (n + 1) f e1)
+  (ForallFunc x k e1) -> ForallFunc x k (updatePred (n + 1) f e1)
+  (ForallPred x k e1) -> ForallPred x k (updatePred (n + 1) f e1)
+  (Lam x e1) -> Lam x (updatePred (n + 1) f e1)
+
+makeBoundPred :: String -> Expr -> Expr
+makeBoundPred id = updatePred 0 (\n p args -> if p == Free id then Pred (Bound n) args else Pred p args)
+
+makeReplacePred :: Int -> Expr -> Expr -> Expr
+makeReplacePred k phi = updatePred 0 (\n p args -> if p == Bound n then makeReplace' args phi else Pred p args)
+
 
 data Judgment =
-    IsTerm Expr
-  | IsFormula Expr
+    IsFunction Int Expr
+  | IsPredicate Int Expr
+  | IsSchema Expr
   | Provable Expr
   deriving (Eq, Show)
 
@@ -173,74 +260,77 @@ weaken (Theorem (ctx, j)) ctx' =
   case ctxList ctx `isSuffixOf` ctxList ctx' of
     True -> Theorem (ctx', j)
 
--- Formation rules
+-- Formation rules (as in `notes/design.md`)
 
 varMk :: Context -> String -> Theorem
 varMk ctx id = case lookup id (ctxList ctx) of
   (Just t)
-    | t == TVar -> Theorem (ctx, IsTerm (Var (Free id)))
+    | t == TFunc 0 -> Theorem (ctx, IsFunction 0 (Var (Free id)))
 
 funcMk :: Context -> String -> [Theorem] -> Theorem
 funcMk ctx id js = case lookup id (ctxList ctx) of
   (Just t)
     | t == TFunc (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, IsTerm (Func (Free id) as))
+        Theorem (ctx, IsFunction 0 (Func (Free id) as))
     where
-      (ctxs, as) = unzip . map (\x -> let Theorem (c, IsTerm t) = x in (c, t)) $ js
+      (ctxs, as) = unzip . map (\x -> let Theorem (c, IsFunction 0 t) = x in (c, t)) $ js
 
 predMk :: Context -> String -> [Theorem] -> Theorem
 predMk ctx id js = case lookup id (ctxList ctx) of
   (Just t)
     | t == TPred (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, IsFormula (Pred (Free id) as))
+        Theorem (ctx, IsPredicate 0 (Pred (Free id) as))
     where
-      (ctxs, as) = unzip . map (\x -> let Theorem (c, IsTerm t) = x in (c, t)) $ js
+      (ctxs, as) = unzip . map (\x -> let Theorem (c, IsFunction 0 t) = x in (c, t)) $ js
 
 eqMk :: Theorem -> Theorem -> Theorem
-eqMk (Theorem (ctx, IsTerm t1)) (Theorem (ctx', IsTerm t2))
-  | ctx == ctx' = Theorem (ctx, IsFormula (Eq t1 t2))
+eqMk (Theorem (ctx, IsFunction 0 t1)) (Theorem (ctx', IsFunction 0 t2))
+  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (Eq t1 t2))
 
 topMk :: Theorem
-topMk = Theorem (ctxEmpty, IsFormula Top)
+topMk = Theorem (ctxEmpty, IsPredicate 0 Top)
 
 bottomMk :: Theorem
-bottomMk = Theorem (ctxEmpty, IsFormula Bottom)
+bottomMk = Theorem (ctxEmpty, IsPredicate 0 Bottom)
 
 notMk :: Theorem -> Theorem
-notMk (Theorem (ctx, IsFormula e)) =
-  Theorem (ctx, IsFormula (Not e))
+notMk (Theorem (ctx, IsPredicate 0 e)) =
+  Theorem (ctx, IsPredicate 0 (Not e))
 
 andMk :: Theorem -> Theorem -> Theorem
-andMk (Theorem (ctx, IsFormula e1)) (Theorem (ctx', IsFormula e2))
-  | ctx == ctx' = Theorem (ctx, IsFormula (And e1 e2))
+andMk (Theorem (ctx, IsPredicate 0 e1)) (Theorem (ctx', IsPredicate 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (And e1 e2))
 
 orMk :: Theorem -> Theorem -> Theorem
-orMk (Theorem (ctx, IsFormula e1)) (Theorem (ctx', IsFormula e2))
-  | ctx == ctx' = Theorem (ctx, IsFormula (Or e1 e2))
+orMk (Theorem (ctx, IsPredicate 0 e1)) (Theorem (ctx', IsPredicate 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (Or e1 e2))
 
 impliesMk :: Theorem -> Theorem -> Theorem
-impliesMk (Theorem (ctx, IsFormula e1)) (Theorem (ctx', IsFormula e2))
-  | ctx == ctx' = Theorem (ctx, IsFormula (Implies e1 e2))
+impliesMk (Theorem (ctx, IsPredicate 0 e1)) (Theorem (ctx', IsPredicate 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (Implies e1 e2))
 
 iffMk :: Theorem -> Theorem -> Theorem
-iffMk (Theorem (ctx, IsFormula e1)) (Theorem (ctx', IsFormula e2))
-  | ctx == ctx' = Theorem (ctx, IsFormula (Iff e1 e2))
+iffMk (Theorem (ctx, IsPredicate 0 e1)) (Theorem (ctx', IsPredicate 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (Iff e1 e2))
 
 forallMk :: Theorem -> Theorem
-forallMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
-  Theorem (Context ls, IsFormula (Forall id (makeBound id e)))
+forallMk (Theorem (Context ((id, TFunc 0) : ls), IsPredicate 0 e)) =
+  Theorem (Context ls, IsPredicate 0 (Forall id (makeBound id e)))
 
 existsMk :: Theorem -> Theorem
-existsMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
-  Theorem (Context ls, IsFormula (Exists id (makeBound id e)))
+existsMk (Theorem (Context ((id, TFunc 0) : ls), IsPredicate 0 e)) =
+  Theorem (Context ls, IsPredicate 0 (Exists id (makeBound id e)))
 
 uniqueMk :: Theorem -> Theorem
-uniqueMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
-  Theorem (Context ls, IsFormula (Unique id (makeBound id e)))
+uniqueMk (Theorem (Context ((id, TFunc 0) : ls), IsPredicate 0 e)) =
+  Theorem (Context ls, IsPredicate 0 (Unique id (makeBound id e)))
+
+-- forallFuncMk :: Theorem -> Theorem
+-- ...
 
 
 -- Introduction & elimination rules
--- Pre & post: `Provable ctx p` => `IsFormula ctx p`
+-- Pre & post: `Provable ctx p` => `IsPredicate 0 ctx p`
 
 assumption :: Context -> String -> Theorem
 assumption ctx id =
@@ -263,12 +353,12 @@ andRight (Theorem (ctx, Provable (And p q))) =
 
 orLeft :: Theorem -> Theorem -> Theorem
 orLeft (Theorem (ctx,  Provable p))
-       (Theorem (ctx', IsFormula q))
+       (Theorem (ctx', IsPredicate 0 q))
        | ctx == ctx' =
         Theorem (ctx,  Provable (Or p q))
 
 orRight :: Theorem -> Theorem -> Theorem
-orRight (Theorem (ctx,  IsFormula p))
+orRight (Theorem (ctx,  IsPredicate 0 p))
         (Theorem (ctx', Provable q))
         | ctx == ctx' =
          Theorem (ctx,  Provable (Or p q))
@@ -324,7 +414,7 @@ trueIntro = Theorem (ctxEmpty, Provable Top)
 
 falseElim :: Theorem -> Theorem -> Theorem
 falseElim (Theorem (ctx,  Provable Bottom))
-          (Theorem (ctx', IsFormula p))
+          (Theorem (ctx', IsPredicate 0 p))
           | ctx == ctx' =
            Theorem (ctx,  Provable p)
 
@@ -333,11 +423,11 @@ raa (Theorem (ctx, Provable (Not p `Implies` Bottom))) =
      Theorem (ctx, Provable p)
 
 eqIntro :: Theorem -> Theorem
-eqIntro (Theorem (ctx, IsTerm t)) =
+eqIntro (Theorem (ctx, IsFunction 0 t)) =
          Theorem (ctx, Provable (t `Eq` t))
 
 eqElim :: Theorem -> Theorem -> Theorem -> Theorem
-eqElim (Theorem (ctx,   IsFormula (Forall x px)))
+eqElim (Theorem (ctx,   IsPredicate 0 (Forall x px)))
        (Theorem (ctx',  Provable (a `Eq` b)))
        (Theorem (ctx'', Provable pa))
        | ctx == ctx' && pa == makeReplace a px =
@@ -345,26 +435,26 @@ eqElim (Theorem (ctx,   IsFormula (Forall x px)))
 
 -- (Context-changing rule)
 forallIntro :: Theorem -> Theorem
-forallIntro (Theorem (Context ((id, TVar) : ls), Provable p)) =
+forallIntro (Theorem (Context ((id, TFunc 0) : ls), Provable p)) =
              Theorem (Context ls, Provable (Forall id (makeBound id p)))
 
 forallElim :: Theorem -> Theorem -> Theorem
 forallElim (Theorem (ctx,  Provable (Forall x q)))
-           (Theorem (ctx', IsTerm t))
+           (Theorem (ctx', IsFunction 0 t))
            | ctx == ctx' =
             Theorem (ctx,  Provable (makeReplace t q))
 
 existsIntro :: Theorem -> Theorem -> Theorem -> Theorem
 existsIntro (Theorem (ctx,   Provable pt))
-            (Theorem (ctx',  IsFormula (Exists x p)))
-            (Theorem (ctx'', IsTerm t))
+            (Theorem (ctx',  IsPredicate 0 (Exists x p)))
+            (Theorem (ctx'', IsFunction 0 t))
             | ctx == ctx' && pt == makeReplace t p =
              Theorem (ctx,   Provable (Exists x p))
 
 existsElim :: Theorem -> Theorem -> Theorem -> Theorem
 existsElim (Theorem (ctx,   Provable (Exists x p)))
            (Theorem (ctx',  Provable (Forall y (p' `Implies` q))))
-           (Theorem (ctx'', IsFormula q'))
+           (Theorem (ctx'', IsPredicate 0 q'))
            | ctx == ctx' && ctx == ctx'' && p == p' && q == q' =
             Theorem (ctx,   Provable q)
 
@@ -382,4 +472,8 @@ uniqueRight :: Theorem -> Theorem
 uniqueRight (Theorem (ctx, Provable (Unique x px))) =
              Theorem (ctx, Provable (Forall x (px `Implies` Forall x' (px `Implies` (Var (Bound 1) `Eq` Var (Bound 0))))))
   where x' = newName x (x : map fst (ctxList ctx))
+
+-- (Context-changing rule)
+-- forallFuncIntro :: Theorem -> Theorem
+-- ...
 
