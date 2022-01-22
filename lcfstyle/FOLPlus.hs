@@ -4,8 +4,9 @@
 -- This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
 -- To keep in line with the proof language, some context-changing rules are now represented in terms of
 -- `impliesIntro` and `forallIntro`; Additional features are described in `notes/design.md`.
+-- This verifier allows for more flexible "second-order reasoning" beyond the specification (TODO: make a warning).
 
-{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+-- {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 
 module FOLPlus where
 
@@ -27,6 +28,9 @@ ctxList (Context ls) = ls
 ctxEmpty :: Context
 ctxEmpty = Context []
 
+ctxVar :: String -> Context -> Context
+ctxVar id = ctxFunc id 0
+
 ctxFunc :: String -> Int -> Context -> Context
 ctxFunc id arity (Context ctx) = Context ((id, TFunc arity) : ctx)
 
@@ -34,7 +38,7 @@ ctxPred :: String -> Int -> Context -> Context
 ctxPred id arity (Context ctx) = Context ((id, TPred arity) : ctx)
 
 ctxAssumption :: String -> Theorem -> Context
-ctxAssumption id (Theorem (Context ctx, IsPredicate 0 p)) = Context ((id, TProof p) : ctx)
+ctxAssumption id (Theorem (Context ctx, IsPred 0 p)) = Context ((id, TProof p) : ctx)
 
 -- Bound variables are represented using de Brujin indices
 -- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
@@ -180,6 +184,11 @@ makeGap k = updateVars 0 (\n x -> case x of Bound m | m >= n -> Var (Bound (m + 
 makeReplace' :: [Expr] -> Expr -> Expr
 makeReplace' ts = updateVars 0 (\n x -> case x of Bound m | m >= n -> makeGap n (ts !! (m - n)); _ -> Var x)
 
+-- Skip through lambda binders
+getBody :: Expr -> Expr
+getBody (Lam _ e) = getBody e
+getBody e = e
+
 -- n = (number of binders on top of current node)
 updateFunc :: Int -> (Int -> VarName -> [Expr] -> Expr) -> Expr -> Expr
 updateFunc n f e = case e of
@@ -204,8 +213,9 @@ updateFunc n f e = case e of
 makeBoundFunc :: String -> Expr -> Expr
 makeBoundFunc id = updateFunc 0 (\n f args -> if f == Free id then Func (Bound n) args else Func f args)
 
-makeReplaceFunc :: Int -> Expr -> Expr -> Expr
-makeReplaceFunc k t = updateFunc 0 (\n f args -> if f == Bound n then makeReplace' args t else Func f args)
+makeReplaceFunc :: Expr -> Expr -> Expr
+makeReplaceFunc lamt = updateFunc 0 (\n f args -> if f == Bound n then makeReplace' args t else Func f args)
+  where t = getBody lamt
 
 -- n = (number of binders on top of current node)
 updatePred :: Int -> (Int -> VarName -> [Expr] -> Expr) -> Expr -> Expr
@@ -231,14 +241,14 @@ updatePred n f e = case e of
 makeBoundPred :: String -> Expr -> Expr
 makeBoundPred id = updatePred 0 (\n p args -> if p == Free id then Pred (Bound n) args else Pred p args)
 
-makeReplacePred :: Int -> Expr -> Expr -> Expr
-makeReplacePred k phi = updatePred 0 (\n p args -> if p == Bound n then makeReplace' args phi else Pred p args)
+makeReplacePred :: Expr -> Expr -> Expr
+makeReplacePred lamphi = updatePred 0 (\n p args -> if p == Bound n then makeReplace' args phi else Pred p args)
+  where phi = getBody lamphi
 
 
 data Judgment =
-    IsFunction Int Expr
-  | IsPredicate Int Expr
-  | IsSchema Expr
+    IsFunc Int Expr
+  | IsPred Int Expr
   | Provable Expr
   deriving (Eq, Show)
 
@@ -265,72 +275,91 @@ weaken (Theorem (ctx, j)) ctx' =
 varMk :: Context -> String -> Theorem
 varMk ctx id = case lookup id (ctxList ctx) of
   (Just t)
-    | t == TFunc 0 -> Theorem (ctx, IsFunction 0 (Var (Free id)))
+    | t == TFunc 0 -> Theorem (ctx, IsFunc 0 (Var (Free id)))
 
 funcMk :: Context -> String -> [Theorem] -> Theorem
 funcMk ctx id js = case lookup id (ctxList ctx) of
   (Just t)
     | t == TFunc (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, IsFunction 0 (Func (Free id) as))
+        Theorem (ctx, IsFunc 0 (Func (Free id) as))
     where
-      (ctxs, as) = unzip . map (\x -> let Theorem (c, IsFunction 0 t) = x in (c, t)) $ js
+      (ctxs, as) = unzip . map (\x -> let Theorem (c, IsFunc 0 t) = x in (c, t)) $ js
 
 predMk :: Context -> String -> [Theorem] -> Theorem
 predMk ctx id js = case lookup id (ctxList ctx) of
   (Just t)
     | t == TPred (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, IsPredicate 0 (Pred (Free id) as))
+        Theorem (ctx, IsPred 0 (Pred (Free id) as))
     where
-      (ctxs, as) = unzip . map (\x -> let Theorem (c, IsFunction 0 t) = x in (c, t)) $ js
+      (ctxs, as) = unzip . map (\x -> let Theorem (c, IsFunc 0 t) = x in (c, t)) $ js
 
 eqMk :: Theorem -> Theorem -> Theorem
-eqMk (Theorem (ctx, IsFunction 0 t1)) (Theorem (ctx', IsFunction 0 t2))
-  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (Eq t1 t2))
+eqMk (Theorem (ctx, IsFunc 0 t1)) (Theorem (ctx', IsFunc 0 t2))
+  | ctx == ctx' = Theorem (ctx, IsPred 0 (Eq t1 t2))
 
 topMk :: Theorem
-topMk = Theorem (ctxEmpty, IsPredicate 0 Top)
+topMk = Theorem (ctxEmpty, IsPred 0 Top)
 
 bottomMk :: Theorem
-bottomMk = Theorem (ctxEmpty, IsPredicate 0 Bottom)
+bottomMk = Theorem (ctxEmpty, IsPred 0 Bottom)
 
 notMk :: Theorem -> Theorem
-notMk (Theorem (ctx, IsPredicate 0 e)) =
-  Theorem (ctx, IsPredicate 0 (Not e))
+notMk (Theorem (ctx, IsPred 0 e)) =
+  Theorem (ctx, IsPred 0 (Not e))
 
 andMk :: Theorem -> Theorem -> Theorem
-andMk (Theorem (ctx, IsPredicate 0 e1)) (Theorem (ctx', IsPredicate 0 e2))
-  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (And e1 e2))
+andMk (Theorem (ctx, IsPred 0 e1)) (Theorem (ctx', IsPred 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPred 0 (And e1 e2))
 
 orMk :: Theorem -> Theorem -> Theorem
-orMk (Theorem (ctx, IsPredicate 0 e1)) (Theorem (ctx', IsPredicate 0 e2))
-  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (Or e1 e2))
+orMk (Theorem (ctx, IsPred 0 e1)) (Theorem (ctx', IsPred 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPred 0 (Or e1 e2))
 
 impliesMk :: Theorem -> Theorem -> Theorem
-impliesMk (Theorem (ctx, IsPredicate 0 e1)) (Theorem (ctx', IsPredicate 0 e2))
-  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (Implies e1 e2))
+impliesMk (Theorem (ctx, IsPred 0 e1)) (Theorem (ctx', IsPred 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPred 0 (Implies e1 e2))
 
 iffMk :: Theorem -> Theorem -> Theorem
-iffMk (Theorem (ctx, IsPredicate 0 e1)) (Theorem (ctx', IsPredicate 0 e2))
-  | ctx == ctx' = Theorem (ctx, IsPredicate 0 (Iff e1 e2))
+iffMk (Theorem (ctx, IsPred 0 e1)) (Theorem (ctx', IsPred 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPred 0 (Iff e1 e2))
 
 forallMk :: Theorem -> Theorem
-forallMk (Theorem (Context ((id, TFunc 0) : ls), IsPredicate 0 e)) =
-  Theorem (Context ls, IsPredicate 0 (Forall id (makeBound id e)))
+forallMk (Theorem (Context ((id, TFunc 0) : ls), IsPred 0 e)) =
+  Theorem (Context ls, IsPred 0 (Forall id (makeBound id e)))
 
 existsMk :: Theorem -> Theorem
-existsMk (Theorem (Context ((id, TFunc 0) : ls), IsPredicate 0 e)) =
-  Theorem (Context ls, IsPredicate 0 (Exists id (makeBound id e)))
+existsMk (Theorem (Context ((id, TFunc 0) : ls), IsPred 0 e)) =
+  Theorem (Context ls, IsPred 0 (Exists id (makeBound id e)))
 
 uniqueMk :: Theorem -> Theorem
-uniqueMk (Theorem (Context ((id, TFunc 0) : ls), IsPredicate 0 e)) =
-  Theorem (Context ls, IsPredicate 0 (Unique id (makeBound id e)))
+uniqueMk (Theorem (Context ((id, TFunc 0) : ls), IsPred 0 e)) =
+  Theorem (Context ls, IsPred 0 (Unique id (makeBound id e)))
 
--- forallFuncMk :: Theorem -> Theorem
--- ...
+forallFuncMk :: Theorem -> Theorem
+forallFuncMk (Theorem (Context ((id, TFunc k) : ls), IsPred 0 e)) =
+  Theorem (Context ls, IsPred 0 (ForallFunc id k (makeBoundFunc id e)))
+
+forallPredMk :: Theorem -> Theorem
+forallPredMk (Theorem (Context ((id, TPred k) : ls), IsPred 0 e)) =
+  Theorem (Context ls, IsPred 0 (ForallPred id k (makeBoundPred id e)))
+
+lamMk :: Theorem -> Theorem
+lamMk (Theorem (Context ((id, TFunc 0) : ls), IsFunc k e)) =
+  Theorem (Context ls, IsFunc (k + 1) (Lam id (makeBound id e)))
+lamMk (Theorem (Context ((id, TFunc 0) : ls), IsPred k e)) =
+  Theorem (Context ls, IsPred (k + 1) (Lam id (makeBound id e)))
+
+-- Not a "formation rule", exactly...
+-- (The presence of a lambda binder should ensure k > 0)
+appMk :: Theorem -> Theorem -> Theorem
+appMk (Theorem (ctx, IsFunc k (Lam x e1))) (Theorem (ctx', IsFunc 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsFunc (k - 1) (makeReplace e2 e1))
+appMk (Theorem (ctx, IsPred k (Lam x e1))) (Theorem (ctx', IsFunc 0 e2))
+  | ctx == ctx' = Theorem (ctx, IsPred (k - 1) (makeReplace e2 e1))
 
 
 -- Introduction & elimination rules
--- Pre & post: `Provable ctx p` => `IsPredicate 0 ctx p`
+-- Pre & post: `Provable ctx p` => `IsPred 0 ctx p`
 
 assumption :: Context -> String -> Theorem
 assumption ctx id =
@@ -353,12 +382,12 @@ andRight (Theorem (ctx, Provable (And p q))) =
 
 orLeft :: Theorem -> Theorem -> Theorem
 orLeft (Theorem (ctx,  Provable p))
-       (Theorem (ctx', IsPredicate 0 q))
+       (Theorem (ctx', IsPred 0 q))
        | ctx == ctx' =
         Theorem (ctx,  Provable (Or p q))
 
 orRight :: Theorem -> Theorem -> Theorem
-orRight (Theorem (ctx,  IsPredicate 0 p))
+orRight (Theorem (ctx,  IsPred 0 p))
         (Theorem (ctx', Provable q))
         | ctx == ctx' =
          Theorem (ctx,  Provable (Or p q))
@@ -414,7 +443,7 @@ trueIntro = Theorem (ctxEmpty, Provable Top)
 
 falseElim :: Theorem -> Theorem -> Theorem
 falseElim (Theorem (ctx,  Provable Bottom))
-          (Theorem (ctx', IsPredicate 0 p))
+          (Theorem (ctx', IsPred 0 p))
           | ctx == ctx' =
            Theorem (ctx,  Provable p)
 
@@ -423,11 +452,11 @@ raa (Theorem (ctx, Provable (Not p `Implies` Bottom))) =
      Theorem (ctx, Provable p)
 
 eqIntro :: Theorem -> Theorem
-eqIntro (Theorem (ctx, IsFunction 0 t)) =
+eqIntro (Theorem (ctx, IsFunc 0 t)) =
          Theorem (ctx, Provable (t `Eq` t))
 
 eqElim :: Theorem -> Theorem -> Theorem -> Theorem
-eqElim (Theorem (ctx,   IsPredicate 0 (Forall x px)))
+eqElim (Theorem (ctx,   IsPred 1 (Lam x px)))
        (Theorem (ctx',  Provable (a `Eq` b)))
        (Theorem (ctx'', Provable pa))
        | ctx == ctx' && pa == makeReplace a px =
@@ -440,21 +469,21 @@ forallIntro (Theorem (Context ((id, TFunc 0) : ls), Provable p)) =
 
 forallElim :: Theorem -> Theorem -> Theorem
 forallElim (Theorem (ctx,  Provable (Forall x q)))
-           (Theorem (ctx', IsFunction 0 t))
+           (Theorem (ctx', IsFunc 0 t))
            | ctx == ctx' =
             Theorem (ctx,  Provable (makeReplace t q))
 
 existsIntro :: Theorem -> Theorem -> Theorem -> Theorem
 existsIntro (Theorem (ctx,   Provable pt))
-            (Theorem (ctx',  IsPredicate 0 (Exists x p)))
-            (Theorem (ctx'', IsFunction 0 t))
+            (Theorem (ctx',  IsPred 0 (Exists x p)))
+            (Theorem (ctx'', IsFunc 0 t))
             | ctx == ctx' && pt == makeReplace t p =
              Theorem (ctx,   Provable (Exists x p))
 
 existsElim :: Theorem -> Theorem -> Theorem -> Theorem
 existsElim (Theorem (ctx,   Provable (Exists x p)))
            (Theorem (ctx',  Provable (Forall y (p' `Implies` q))))
-           (Theorem (ctx'', IsPredicate 0 q'))
+           (Theorem (ctx'', IsPred 0 q'))
            | ctx == ctx' && ctx == ctx'' && p == p' && q == q' =
             Theorem (ctx,   Provable q)
 
@@ -474,6 +503,24 @@ uniqueRight (Theorem (ctx, Provable (Unique x px))) =
   where x' = newName x (x : map fst (ctxList ctx))
 
 -- (Context-changing rule)
--- forallFuncIntro :: Theorem -> Theorem
--- ...
+forallFuncIntro :: Theorem -> Theorem
+forallFuncIntro (Theorem (Context ((id, TFunc k) : ls), Provable p)) =
+                 Theorem (Context ls, Provable (ForallFunc id k (makeBoundFunc id p)))
+
+forallFuncElim :: Theorem -> Theorem -> Theorem
+forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k q)))
+               (Theorem (ctx', IsFunc k' t))
+               | ctx == ctx' && k == k' =
+                Theorem (ctx,  Provable (makeReplaceFunc t q))
+
+-- (Context-changing rule)
+forallPredIntro :: Theorem -> Theorem
+forallPredIntro (Theorem (Context ((id, TPred k) : ls), Provable p)) =
+                 Theorem (Context ls, Provable (ForallPred id k (makeBoundPred id p)))
+
+forallPredElim :: Theorem -> Theorem -> Theorem
+forallPredElim (Theorem (ctx,  Provable (ForallPred p k q)))
+               (Theorem (ctx', IsPred k' phi))
+               | ctx == ctx' && k == k' =
+                Theorem (ctx,  Provable (makeReplacePred phi q))
 

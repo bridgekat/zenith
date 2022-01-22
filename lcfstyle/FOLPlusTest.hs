@@ -10,8 +10,11 @@ import FOLPlus
 convertAndCheck' :: Context -> Expr -> Theorem
 convertAndCheck' ctx e = case e of
   (Var (Free x)) -> varMk ctx x
+  (Var (Bound i)) -> error "Please use names for bound variables in the input expression"
   (Func (Free f) ts) -> funcMk ctx f (map (convertAndCheck ctx) ts)
+  (Func (Bound i) ts) -> error "Please use names for bound variables in the input expression"
   (Pred (Free p) ts) -> predMk ctx p (map (convertAndCheck ctx) ts)
+  (Pred (Bound i) ts) -> error "Please use names for bound variables in the input expression"
   (Eq t1 t2) -> eqMk (convertAndCheck ctx t1) (convertAndCheck ctx t2)
   Top -> topMk
   Bottom -> bottomMk
@@ -23,9 +26,47 @@ convertAndCheck' ctx e = case e of
   (Forall x e) -> forallMk (convertAndCheck (ctxVar x ctx) e)
   (Exists x e) -> existsMk (convertAndCheck (ctxVar x ctx) e)
   (Unique x e) -> uniqueMk (convertAndCheck (ctxVar x ctx) e)
+  (ForallFunc f k e) -> forallFuncMk (convertAndCheck (ctxFunc f k ctx) e)
+  (ForallPred p k e) -> forallPredMk (convertAndCheck (ctxPred p k ctx) e)
+  (Lam x e) -> lamMk (convertAndCheck (ctxVar x ctx) e)
 
+-- Convert to de Brujin indices and check types.
 convertAndCheck :: Context -> Expr -> Theorem
 convertAndCheck ctx e = weaken (convertAndCheck' ctx e) ctx
+
+-- Derivation trees (aka. proof terms)
+data Proof =
+    Assumption String
+  | Lemma Decl
+  | AndI Proof Proof | AndL Proof | AndR Proof
+  | OrL Proof Expr | OrR Expr Proof | OrE Proof Proof Proof
+  | ImpliesE Proof Proof
+  | NotI Proof | NotE Proof Proof
+  | IffI Proof Proof | IffL Proof Proof | IffR Proof Proof
+  | TrueI
+  | FalseE Proof Expr | RAA Proof
+  | EqI Expr | EqE Proof Expr Proof
+  | ForallE Proof Expr
+  | ExistsI Expr Proof | ExistsE Proof Proof
+  | UniqueI Proof Proof | UniqueL Proof | UniqueR Proof
+  | ForallFuncE Proof Expr
+  | ForallPredE Proof Expr
+
+-- Declarations
+data Decl =
+    Block [Decl]
+  | Theorem String Expr Proof
+  | FuncDef String Expr
+  | PredDef String Expr
+  | FuncDDef String Expr Proof
+  | FuncIDef String Expr Proof
+
+checkProof :: Context -> Proof -> [Theorem]
+checkProof ctx thm p = case p of
+  (Assumption s) -> assumption ctx s
+  (AndI p' q') -> andIntro (checkProof ctx p') (checkProof ctx q')
+-- ...
+
 
 
 -- TEMP CODE
@@ -150,38 +191,4 @@ t7'' = notIntro t6''
 
 t8''' = existsElim (weaken h3 ctx) t7''' (convertAndCheck ctx (Not (Exists "x" (pred "L" [var "x", var "Q"]))))
 
-
--- TEMP CODE
-
--- Derivation trees (aka. proof terms)
-data Proof =
-    Assumption String
-  | Lemma Decl
-  | AndI Proof Proof | AndL Proof | AndR Proof
-  | OrL Proof Expr | OrR Expr Proof | OrE Proof Proof Proof
-  | ImpliesE Proof Proof
-  | NotI Proof | NotE Proof Proof
-  | IffI Proof Proof | IffL Proof Proof | IffR Proof Proof
-  | TrueI
-  | FalseE Proof Expr | RAA Proof
-  | EqI Expr | EqE Proof Expr Proof
-  | ForallE Proof Expr
-  | ExistsI Expr Proof | ExistsE Proof Proof
-  | UniqueI Proof Proof | UniqueL Proof | UniqueR Proof
-  | ForallFuncE Proof Expr
-  | ForallPredE Proof Expr
-
-data Decl =
-    Block [Decl]
-  | Theorem String Expr Proof
-  | FuncDef String Expr
-  | PredDef String Expr
-  | FuncDDef String Expr Proof
-  | FuncIDef String Expr Proof
-
-checkProof :: Context -> Proof -> Theorem
-checkProof ctx p = case p of
-  (Assumption s) -> assumption ctx s
-  (AndI p' q') -> andIntro (checkProof ctx p') (checkProof ctx q')
--- ...
 
