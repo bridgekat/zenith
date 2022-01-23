@@ -1,3 +1,6 @@
+-- ApiMu/FOL verifier v0.1 (Haskell version)
+-- Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
+
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TupleSections #-}
@@ -217,9 +220,13 @@ checkDecl ctx e = case e of
   (Assertion id e pf) -> do
     thm <- checkProof ctx pf;
     case thmJudgment thm of
-      (Provable e')
-        | e == Just e' || e == Nothing -> addTheorem id thm;
-      _                                -> error "Statement and proof does not match"
+      (Provable e') ->
+        case e of
+          Nothing -> addTheorem id thm;
+          Just e''
+            | thmJudgment (convertAndCheck ctx e'') == IsPred 0 e' -> addTheorem id thm
+            | otherwise -> error "Statement and proof does not match"
+      _ -> error "Statement and proof does not match"
   (Any x d) -> do
     push;
     thm <- checkDecl (ctxVar x ctx) d;
@@ -293,3 +300,22 @@ decls =
 
 res :: TheoremPool
 res = snd $ eval (checkDecl ctxEmpty decls) pool
+
+decls1 :: Decl
+decls1 =
+  Block [
+    -- eq.symm, in natural style
+    Any "x" (Any "y" (Assume "h" (var "x" `Eq` var "y") (Block [
+      Assertion "t1" (Just $ var "x" `Eq` var "x") (EqI (var "x")),
+      Assertion "eq.symm" (Just $ var "y" `Eq` var "x") (EqE (Lam "#" (var "#" `Eq` var "x")) (As "h") (As "t1"))
+    ]))),
+    -- eq.trans, in proof term style
+    Assertion "eq.trans" (Just $ Forall "a" $ Forall "b" $ Forall "c" $ (var "a" `Eq` var "b") `Implies` ((var "b" `Eq` var "c") `Implies` (var "a" `Eq` var "c")))
+      (Decl $ Any "x" $ Any "y" $ Any "z" $ Assume "h1" (var "x" `Eq` var "y") $ Assume "h2" (var "y" `Eq` var "z") (
+        Assertion "" (Just $ var "x" `Eq` var "z") (EqE (Lam "#" (var "x" `Eq` var "#")) (As "h2") (As "h1"))
+      ))
+  ]
+
+res1 :: TheoremPool
+res1 = snd $ eval (checkDecl ctxEmpty decls1) pool
+

@@ -3,7 +3,7 @@
 
 -- This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
 -- To keep in line with the proof language, some context-changing rules are now represented in terms of
--- `impliesIntro` and `forallIntro`; Additional features are described in `notes/design.md`.
+-- `impliesIntro` and `forallIntro`; additional features are described in `notes/design.md`.
 -- This verifier allows for more flexible "second-order reasoning" beyond the specification (TODO: make a warning).
 
 -- {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
@@ -46,6 +46,8 @@ ctxAssumption id (Theorem (Context ctx, IsPred 0 p)) =
 data VarName = Free String | Bound Int
   deriving (Eq)
 
+-- Possible "types" of bound variables. Note that not all possible "types" are listed here (some expressions
+-- can bind functions or predicates).
 data Type =
     TFunc Int
   | TPred Int
@@ -67,9 +69,9 @@ data Expr =
   | Forall String Expr
   | Exists String Expr
   | Unique String Expr
-  | ForallFunc String Int Expr --
-  | ForallPred String Int Expr --
-  | Lam String Expr --
+  | ForallFunc String Int Expr
+  | ForallPred String Int Expr
+  | Lam String Expr
 
 -- Ignore the names of bound variables when comparing
 instance Eq Expr where
@@ -183,7 +185,8 @@ makeGap k = updateVars 0 (\n x -> case x of Bound m | m >= n -> Var (Bound (m + 
 -- "Enhanced makeReplace" used on lambda function bodies, with t's possibly containing bound variables...
 -- length ts == (the number of lambda binders)
 makeReplace' :: [Expr] -> Expr -> Expr
-makeReplace' ts = updateVars 0 (\n x -> case x of Bound m | m >= n -> makeGap n (ts !! (m - n)); _ -> Var x)
+makeReplace' ts = updateVars 0 (\n x -> case x of Bound m | m >= n -> makeGap n (ts' !! (m - n)); _ -> Var x)
+  where ts' = reverse ts -- Leftmost arguments are used to substitute highest lambdas
 
 -- Skip through lambda binders
 getBody :: Expr -> Expr
