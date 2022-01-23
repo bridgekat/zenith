@@ -16,29 +16,30 @@ import Data.List
 -- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
 -- If there are naming clashes, later names will override
 -- (TODO: hide this constructor when exporting)
-newtype Context = Context [(String, Type)]
+newtype Context = Context { ctxList :: [(String, Type)] }
   deriving (Eq)
 
 instance Show Context where
   show (Context ls) = foldl (\acc (id, t) -> id ++ " : " ++ show t ++ "\n" ++ acc) "" ls
 
-ctxList :: Context -> [(String, Type)]
-ctxList (Context ls) = ls
-
 ctxEmpty :: Context
 ctxEmpty = Context []
 
 ctxVar :: String -> Context -> Context
-ctxVar id = ctxFunc id 0
+ctxVar id (Context ctx) =
+  Context ((id, TFunc 0) : ctx)
 
 ctxFunc :: String -> Int -> Context -> Context
-ctxFunc id arity (Context ctx) = Context ((id, TFunc arity) : ctx)
+ctxFunc id arity (Context ctx)
+  | arity > 0 = Context ((id, TFunc arity) : ctx)
 
 ctxPred :: String -> Int -> Context -> Context
-ctxPred id arity (Context ctx) = Context ((id, TPred arity) : ctx)
+ctxPred id arity (Context ctx)
+  | arity >= 0 = Context ((id, TPred arity) : ctx)
 
 ctxAssumption :: String -> Theorem -> Context
-ctxAssumption id (Theorem (Context ctx, IsPred 0 p)) = Context ((id, TProof p) : ctx)
+ctxAssumption id (Theorem (Context ctx, IsPred 0 p)) =
+  Context ((id, TProof p) : ctx)
 
 -- Bound variables are represented using de Brujin indices
 -- (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
@@ -297,9 +298,11 @@ eqMk :: Theorem -> Theorem -> Theorem
 eqMk (Theorem (ctx, IsFunc 0 t1)) (Theorem (ctx', IsFunc 0 t2))
   | ctx == ctx' = Theorem (ctx, IsPred 0 (Eq t1 t2))
 
+-- (Weakening may needed)
 topMk :: Theorem
 topMk = Theorem (ctxEmpty, IsPred 0 Top)
 
+-- (Weakening may needed)
 bottomMk :: Theorem
 bottomMk = Theorem (ctxEmpty, IsPred 0 Bottom)
 
@@ -323,26 +326,32 @@ iffMk :: Theorem -> Theorem -> Theorem
 iffMk (Theorem (ctx, IsPred 0 e1)) (Theorem (ctx', IsPred 0 e2))
   | ctx == ctx' = Theorem (ctx, IsPred 0 (Iff e1 e2))
 
+-- (Context-changing rule)
 forallMk :: Theorem -> Theorem
 forallMk (Theorem (Context ((id, TFunc 0) : ls), IsPred 0 e)) =
   Theorem (Context ls, IsPred 0 (Forall id (makeBound id e)))
 
+-- (Context-changing rule)
 existsMk :: Theorem -> Theorem
 existsMk (Theorem (Context ((id, TFunc 0) : ls), IsPred 0 e)) =
   Theorem (Context ls, IsPred 0 (Exists id (makeBound id e)))
 
+-- (Context-changing rule)
 uniqueMk :: Theorem -> Theorem
 uniqueMk (Theorem (Context ((id, TFunc 0) : ls), IsPred 0 e)) =
   Theorem (Context ls, IsPred 0 (Unique id (makeBound id e)))
 
+-- (Context-changing rule)
 forallFuncMk :: Theorem -> Theorem
 forallFuncMk (Theorem (Context ((id, TFunc k) : ls), IsPred 0 e)) =
   Theorem (Context ls, IsPred 0 (ForallFunc id k (makeBoundFunc id e)))
 
+-- (Context-changing rule)
 forallPredMk :: Theorem -> Theorem
 forallPredMk (Theorem (Context ((id, TPred k) : ls), IsPred 0 e)) =
   Theorem (Context ls, IsPred 0 (ForallPred id k (makeBoundPred id e)))
 
+-- (Context-changing rule)
 lamMk :: Theorem -> Theorem
 lamMk (Theorem (Context ((id, TFunc 0) : ls), IsFunc k e)) =
   Theorem (Context ls, IsFunc (k + 1) (Lam id (makeBound id e)))
@@ -438,6 +447,7 @@ iffRight (Theorem (ctx,  Provable (p `Iff` q)))
          | ctx == ctx' && q == q' =
           Theorem (ctx,  Provable p)
 
+-- (Weakening may needed)
 trueIntro :: Theorem
 trueIntro = Theorem (ctxEmpty, Provable Top)
 
@@ -474,9 +484,9 @@ forallElim (Theorem (ctx,  Provable (Forall x q)))
             Theorem (ctx,  Provable (makeReplace t q))
 
 existsIntro :: Theorem -> Theorem -> Theorem -> Theorem
-existsIntro (Theorem (ctx,   Provable pt))
-            (Theorem (ctx',  IsPred 0 (Exists x p)))
+existsIntro (Theorem (ctx',  IsPred 0 (Exists x p)))
             (Theorem (ctx'', IsFunc 0 t))
+            (Theorem (ctx,   Provable pt))
             | ctx == ctx' && pt == makeReplace t p =
              Theorem (ctx,   Provable (Exists x p))
 
@@ -510,7 +520,7 @@ forallFuncIntro (Theorem (Context ((id, TFunc k) : ls), Provable p)) =
 forallFuncElim :: Theorem -> Theorem -> Theorem
 forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k q)))
                (Theorem (ctx', IsFunc k' t))
-               | ctx == ctx' && k == k' =
+               | ctx == ctx' && k == k' && k > 0 =
                 Theorem (ctx,  Provable (makeReplaceFunc t q))
 
 -- (Context-changing rule)

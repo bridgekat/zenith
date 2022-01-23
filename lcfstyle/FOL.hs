@@ -355,9 +355,9 @@ forallElim (Theorem (ctx,  Provable (Forall x q)))
             Theorem (ctx,  Provable (makeReplace t q))
 
 existsIntro :: Theorem -> Theorem -> Theorem -> Theorem
-existsIntro (Theorem (ctx,   Provable pt))
+existsIntro (Theorem (ctx'', IsTerm t))
+            (Theorem (ctx,   Provable pt))
             (Theorem (ctx',  IsFormula (Exists x p)))
-            (Theorem (ctx'', IsTerm t))
             | ctx == ctx' && pt == makeReplace t p =
              Theorem (ctx,   Provable (Exists x p))
 

@@ -98,11 +98,11 @@ anypred L/2 B/3 any Q
               => (L x c)                                                    name t4 proof implies.e (implies.e (forall.e (forall.e (forall.e h2 x) c) Q) t3) hx;
               => (false)                                                    name t5 proof not.e t2 t4;
             }                                                               // implies.i and forall.i on t1, t2, t3, t4, t5
-            => (false)                                                      name t6 proof exists.e hex t5;
+            => (false)                                                      name t6 proof exists.e hex t5 (false);
           }                                                                 // implies.i on t1, t2, t3, t4, t5, t6
           => (not exists x, L x Q)                                          name t7 proof not.i t6;
         }                                                                   // implies.i and forall.i on t1, t2, t3, t4, t5, t6, t7
-        => (not exists x, L x Q)                                            name t8 proof exists.e h3 t7;
+        => (not exists x, L x Q)                                            name t8 proof exists.e h3 t7 (not exists x, L x Q);
       }
     }
   }
