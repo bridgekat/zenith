@@ -8,6 +8,7 @@
 import Prelude hiding (pred)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Data.Maybe
 
 import FOLPlus
 
@@ -22,8 +23,8 @@ convertAndCheck ctx e = case e of
   (Pred (Free p) ts) -> predMk ctx p (map (convertAndCheck ctx) ts)
   (Pred (Bound i) ts) -> error "Please use names for bound variables in the input expression"
   (Eq t1 t2) -> eqMk (convertAndCheck ctx t1) (convertAndCheck ctx t2)
-  Top -> weaken topMk ctx
-  Bottom -> weaken bottomMk ctx
+  Top -> topMk ctx
+  Bottom -> bottomMk ctx
   (Not e) -> notMk (convertAndCheck ctx e)
   (And e1 e2) -> andMk (convertAndCheck ctx e1) (convertAndCheck ctx e2)
   (Or e1 e2) -> orMk (convertAndCheck ctx e1) (convertAndCheck ctx e2)
@@ -35,6 +36,8 @@ convertAndCheck ctx e = case e of
   (ForallFunc f k e) -> forallFuncMk (convertAndCheck (ctxFunc f k ctx) e)
   (ForallPred p k e) -> forallPredMk (convertAndCheck (ctxPred p k ctx) e)
   (Lam x e) -> lamMk (convertAndCheck (ctxVar x ctx) e)
+  (LamFunc x k e) -> lamFuncMk (convertAndCheck (ctxFunc x k ctx) e)
+  (LamPred x k e) -> lamPredMk (convertAndCheck (ctxPred x k ctx) e)
 
 -- Derivation trees (aka. proof terms)
 data Proof =
@@ -127,9 +130,10 @@ genPop = StatefulVal $ \(top : second : ls) -> ((),
     second' = Map.foldlWithKey'
       (\acc id thm ->
         case thmJudgment thm of
-          IsFunc k f -> Map.insert id (lamMk thm) acc
-          IsPred k f -> Map.insert id (lamMk thm) acc
-          Provable p -> Map.insert id (forallIntro thm) acc)
+          HasType f (TFunc k) -> Map.insert id (lamMk thm) acc
+          HasType f (TPred k) -> Map.insert id (lamMk thm) acc
+          Provable p          -> Map.insert id (forallIntro thm) acc
+          _                   -> acc)
       second top
   in
     second' : ls)
@@ -142,8 +146,8 @@ genFuncPop = StatefulVal $ \(top : second : ls) -> ((),
     second' = Map.foldlWithKey'
       (\acc id thm ->
         case thmJudgment thm of
-          Provable p -> Map.insert id (forallFuncIntro thm) acc
-          _          -> acc) -- TODO: "second-order" functions/predicates
+          Provable p  -> Map.insert id (forallFuncIntro thm) acc
+          HasType e t -> Map.insert id (lamFuncMk thm) acc)
       second top
   in
     second' : ls)
@@ -156,8 +160,8 @@ genPredPop = StatefulVal $ \(top : second : ls) -> ((),
     second' = Map.foldlWithKey'
       (\acc id thm ->
         case thmJudgment thm of
-          Provable p -> Map.insert id (forallPredIntro thm) acc
-          _          -> acc) -- TODO: "second-order" functions/predicates
+          Provable p  -> Map.insert id (forallPredIntro thm) acc
+          HasType e t -> Map.insert id (lamPredMk thm) acc)
       second top
   in
     second' : ls)
@@ -171,7 +175,7 @@ assumePop = StatefulVal $ \(top : second : ls) -> ((),
       (\acc id thm ->
         case thmJudgment thm of
           Provable p -> Map.insert id (impliesIntro thm) acc
-          _          -> acc) -- TODO: partial functions/predicates
+          _          -> acc)
       second top
   in
     second' : ls)
@@ -184,7 +188,7 @@ checkProof ctx e = case e of
     case res of
       (Just thm) -> return (weaken thm ctx);
       Nothing    -> return (assumption ctx id);
-  (Decl decl) -> checkDecl ctx decl
+  (Decl decl) -> do res <- checkDecl ctx decl; return (fromJust res);
   (AndI p q) -> andIntro <$> checkProof ctx p <*> checkProof ctx q
   (AndL p) -> andLeft <$> checkProof ctx p
   (AndR p) -> andRight <$> checkProof ctx p
@@ -197,7 +201,7 @@ checkProof ctx e = case e of
   (IffI pq qp) -> iffIntro <$> checkProof ctx pq <*> checkProof ctx qp
   (IffL pq p) -> iffLeft <$> checkProof ctx pq <*> checkProof ctx p
   (IffR pq q) -> iffRight <$> checkProof ctx pq <*> checkProof ctx q
-  (TrueI) -> pure (weaken trueIntro ctx)
+  (TrueI) -> pure (trueIntro ctx)
   (FalseE f p) -> falseElim <$> checkProof ctx f <*> pure (convertAndCheck ctx p)
   (RAA npf) -> raa <$> checkProof ctx npf
   (EqI t) -> eqIntro <$> pure (convertAndCheck ctx t)
@@ -212,9 +216,9 @@ checkProof ctx e = case e of
   (ForallPredE pp p) -> forallPredElim <$> checkProof ctx pp <*> pure (convertAndCheck ctx p)
 
 -- Check if a declaration is well-formed; returns the judgment for the last declaration.
-checkDecl :: Context -> Decl -> WithState Theorem
+checkDecl :: Context -> Decl -> WithState (Maybe Theorem)
 checkDecl ctx e = case e of
-  (Block []) -> error "Uses sorry (empty block)"
+  (Block []) -> return Nothing
   (Block [d]) -> checkDecl ctx d
   (Block (d : ds)) -> do checkDecl ctx d; checkDecl ctx (Block ds);
   (Assertion id e pf) -> do
@@ -222,41 +226,57 @@ checkDecl ctx e = case e of
     case thmJudgment thm of
       (Provable e') ->
         case e of
-          Nothing -> addTheorem id thm;
+          Nothing -> do
+            res <- addTheorem id thm;
+            return (Just res);
           Just e''
-            | thmJudgment (convertAndCheck ctx e'') == IsPred 0 e' -> addTheorem id thm
+            | thmJudgment (convertAndCheck ctx e'') == HasType e' (TPred 0) -> do
+                res <- addTheorem id thm;
+                return (Just res);
             | otherwise -> error "Statement and proof does not match"
       _ -> error "Statement and proof does not match"
   (Any x d) -> do
     push;
-    thm <- checkDecl (ctxVar x ctx) d;
+    thm' <- checkDecl (ctxVar x ctx) d;
     genPop;
-    case thmJudgment thm of
-      IsFunc k f -> return (lamMk thm);
-      IsPred k f -> return (lamMk thm);
-      Provable p -> return (forallIntro thm);
+    case thm' of
+      Nothing  -> return Nothing;
+      Just thm ->
+        case thmJudgment thm of
+          HasType f (TFunc k) -> return $ Just (lamMk thm);
+          HasType f (TPred k) -> return $ Just (lamMk thm);
+          Provable p          -> return $ Just (forallIntro thm);
+          _                   -> return Nothing;
   (AnyFunc x k d) -> do
     push;
-    thm <- checkDecl (ctxFunc x k ctx) d;
+    thm' <- checkDecl (ctxFunc x k ctx) d;
     genFuncPop;
-    case thmJudgment thm of
-      Provable p -> return (forallFuncIntro thm);
-      _          -> error "TODO: \"second-order\" functions/predicates"
+    case thm' of
+      Nothing  -> return Nothing;
+      Just thm ->
+        case thmJudgment thm of
+          Provable p  -> return $ Just (forallFuncIntro thm);
+          HasType e t -> return $ Just (lamFuncMk thm);
   (AnyPred x k d) -> do
     push;
-    thm <- checkDecl (ctxPred x k ctx) d;
+    thm' <- checkDecl (ctxPred x k ctx) d;
     genPredPop;
-    case thmJudgment thm of
-      Provable p -> return (forallPredIntro thm);
-      _          -> error "TODO: \"second-order\" functions/predicates"
+    case thm' of
+      Nothing  -> return Nothing;
+      Just thm ->
+        case thmJudgment thm of
+          Provable p  -> return $ Just (forallPredIntro thm);
+          HasType e t -> return $ Just (lamPredMk thm);
   (Assume x e d) -> do
     push;
-    thm <- checkDecl (ctxAssumption x (convertAndCheck ctx e)) d;
+    thm' <- checkDecl (ctxAssumption x (convertAndCheck ctx e)) d;
     assumePop;
-    case thmJudgment thm of
-      Provable p -> return (impliesIntro thm);
-      _          -> error "TODO: partial functions/predicates"
-
+    case thm' of
+      Nothing  -> return Nothing;
+      Just thm ->
+        case thmJudgment thm of
+          Provable p -> return $ Just (impliesIntro thm);
+          _          -> return Nothing;
 
 
 -- TEMP CODE

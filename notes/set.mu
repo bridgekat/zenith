@@ -55,12 +55,16 @@ anypred in/2 {
               => (y1 = y2) by set_ext;
             }
           }
-          => (unique y, forall a, a ∈ y <-> (a ∈ x and φ x a));
+          => (unique y, forall a, a ∈ y <-> (a ∈ x and φ x a)); // `subset` is well-defined
           
           def  subset :: (forall a, a ∈ subset <-> (a ∈ x and φ x a))
           name subset_def
                "definition of a subset";
+          // subset     : ι
+          // subset_def : (forall subset', (forall a, a ∈ subset' <-> (a ∈ x and φ x a)) <-> subset' = subset)
         }
+        // subset     : (ι -> ι -> *) -> ι -> ι
+        // subset_def : (forallpred φ/2, forall x subset', (forall a, a ∈ subset' <-> (a ∈ x and φ x a)) <-> subset' = subset φ x)
         
         // The empty set can now be defined (ApiMu assumes the domain of discourse to be nonempty)
         => (forall x, unique y, forall a, a ∈ y <-> (a ∈ x and false));
