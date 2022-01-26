@@ -20,7 +20,6 @@ convertAndCheck' ctx e = case e of
   (Iff e1 e2) -> iffMk (convertAndCheck ctx e1) (convertAndCheck ctx e2)
   (Forall x e) -> forallMk (convertAndCheck (ctxVar x ctx) e)
   (Exists x e) -> existsMk (convertAndCheck (ctxVar x ctx) e)
-  (Unique x e) -> uniqueMk (convertAndCheck (ctxVar x ctx) e)
 
 convertAndCheck :: Context -> Expr -> Theorem
 convertAndCheck ctx e = weaken (convertAndCheck' ctx e) ctx

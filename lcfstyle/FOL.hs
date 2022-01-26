@@ -61,7 +61,6 @@ data Expr =
   | Iff Expr Expr
   | Forall String Expr
   | Exists String Expr
-  | Unique String Expr
 
 -- Ignore the names of bound variables when comparing
 instance Eq Expr where
@@ -78,7 +77,6 @@ instance Eq Expr where
   (==) (Iff x1 x2)     (Iff y1 y2)     = x1 == y1 && x2 == y2
   (==) (Forall _ x1)   (Forall _ y1)   = x1 == y1
   (==) (Exists _ x1)   (Exists _ y1)   = x1 == y1
-  (==) (Unique _ x1)   (Unique _ y1)   = x1 == y1
   (==) _               _               = False
 
 newName :: String -> [String] -> String
@@ -105,7 +103,6 @@ showE used stk e = case e of
   (Iff e1 e2) -> "(" ++ showE used stk e1 ++ " iff " ++ showE used stk e2 ++ ")"
   (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
-  (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
 
 inContextShowE :: Context -> Expr -> String
 inContextShowE (Context ls) = showE (map fst ls) []
@@ -129,7 +126,6 @@ updateVars n f e = case e of
   (Iff e1 e2) -> Iff (updateVars n f e1) (updateVars n f e2)
   (Forall x e1) -> Forall x (updateVars (n + 1) f e1)
   (Exists x e1) -> Exists x (updateVars (n + 1) f e1)
-  (Unique x e1) -> Unique x (updateVars (n + 1) f e1)
 
 -- Replace occurrences of a free variable by a given term
 -- Pre: t is a well-formed term
@@ -233,10 +229,6 @@ forallMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
 existsMk :: Theorem -> Theorem
 existsMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
   Theorem (Context ls, IsFormula (Exists id (makeBound id e)))
-
-uniqueMk :: Theorem -> Theorem
-uniqueMk (Theorem (Context ((id, TVar) : ls), IsFormula e)) =
-  Theorem (Context ls, IsFormula (Unique id (makeBound id e)))
 
 
 -- Introduction & elimination rules
@@ -367,19 +359,4 @@ existsElim (Theorem (ctx,   Provable (Exists x p)))
            (Theorem (ctx'', IsFormula q'))
            | ctx == ctx' && ctx == ctx'' && p == p' && q == q' =
             Theorem (ctx,   Provable q)
-
-uniqueIntro :: Theorem -> Theorem -> Theorem
-uniqueIntro (Theorem (ctx,  Provable (Exists x' px')))
-            (Theorem (ctx', Provable (Forall x (px `Implies` Forall y (py `Implies` (Var (Bound 1) `Eq` Var (Bound 0)))))))
-            | ctx == ctx' && px' == px && px' == py =
-             Theorem (ctx,  Provable (Unique x' px'))
-
-uniqueLeft :: Theorem -> Theorem
-uniqueLeft (Theorem (ctx, Provable (Unique x px))) =
-            Theorem (ctx, Provable (Exists x px))
-
-uniqueRight :: Theorem -> Theorem
-uniqueRight (Theorem (ctx, Provable (Unique x px))) =
-             Theorem (ctx, Provable (Forall x (px `Implies` Forall x' (px `Implies` (Var (Bound 1) `Eq` Var (Bound 0))))))
-  where x' = newName x (x : map fst (ctxList ctx))
 

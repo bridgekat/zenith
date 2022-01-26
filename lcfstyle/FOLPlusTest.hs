@@ -2,15 +2,21 @@
 -- Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
 
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TupleSections #-}
 
-import Prelude hiding (pred)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe
 
 import FOLPlus
+
+pattern TTerm :: Type
+pattern TTerm = TFunc 0 SVar
+
+pattern TFormula :: Type
+pattern TFormula = TFunc 0 SProp
 
 
 -- Convert to de Brujin indices and check types.
@@ -61,7 +67,7 @@ data Decl =
   | Assume String Expr Decl
 {-
   | FuncDef String Expr
-  | PredDef String Expr
+  | funcDef String Expr
   | FuncDDef String Expr Proof -- Definite description
   | FuncIDef String Expr Proof -- Indefinite description
 -}
@@ -125,15 +131,14 @@ genPop = StatefulVal $ \(top : second : ls) -> ((),
     second' = Map.foldlWithKey'
       (\acc id thm ->
         case thmJudgment thm of
-          HasType e (TFunc k s) -> Map.insert id (lamMk thm) acc
           Provable p            -> Map.insert id (forallIntro thm) acc
           _                     -> acc)
       second top
   in
     second' : ls)
 
--- Generalize over a function and then pop.
--- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some function (arity > 0) assumed last
+-- Generalize over a function/funcicate and then pop.
+-- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some function/funcicate (arity >= 0) assumed last
 genFuncPop :: WithState ()
 genFuncPop = StatefulVal $ \(top : second : ls) -> ((),
   let
@@ -194,57 +199,64 @@ checkProof ctx e = case e of
   (UniqueR uni) -> uniqueRight <$> checkProof ctx uni
   (ForallFuncE pf f) -> forallFuncElim <$> checkProof ctx pf <*> pure (convertAndCheck ctx f)
 
--- Check if a declaration is well-formed; returns the judgment for the last declaration.
+-- Check if a declaration is well-formed; returns the checked judgment of the last declaration (if applicable).
 checkDecl :: Context -> Decl -> WithState (Maybe Theorem)
 checkDecl ctx e = case e of
+  -- Check block
   (Block []) -> return Nothing
   (Block [d]) -> checkDecl ctx d
   (Block (d : ds)) -> do checkDecl ctx d; checkDecl ctx (Block ds);
+  -- Check assertion
   (Assertion id e pf) -> do
     thm <- checkProof ctx pf;
     case thmJudgment thm of
       (Provable e') ->
         case e of
+          -- No indication
           Nothing -> do
             res <- addTheorem id thm;
             return (Just res);
+          -- Check if proof and indicated statement match
           Just e''
             | thmJudgment (convertAndCheck ctx e'') == HasType e' TFormula -> do
                 res <- addTheorem id thm;
                 return (Just res);
             | otherwise -> error "Statement and proof does not match"
-      _ -> error "Statement and proof does not match"
+      -- The judgment of `thm` is not in the form of (Provable _)
+      _ -> error "Not a proof"
+  -- `any` section
   (Any x d) -> do
     push;
     thm' <- checkDecl (ctxVar x ctx) d;
     genPop;
-    case thm' of
-      Nothing  -> return Nothing;
-      Just thm ->
-        case thmJudgment thm of
-          HasType f (TFunc k s) -> return $ Just (lamMk thm);
-          Provable p            -> return $ Just (forallIntro thm);
-          _                     -> return Nothing;
+    -- Return last declaration if it is an assertion
+    return $ do
+      thm <- thm';
+      case thmJudgment thm of
+        Provable p -> return (forallIntro thm)
+        _          -> Nothing
+  -- `anyfunc` or `anyfunc` section
   (AnyFunc x k s d) -> do
     push;
     thm' <- checkDecl (ctxFunc x k s ctx) d;
     genFuncPop;
-    case thm' of
-      Nothing  -> return Nothing;
-      Just thm ->
-        case thmJudgment thm of
-          Provable p            -> return $ Just (forallFuncIntro thm);
-          _                     -> return Nothing;
+    -- Return last declaration if it is an assertion
+    return $ do
+      thm <- thm';
+      case thmJudgment thm of
+        Provable p -> return (forallFuncIntro thm)
+        _          -> Nothing
+  -- `assume` section
   (Assume x e d) -> do
     push;
     thm' <- checkDecl (ctxAssumption x (convertAndCheck ctx e)) d;
     assumePop;
-    case thm' of
-      Nothing  -> return Nothing;
-      Just thm ->
-        case thmJudgment thm of
-          Provable p -> return $ Just (impliesIntro thm);
-          _          -> return Nothing;
+    -- Return last declaration if it is an assertion
+    return $ do
+      thm <- thm';
+      case thmJudgment thm of
+        Provable p -> return (impliesIntro thm)
+        _          -> Nothing
 
 
 -- TEMP CODE
@@ -253,8 +265,6 @@ var :: String -> Expr
 var = Var . Free
 func :: String -> [Expr] -> Expr
 func = Func . Free
-pred :: String -> [Expr] -> Expr
-pred = Func . Free
 
 pool :: TheoremPool
 pool = [Map.empty]
@@ -262,14 +272,14 @@ pool = [Map.empty]
 decls :: Decl
 decls =
   AnyFunc "L" 2 SProp (AnyFunc "B" 3 SProp (Any "Q" (
-    Assume "h1" (Forall "x" (Forall "y" (pred "L" [var "x", var "y"] `Implies` Forall "z" (Not (Eq (var "z") (var "y")) `Implies` Not (pred "L" [var "x", var "z"]))))) (
-      Assume "h2" (Forall "x" (Forall "y" (Forall "z" (pred "B" [var "x", var "y", var "z"] `Implies` (pred "L" [var "x", var "z"] `Implies` pred "L" [var "x", var "y"]))))) (
-        Assume "h3" (Exists "x" (Not (Eq (var "x") (var "Q")) `And` Forall "y" (pred "B" [var "y", var "x", var "Q"]))) (Block [
-          Any "c" (Assume "hc" (Not (Eq (var "c") (var "Q")) `And` Forall "x" (pred "B" [var "x", var "c", var "Q"])) (Block [
+    Assume "h1" (Forall "x" (Forall "y" (func "L" [var "x", var "y"] `Implies` Forall "z" (Not (Eq (var "z") (var "y")) `Implies` Not (func "L" [var "x", var "z"]))))) (
+      Assume "h2" (Forall "x" (Forall "y" (Forall "z" (func "B" [var "x", var "y", var "z"] `Implies` (func "L" [var "x", var "z"] `Implies` func "L" [var "x", var "y"]))))) (
+        Assume "h3" (Exists "x" (Not (Eq (var "x") (var "Q")) `And` Forall "y" (func "B" [var "y", var "x", var "Q"]))) (Block [
+          Any "c" (Assume "hc" (Not (Eq (var "c") (var "Q")) `And` Forall "x" (func "B" [var "x", var "c", var "Q"])) (Block [
             Assertion "hc1" Nothing (AndL (As "hc")),
             Assertion "hc2" Nothing (AndR (As "hc")),
-            Assume "hex" (Exists "x" (pred "L" [var "x", var "Q"])) (Block [
-              Any "x" (Assume "hx" (pred "L" [var "x", var "Q"]) (Block [
+            Assume "hex" (Exists "x" (func "L" [var "x", var "Q"])) (Block [
+              Any "x" (Assume "hx" (func "L" [var "x", var "Q"]) (Block [
                 Assertion "t1" Nothing (ImpliesE (ForallE (ForallE (As "h1") (var "x")) (var "Q")) (As "hx")),
                 Assertion "t2" Nothing (ImpliesE (ForallE (As "t1") (var "c")) (As "hc1")),
                 Assertion "t3" Nothing (ForallE (As "hc2") (var "x")),
@@ -280,7 +290,8 @@ decls =
             ]),
             Assertion "t7" Nothing (NotI (As "t6"))
           ])),
-          Assertion "t8" Nothing (ExistsE (As "h3") (As "t7") (Not (Exists "x" (pred "L" [var "x", var "Q"]))))
+          Assertion "t8" (Just (Not (Exists "x" (func "L" [var "x", var "Q"]))))
+            (ExistsE (As "h3") (As "t7") (Not (Exists "x" (func "L" [var "x", var "Q"]))))
         ])
       )
     )

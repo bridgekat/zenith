@@ -8,17 +8,38 @@
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module FOLPlus where
+module FOLPlus
+  ( forallFuncElim, forallFuncIntro,
+    uniqueRight, uniqueLeft, uniqueIntro,
+    existsElim, existsIntro,
+    forallElim, forallIntro,
+    eqElim, eqIntro,
+    raa, falseElim, trueIntro,
+    iffRight, iffLeft, iffIntro,
+    notElim, notIntro,
+    impliesElim, impliesIntro,
+    orElim, orRight, orLeft,
+    andRight, andLeft, andIntro,
+    assumption, weaken,
+    lamMk, forallFuncMk,
+    uniqueMk, existsMk, forallMk,
+    iffMk, impliesMk, orMk, andMk, notMk,
+    bottomMk, topMk,
+    eqMk, schemaMk, funcMk, varMk,
+    thmContext, thmJudgment,
+    ctxAssumption, ctxFunc, ctxVar, ctxEmpty,
+    Expr(..), VarName(..), Sort(..), Type(..), Judgment(..),
+    Context, Theorem ) where
 
 import Data.List
 
 
+-- Context entry
 data CInfo = CVar Type | CHyp Expr
   deriving (Eq, Show)
 
 -- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
 -- If there are naming clashes, later names will override
--- (TODO: hide this constructor when exporting)
 newtype Context = Context { ctxList :: [(String, CInfo)] }
   deriving (Eq)
 
@@ -45,16 +66,17 @@ ctxAssumption id (Theorem (Context ctx, HasType p TFormula)) =
 data VarName = Free String | Bound Int
   deriving (Eq)
 
--- Possible "types" of expressions (proof terms do not count as expressions here):
+-- Possible "types" of expressions (ι means Var, * means Prop):
 --   Terms:      TFunc 0 SVar  (ι)
 --   Functions:  TFunc k SVar  (ι → ... → ι → ι)
 --   Formulas:   TFunc 0 SProp (*)
 --   Predicates: TFunc k SProp (ι → ... → ι → *)
--- Schemas have exactly one "second-order lambda" in front of them:
---   TSchema k1 s1 k2 s2 means ((ι → ... → ι → s1) → ι → ... → ι → s2).
+-- Schemas have "second-order parameters":
+--   TSchema k1 s1 (TFunc k2 s2) means ((ι → ... → ι → s1) → ι → ... → ι → s2), etc.
+-- (This is similar to Metamath definition checkers, according to Mario Carneiro!)
 data Sort = SVar | SProp
   deriving (Eq, Show)
-data Type = TFunc Int Sort | TSchema Int Sort Int Sort
+data Type = TFunc Int Sort | TSchema Int Sort Type
   deriving (Eq, Show)
 
 pattern TTerm :: Type
@@ -78,12 +100,11 @@ data Expr =
   | Forall String Expr
   | Exists String Expr
   | Unique String Expr
-  -- This must be at the beginning (the outermost layer) of an expression, and can only occur once
-  | ForallFunc String Int Sort Expr
   -- These must be at the beginning (the outermost layers) of an expression
+  | ForallFunc String Int Sort Expr
   | Lam String Expr
 
--- Ignore the names of bound variables when comparing
+-- Ignore the literal names of bound variables when comparing (alpha-equivalence)
 instance Eq Expr where
   (==) (Var x1)                (Var y1)                = x1 == y1
   (==) (Func x1 x2)            (Func y1 y2)            = x1 == y1 && x2 == y2
@@ -103,6 +124,7 @@ instance Eq Expr where
   (==) (Lam _ x1)              (Lam _ y1)              = x1 == y1
   (==) _                       _                       = False
 
+-- For display
 newName :: String -> [String] -> String
 newName x used
   | x `notElem` used = x
@@ -130,7 +152,14 @@ showE used stk e' = case e' of
   (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (ForallFunc x k SVar  e) -> "(forallfunc " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (ForallFunc x k SProp e) -> "(forallpred " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
-  (Lam x e) -> "any " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e where x' = newName x used
+  (Lam x e) -> case stk of
+    [] -> "(" ++ str ++ ")" -- Outermost layer
+    _  -> str               -- Otherwise
+    where
+      x' = newName x used
+      str = case e of
+        (Lam _ _) -> x' ++ " " ++ showE (x' : used) (x' : stk) e   -- Intermediate layers
+        _         -> x' ++ " | " ++ showE (x' : used) (x' : stk) e -- Innermost layer
 
 inContextShowE :: Context -> Expr -> String
 inContextShowE (Context ls) = showE (map fst ls) []
@@ -158,20 +187,10 @@ updateVars n f e = case e of
   (ForallFunc x k s e1) -> ForallFunc x k s (updateVars (n + 1) f e1)
   (Lam x e1) -> Lam x (updateVars (n + 1) f e1)
 
--- Replace occurrences of a free variable by a given term
--- Pre: t is a well-formed term
-replaceVar :: String -> Expr -> Expr -> Expr
-replaceVar id t = updateVars 0 (\_ x -> if x == Free id then t else Var x)
-
 -- Prepare to bind a free variable
 -- Note that the resulting expression is not well-formed until one additional layer of binder is added (there are "binding overflows by exactly one")
 makeBound :: String -> Expr -> Expr
 makeBound id = updateVars 0 (\n x -> if x == Free id then Var (Bound n) else Var x)
-
--- Inverse operation of makeBound
--- Input expression can be a subexpression which is not well-formed by itself (there can be "binding overflows by exactly one")
-makeFree :: String -> Expr -> Expr
-makeFree id = updateVars 0 (\n x -> if x == Bound n then Var (Free id) else Var x)
 
 -- makeFree + replaceVar in one go
 -- Input expression can be a subexpression which is not well-formed by itself (there can be "binding overflows by exactly one")
@@ -184,15 +203,15 @@ makeGap :: Int -> Expr -> Expr
 makeGap k = updateVars 0 (\n x -> case x of Bound m | m >= n -> Var (Bound (m + k)); _ -> Var x)
 
 -- "Enhanced makeReplace" used on lambda function bodies, with t's possibly containing bound variables...
--- length ts == (the number of lambda binders)
-makeReplace' :: [Expr] -> Expr -> Expr
-makeReplace' ts = updateVars 0 (\n x -> case x of Bound m | m >= n -> makeGap n (ts' !! (m - n)); _ -> Var x)
+makeReplace' :: Int -> [Expr] -> Expr -> Expr
+makeReplace' k ts
+  | k == length ts = updateVars 0 (\n x -> case x of Bound m | m >= n -> makeGap n (ts' !! (m - n)); _ -> Var x)
   where ts' = reverse ts -- Leftmost arguments are used to substitute highest lambdas
 
 -- Skip through lambda binders
-getBody :: Expr -> Expr
-getBody (Lam _ e) = getBody e
-getBody e = e
+getBody :: Expr -> (Int, Expr)
+getBody (Lam _ e) = (n + 1, body) where (n, body) = getBody e
+getBody body      = (0,     body)
 
 -- n = (number of binders on top of current node)
 updateFunc :: Int -> (Int -> VarName -> [Expr] -> Expr) -> Expr -> Expr
@@ -214,18 +233,24 @@ updateFunc n f e = case e of
   (ForallFunc x k s e1) -> ForallFunc x k s (updateFunc (n + 1) f e1)
   (Lam x e1) -> Lam x (updateFunc (n + 1) f e1)
 
+-- Prepare to bind a free function/predicate variable
 makeBoundFunc :: String -> Expr -> Expr
 makeBoundFunc id = updateFunc 0 (\n f args -> if f == Free id then Func (Bound n) args else Func f args)
 
-makeReplaceFunc :: Expr -> Expr -> Expr
-makeReplaceFunc lamt = updateFunc 0 (\n f args -> if f == Bound n then makeReplace' args t else Func f args)
-  where t = getBody lamt
+-- Pre: the 2nd argument is a lambda function/predicate with exactly k lambda binders (will be checked)
+-- Pre: in the 3rd argument, all applications of the "overflow-bound" function/predicate must have k arguments (will be checked)
+-- Pre: to ensure that the resulting expression is well-formed, functions must be replaced by functions and
+--      predicates must be replaced by predicates (i.e. types must match)
+makeReplaceFunc :: Int -> Expr -> Expr -> Expr
+makeReplaceFunc k lam
+  | k == k' = updateFunc 0 (\n f args -> if f == Bound n then makeReplace' k args body else Func f args)
+  where (k', body) = getBody lam
 
 
+-- Kinds of judgments
 data Judgment = HasType Expr Type | Provable Expr
   deriving (Eq, Show)
 
--- (TODO: hide this constructor when exporting)
 newtype Theorem = Theorem (Context, Judgment)
 
 thmContext :: Theorem -> Context
@@ -263,9 +288,9 @@ funcMk ctx id js =
 schemaMk :: String -> Theorem -> Theorem
 schemaMk id (Theorem (ctx, HasType e (TFunc k1 s1))) =
   case lookup id (ctxList ctx) of
-    (Just (CVar (TSchema k1' s1' k2 s2)))
+    (Just (CVar (TSchema k1' s1' t)))
       | k1 == k1' && s1 == s1' ->
-        Theorem (ctx, HasType (Schema (Free id) e) (TFunc k2 s2))
+        Theorem (ctx, HasType (Schema (Free id) e) t)
 
 eqMk :: Theorem -> Theorem -> Theorem
 eqMk (Theorem (ctx, HasType t1 TTerm)) (Theorem (ctx', HasType t2 TTerm))
@@ -321,7 +346,6 @@ forallFuncMk (Theorem (Context ((id, CVar (TFunc k s)) : ls), HasType e TFormula
 lamMk :: Theorem -> Theorem
 lamMk (Theorem (Context ((id, CVar TTerm) : ls), HasType e (TFunc k s))) =
   Theorem (Context ls, HasType (Lam id (makeBound id e)) (TFunc (k + 1) s))
-
 
 -- Introduction & elimination rules
 -- Pre & post: `Provable ctx p` => `IsPred 0 ctx p`
@@ -476,5 +500,5 @@ forallFuncElim :: Theorem -> Theorem -> Theorem
 forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k s q)))
                (Theorem (ctx', HasType t (TFunc k' s')))
                | ctx == ctx' && k == k' && s == s' =
-                Theorem (ctx,  Provable (makeReplaceFunc t q))
+                Theorem (ctx,  Provable (makeReplaceFunc k t q))
 
