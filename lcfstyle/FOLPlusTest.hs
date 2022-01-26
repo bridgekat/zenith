@@ -61,12 +61,10 @@ data Decl =
   | Any String Decl
   | AnyFunc String Int Sort Decl
   | Assume String Expr Decl
-{-
   | FuncDef String Expr
-  | funcDef String Expr
+  | PredDef String Expr
   | FuncDDef String Expr Proof -- Definite description
   | FuncIDef String Expr Proof -- Indefinite description
--}
 
 -- `StatefulVal s` is a "state monad" (i.e. an expression/procedure that reads & modifies a state when being evaluated).
 newtype StatefulVal s a = StatefulVal { eval :: s -> (a, s) }
@@ -93,20 +91,7 @@ instance Monad (StatefulVal s) where
 type TheoremPool = [Map String Theorem]
 type WithState = StatefulVal TheoremPool
 
--- Add theorem to the topmost pool and return it (for convenience).
-addTheorem :: String -> Theorem -> WithState Theorem
-addTheorem id thm = StatefulVal (\(top : ps) -> (thm, Map.insert id thm top : ps))
-
--- Delete identifier from all pools.
-removeAll :: String -> WithState ()
-removeAll id = StatefulVal (((), ) . map (Map.delete id))
-
-push :: WithState ()
-push = StatefulVal (\ls -> ((), Map.empty : ls))
-
-pop :: WithState ()
-pop = StatefulVal (\(top : ls) -> ((), ls))
-
+-- Look up by name
 lookupPool :: String -> WithState (Maybe Theorem)
 lookupPool id = StatefulVal $ \ls ->
   (foldl
@@ -119,47 +104,34 @@ lookupPool id = StatefulVal $ \ls ->
     Nothing ls,
   ls)
 
--- Apply impliesIntro and then pop.
--- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some formula assumed last 
-assumePop :: WithState ()
-assumePop = StatefulVal $ \(top : second : ls) -> ((),
+-- Add theorem to the topmost pool and return it (for convenience).
+addTheorem :: String -> Theorem -> WithState Theorem
+addTheorem id thm = StatefulVal (\(top : ps) -> (thm, Map.insert id thm top : ps))
+
+push :: WithState ()
+push = StatefulVal (\ls -> ((), Map.empty : ls))
+
+-- Apply a given introduction rule to each theorem, and then pop.
+-- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context
+introPop :: (Theorem -> Theorem) -> WithState ()
+introPop intro = StatefulVal $ \(top : second : ls) -> ((),
   let
     second' = Map.foldlWithKey'
       (\acc id thm ->
         case thmJudgment thm of
-          Provable p -> Map.insert id (impliesIntro thm) acc
+          Provable p -> Map.insert id (intro thm) acc
           _          -> acc)
       second top
   in
     second' : ls)
 
--- Generalize over a variable and then pop.
--- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some variable assumed last
-genPop :: WithState ()
-genPop = StatefulVal $ \(top : second : ls) -> ((),
-  let
-    second' = Map.foldlWithKey'
-      (\acc id thm ->
-        case thmJudgment thm of
-          Provable p            -> Map.insert id (forallIntro thm) acc
-          _                     -> acc)
-      second top
-  in
-    second' : ls)
-
--- Generalize over a function/funcicate and then pop.
--- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some function/funcicate (arity >= 0) assumed last
-genFuncPop :: WithState ()
-genFuncPop = StatefulVal $ \(top : second : ls) -> ((),
-  let
-    second' = Map.foldlWithKey'
-      (\acc id thm ->
-        case thmJudgment thm of
-          Provable p            -> Map.insert id (forallFuncIntro thm) acc
-          _                     -> acc)
-      second top
-  in
-    second' : ls)
+-- If it is an assertion, apply a given introduction rule and return
+introReturn :: (Theorem -> Theorem) -> Maybe Theorem -> WithState (Maybe Theorem)
+introReturn intro thm' = return $ do
+  thm <- thm';
+  case thmJudgment thm of
+    Provable p -> return (intro thm)
+    _          -> Nothing
 
 -- Check if a (non-context-changing) proof is well-formed; returns its judgment.
 checkProof :: Context -> Proof -> WithState Theorem
@@ -224,36 +196,28 @@ checkDecl ctx e = case e of
   (Any x d) -> do
     push;
     thm' <- checkDecl (ctxVar x ctx) d;
-    genPop;
-    -- Return last declaration if it is an assertion
-    return $ do
-      thm <- thm';
-      case thmJudgment thm of
-        Provable p -> return (forallIntro thm)
-        _          -> Nothing
+    introPop forallIntro;
+    introReturn forallIntro thm';
   -- `anyfunc` or `anyfunc` section
   (AnyFunc x k s d) -> do
     push;
     thm' <- checkDecl (ctxFunc x k s ctx) d;
-    genFuncPop;
-    -- Return last declaration if it is an assertion
-    return $ do
-      thm <- thm';
-      case thmJudgment thm of
-        Provable p -> return (forallFuncIntro thm)
-        _          -> Nothing
+    introPop forallFuncIntro;
+    introReturn forallFuncIntro thm';
   -- `assume` section
   (Assume x e d) -> do
     push;
     thm' <- checkDecl (ctxAssumption x (convertAndCheck ctx e)) d;
-    assumePop;
-    -- Return last declaration if it is an assertion
-    return $ do
-      thm <- thm';
-      case thmJudgment thm of
-        Provable p -> return (impliesIntro thm)
-        _          -> Nothing
-
+    introPop impliesIntro;
+    introReturn impliesIntro thm';
+  -- Function definition
+  (FuncDef s e) -> undefined
+  -- Predicate definition
+  (PredDef s e) -> undefined
+  -- Function definition by definite description
+  (FuncDDef s e pf) -> undefined
+  -- Function definition by indefinit description
+  (FuncIDef s e pf) -> undefined
 
 -- TEMP CODE
 
