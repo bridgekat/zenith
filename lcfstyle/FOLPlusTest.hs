@@ -20,8 +20,8 @@ convertAndCheck ctx e = case e of
   (Var (Bound i)) -> error "Please use names for bound variables in the input expression"
   (Func (Free f) ts) -> funcMk ctx f (map (convertAndCheck ctx) ts)
   (Func (Bound i) ts) -> error "Please use names for bound variables in the input expression"
-  (Pred (Free p) ts) -> predMk ctx p (map (convertAndCheck ctx) ts)
-  (Pred (Bound i) ts) -> error "Please use names for bound variables in the input expression"
+  (Schema (Free x) e) -> schemaMk x (convertAndCheck ctx e)
+  (Schema (Bound i) e) -> error "Please use names for bound variables in the input expression"
   (Eq t1 t2) -> eqMk (convertAndCheck ctx t1) (convertAndCheck ctx t2)
   Top -> topMk ctx
   Bottom -> bottomMk ctx
@@ -33,11 +33,8 @@ convertAndCheck ctx e = case e of
   (Forall x e) -> forallMk (convertAndCheck (ctxVar x ctx) e)
   (Exists x e) -> existsMk (convertAndCheck (ctxVar x ctx) e)
   (Unique x e) -> uniqueMk (convertAndCheck (ctxVar x ctx) e)
-  (ForallFunc f k e) -> forallFuncMk (convertAndCheck (ctxFunc f k ctx) e)
-  (ForallPred p k e) -> forallPredMk (convertAndCheck (ctxPred p k ctx) e)
+  (ForallFunc f k s e) -> forallFuncMk (convertAndCheck (ctxFunc f k s ctx) e)
   (Lam x e) -> lamMk (convertAndCheck (ctxVar x ctx) e)
-  (LamFunc x k e) -> lamFuncMk (convertAndCheck (ctxFunc x k ctx) e)
-  (LamPred x k e) -> lamPredMk (convertAndCheck (ctxPred x k ctx) e)
 
 -- Derivation trees (aka. proof terms)
 data Proof =
@@ -54,15 +51,13 @@ data Proof =
   | ExistsI Expr Expr Proof | ExistsE Proof Proof Expr
   | UniqueI Proof Proof     | UniqueL Proof           | UniqueR Proof
   | ForallFuncE Proof Expr
-  | ForallPredE Proof Expr
 
 -- Declarations
 data Decl =
     Block [Decl]
   | Assertion String (Maybe Expr) Proof
   | Any String Decl
-  | AnyFunc String Int Decl
-  | AnyPred String Int Decl
+  | AnyFunc String Int Sort Decl
   | Assume String Expr Decl
 {-
   | FuncDef String Expr
@@ -130,10 +125,9 @@ genPop = StatefulVal $ \(top : second : ls) -> ((),
     second' = Map.foldlWithKey'
       (\acc id thm ->
         case thmJudgment thm of
-          HasType f (TFunc k) -> Map.insert id (lamMk thm) acc
-          HasType f (TPred k) -> Map.insert id (lamMk thm) acc
-          Provable p          -> Map.insert id (forallIntro thm) acc
-          _                   -> acc)
+          HasType e (TFunc k s) -> Map.insert id (lamMk thm) acc
+          Provable p            -> Map.insert id (forallIntro thm) acc
+          _                     -> acc)
       second top
   in
     second' : ls)
@@ -146,22 +140,8 @@ genFuncPop = StatefulVal $ \(top : second : ls) -> ((),
     second' = Map.foldlWithKey'
       (\acc id thm ->
         case thmJudgment thm of
-          Provable p  -> Map.insert id (forallFuncIntro thm) acc
-          HasType e t -> Map.insert id (lamFuncMk thm) acc)
-      second top
-  in
-    second' : ls)
-
--- Generalize over a predicate and then pop.
--- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some predicate assumed last
-genPredPop :: WithState ()
-genPredPop = StatefulVal $ \(top : second : ls) -> ((),
-  let
-    second' = Map.foldlWithKey'
-      (\acc id thm ->
-        case thmJudgment thm of
-          Provable p  -> Map.insert id (forallPredIntro thm) acc
-          HasType e t -> Map.insert id (lamPredMk thm) acc)
+          Provable p            -> Map.insert id (forallFuncIntro thm) acc
+          _                     -> acc)
       second top
   in
     second' : ls)
@@ -213,7 +193,6 @@ checkProof ctx e = case e of
   (UniqueL uni) -> uniqueLeft <$> checkProof ctx uni
   (UniqueR uni) -> uniqueRight <$> checkProof ctx uni
   (ForallFuncE pf f) -> forallFuncElim <$> checkProof ctx pf <*> pure (convertAndCheck ctx f)
-  (ForallPredE pp p) -> forallPredElim <$> checkProof ctx pp <*> pure (convertAndCheck ctx p)
 
 -- Check if a declaration is well-formed; returns the judgment for the last declaration.
 checkDecl :: Context -> Decl -> WithState (Maybe Theorem)
@@ -230,7 +209,7 @@ checkDecl ctx e = case e of
             res <- addTheorem id thm;
             return (Just res);
           Just e''
-            | thmJudgment (convertAndCheck ctx e'') == HasType e' (TPred 0) -> do
+            | thmJudgment (convertAndCheck ctx e'') == HasType e' TFormula -> do
                 res <- addTheorem id thm;
                 return (Just res);
             | otherwise -> error "Statement and proof does not match"
@@ -243,30 +222,19 @@ checkDecl ctx e = case e of
       Nothing  -> return Nothing;
       Just thm ->
         case thmJudgment thm of
-          HasType f (TFunc k) -> return $ Just (lamMk thm);
-          HasType f (TPred k) -> return $ Just (lamMk thm);
-          Provable p          -> return $ Just (forallIntro thm);
-          _                   -> return Nothing;
-  (AnyFunc x k d) -> do
+          HasType f (TFunc k s) -> return $ Just (lamMk thm);
+          Provable p            -> return $ Just (forallIntro thm);
+          _                     -> return Nothing;
+  (AnyFunc x k s d) -> do
     push;
-    thm' <- checkDecl (ctxFunc x k ctx) d;
+    thm' <- checkDecl (ctxFunc x k s ctx) d;
     genFuncPop;
     case thm' of
       Nothing  -> return Nothing;
       Just thm ->
         case thmJudgment thm of
-          Provable p  -> return $ Just (forallFuncIntro thm);
-          HasType e t -> return $ Just (lamFuncMk thm);
-  (AnyPred x k d) -> do
-    push;
-    thm' <- checkDecl (ctxPred x k ctx) d;
-    genPredPop;
-    case thm' of
-      Nothing  -> return Nothing;
-      Just thm ->
-        case thmJudgment thm of
-          Provable p  -> return $ Just (forallPredIntro thm);
-          HasType e t -> return $ Just (lamPredMk thm);
+          Provable p            -> return $ Just (forallFuncIntro thm);
+          _                     -> return Nothing;
   (Assume x e d) -> do
     push;
     thm' <- checkDecl (ctxAssumption x (convertAndCheck ctx e)) d;
@@ -286,14 +254,14 @@ var = Var . Free
 func :: String -> [Expr] -> Expr
 func = Func . Free
 pred :: String -> [Expr] -> Expr
-pred = Pred . Free
+pred = Func . Free
 
 pool :: TheoremPool
 pool = [Map.empty]
 
 decls :: Decl
 decls =
-  AnyPred "L" 2 (AnyPred "B" 3 (Any "Q" (
+  AnyFunc "L" 2 SProp (AnyFunc "B" 3 SProp (Any "Q" (
     Assume "h1" (Forall "x" (Forall "y" (pred "L" [var "x", var "y"] `Implies` Forall "z" (Not (Eq (var "z") (var "y")) `Implies` Not (pred "L" [var "x", var "z"]))))) (
       Assume "h2" (Forall "x" (Forall "y" (Forall "z" (pred "B" [var "x", var "y", var "z"] `Implies` (pred "L" [var "x", var "z"] `Implies` pred "L" [var "x", var "y"]))))) (
         Assume "h3" (Exists "x" (Not (Eq (var "x") (var "Q")) `And` Forall "y" (pred "B" [var "y", var "x", var "Q"]))) (Block [

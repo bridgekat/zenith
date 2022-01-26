@@ -6,19 +6,20 @@
 -- `impliesIntro` and `forallIntro`; additional features are described in `notes/design.md`.
 
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module FOLPlus where
 
 import Data.List
 
 
-data ContextEntry = CVar Type | CHyp Expr
+data CInfo = CVar Type | CHyp Expr
   deriving (Eq, Show)
 
 -- Contraction and permutation should be allowed, but currently they are not needed; weakening is stated below.
 -- If there are naming clashes, later names will override
 -- (TODO: hide this constructor when exporting)
-newtype Context = Context { ctxList :: [(String, ContextEntry)] }
+newtype Context = Context { ctxList :: [(String, CInfo)] }
   deriving (Eq)
 
 instance Show Context where
@@ -29,18 +30,14 @@ ctxEmpty = Context []
 
 ctxVar :: String -> Context -> Context
 ctxVar id (Context ctx) =
-  Context ((id, CVar $ TFunc 0) : ctx)
+  Context ((id, CVar TTerm) : ctx)
 
-ctxFunc :: String -> Int -> Context -> Context
-ctxFunc id arity (Context ctx)
-  | arity >= 0 = Context ((id, CVar $ TFunc arity) : ctx)
-
-ctxPred :: String -> Int -> Context -> Context
-ctxPred id arity (Context ctx)
-  | arity >= 0 = Context ((id, CVar $ TPred arity) : ctx)
+ctxFunc :: String -> Int -> Sort -> Context -> Context
+ctxFunc id arity sort (Context ctx)
+  | arity >= 0 = Context ((id, CVar $ TFunc arity sort) : ctx)
 
 ctxAssumption :: String -> Theorem -> Context
-ctxAssumption id (Theorem (Context ctx, HasType p (TPred 0))) =
+ctxAssumption id (Theorem (Context ctx, HasType p TFormula)) =
   Context ((id, CHyp p) : ctx)
 
 -- Bound variables are represented using de Brujin indices
@@ -48,20 +45,28 @@ ctxAssumption id (Theorem (Context ctx, HasType p (TPred 0))) =
 data VarName = Free String | Bound Int
   deriving (Eq)
 
--- Possible "types" of expressions.
-data Type =
-    TFunc Int
-  | TPred Int
-  | TPiFunc Int Type
-  | TPiPred Int Type
+-- Possible "types" of expressions (proof terms do not count as expressions here):
+--   Terms:      TFunc 0 SVar  (ι)
+--   Functions:  TFunc k SVar  (ι → ... → ι → ι)
+--   Formulas:   TFunc 0 SProp (*)
+--   Predicates: TFunc k SProp (ι → ... → ι → *)
+-- Schemas have exactly one "second-order lambda" in front of them:
+--   TSchema k1 s1 k2 s2 means ((ι → ... → ι → s1) → ι → ... → ι → s2).
+data Sort = SVar | SProp
   deriving (Eq, Show)
+data Type = TFunc Int Sort | TSchema Int Sort Int Sort
+  deriving (Eq, Show)
+
+pattern TTerm :: Type
+pattern TTerm = TFunc 0 SVar
+
+pattern TFormula :: Type
+pattern TFormula = TFunc 0 SProp
 
 data Expr =
     Var VarName
-  -- Partial application is not supported (for data)
   | Func VarName [Expr]
-  | Pred VarName [Expr]
-  | SchemaInst VarName [Expr]
+  | Schema VarName Expr
   | Eq Expr Expr
   | Top    -- To avoid naming clashes I did not use `True` here
   | Bottom -- Also here
@@ -73,38 +78,30 @@ data Expr =
   | Forall String Expr
   | Exists String Expr
   | Unique String Expr
-  -- These must be at the beginning (outermost layers) of an expression
-  | ForallFunc String Int Expr
-  | ForallPred String Int Expr
-  -- These must be at the beginning (outermost layers) of an expression
-  -- LamFunc, LamPred precede Lam
+  -- This must be at the beginning (the outermost layer) of an expression, and can only occur once
+  | ForallFunc String Int Sort Expr
+  -- These must be at the beginning (the outermost layers) of an expression
   | Lam String Expr
-  | LamFunc String Int Expr
-  | LamPred String Int Expr
 
 -- Ignore the names of bound variables when comparing
 instance Eq Expr where
-  (==) (Var x1)             (Var y1)             = x1 == y1
-  (==) (Func x1 x2)         (Func y1 y2)         = x1 == y1 && x2 == y2
-  (==) (Pred x1 x2)         (Pred y1 y2)         = x1 == y1 && x2 == y2
-  (==) (SchemaInst x1 x2)   (SchemaInst y1 y2)   = x1 == y1 && x2 == y2
-  (==) (Eq x1 x2)           (Eq y1 y2)           = x1 == y1 && x2 == y2
-  (==) Top                  Top                  = True
-  (==) Bottom               Bottom               = True
-  (==) (Not x1)             (Not y1)             = x1 == y1
-  (==) (And x1 x2)          (And y1 y2)          = x1 == y1 && x2 == y2
-  (==) (Or x1 x2)           (Or y1 y2)           = x1 == y1 && x2 == y2
-  (==) (Implies x1 x2)      (Implies y1 y2)      = x1 == y1 && x2 == y2
-  (==) (Iff x1 x2)          (Iff y1 y2)          = x1 == y1 && x2 == y2
-  (==) (Forall _ x1)        (Forall _ y1)        = x1 == y1
-  (==) (Exists _ x1)        (Exists _ y1)        = x1 == y1
-  (==) (Unique _ x1)        (Unique _ y1)        = x1 == y1
-  (==) (ForallFunc _ x1 x2) (ForallFunc _ y1 y2) = x1 == y1 && x2 == y2
-  (==) (ForallPred _ x1 x2) (ForallPred _ y1 y2) = x1 == y1 && x2 == y2
-  (==) (Lam _ x1)           (Lam _ y1)           = x1 == y1
-  (==) (LamFunc _ x1 x2)    (LamFunc _ y1 y2)    = x1 == y1 && x2 == y2
-  (==) (LamPred _ x1 x2)    (LamPred _ y1 y2)    = x1 == y1 && x2 == y2
-  (==) _                    _                    = False
+  (==) (Var x1)                (Var y1)                = x1 == y1
+  (==) (Func x1 x2)            (Func y1 y2)            = x1 == y1 && x2 == y2
+  (==) (Schema x1 x2)          (Schema y1 y2)          = x1 == y1 && x2 == y2
+  (==) (Eq x1 x2)              (Eq y1 y2)              = x1 == y1 && x2 == y2
+  (==) Top                     Top                     = True
+  (==) Bottom                  Bottom                  = True
+  (==) (Not x1)                (Not y1)                = x1 == y1
+  (==) (And x1 x2)             (And y1 y2)             = x1 == y1 && x2 == y2
+  (==) (Or x1 x2)              (Or y1 y2)              = x1 == y1 && x2 == y2
+  (==) (Implies x1 x2)         (Implies y1 y2)         = x1 == y1 && x2 == y2
+  (==) (Iff x1 x2)             (Iff y1 y2)             = x1 == y1 && x2 == y2
+  (==) (Forall _ x1)           (Forall _ y1)           = x1 == y1
+  (==) (Exists _ x1)           (Exists _ y1)           = x1 == y1
+  (==) (Unique _ x1)           (Unique _ y1)           = x1 == y1
+  (==) (ForallFunc _ x1 x2 x3) (ForallFunc _ y1 y2 y3) = x1 == y1 && x2 == y2 && x3 == y3
+  (==) (Lam _ x1)              (Lam _ y1)              = x1 == y1
+  (==) _                       _                       = False
 
 newName :: String -> [String] -> String
 newName x used
@@ -116,11 +113,10 @@ showName stk (Free s)  = s
 showName stk (Bound i) = stk !! i
 
 showE :: [String] -> [String] -> Expr -> String
-showE used stk e = case e of
+showE used stk e' = case e' of
   (Var x) -> showName stk x
   (Func x as) -> "(" ++ showName stk x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
-  (Pred x as) -> "(" ++ showName stk x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
-  (SchemaInst x as) -> "(" ++ showName stk x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
+  (Schema x e) -> "(" ++ showName stk x ++ " " ++ showE used stk e ++ ")"
   (Eq t1 t2) -> "(" ++ showE used stk t1 ++ " = " ++ showE used stk t2 ++ ")"
   Top -> "true"
   Bottom -> "false"
@@ -132,11 +128,9 @@ showE used stk e = case e of
   (Forall x e) -> "(forall " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (Exists x e) -> "(exists " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
   (Unique x e) -> "(unique " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
-  (ForallFunc x k e) -> "(forallfunc " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
-  (ForallPred x k e) -> "(forallpred " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
-  (Lam x e) -> "(any " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
-  (LamFunc x k e) -> "(anyfunc " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
-  (LamPred x k e) -> "(anypred " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (ForallFunc x k SVar  e) -> "(forallfunc " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (ForallFunc x k SProp e) -> "(forallpred " ++ x' ++ "/" ++ show k ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (Lam x e) -> "any " ++ x' ++ ", " ++ showE (x' : used) (x' : stk) e where x' = newName x used
 
 inContextShowE :: Context -> Expr -> String
 inContextShowE (Context ls) = showE (map fst ls) []
@@ -149,8 +143,7 @@ updateVars :: Int -> (Int -> VarName -> Expr) -> Expr -> Expr
 updateVars n f e = case e of
   (Var x) -> f n x
   (Func x es) -> Func x (map (updateVars n f) es)
-  (Pred x es) -> Pred x (map (updateVars n f) es)
-  (SchemaInst x es) -> SchemaInst x (map (updateVars n f) es)
+  (Schema x e) -> Schema x (updateVars n f e)
   (Eq e1 e2) -> Eq (updateVars n f e1) (updateVars n f e2)
   Top -> e
   Bottom -> e
@@ -162,11 +155,8 @@ updateVars n f e = case e of
   (Forall x e1) -> Forall x (updateVars (n + 1) f e1)
   (Exists x e1) -> Exists x (updateVars (n + 1) f e1)
   (Unique x e1) -> Unique x (updateVars (n + 1) f e1)
-  (ForallFunc x k e1) -> ForallFunc x k (updateVars (n + 1) f e1)
-  (ForallPred x k e1) -> ForallPred x k (updateVars (n + 1) f e1)
+  (ForallFunc x k s e1) -> ForallFunc x k s (updateVars (n + 1) f e1)
   (Lam x e1) -> Lam x (updateVars (n + 1) f e1)
-  (LamFunc x k e1) -> LamFunc x k (updateVars (n + 1) f e1)
-  (LamPred x k e1) -> LamPred x k (updateVars (n + 1) f e1)
 
 -- Replace occurrences of a free variable by a given term
 -- Pre: t is a well-formed term
@@ -208,9 +198,8 @@ getBody e = e
 updateFunc :: Int -> (Int -> VarName -> [Expr] -> Expr) -> Expr -> Expr
 updateFunc n f e = case e of
   (Var x) -> e
+  (Schema x e) -> Schema x (updateFunc n f e)
   (Func x es) -> f n x args where args = map (updateFunc n f) es
-  (Pred x es) -> Pred x (map (updateFunc n f) es)
-  (SchemaInst x es) -> SchemaInst x (map (updateFunc n f) es)
   (Eq e1 e2) -> Eq (updateFunc n f e1) (updateFunc n f e2)
   Top -> e
   Bottom -> e
@@ -222,11 +211,8 @@ updateFunc n f e = case e of
   (Forall x e1) -> Forall x (updateFunc (n + 1) f e1)
   (Exists x e1) -> Exists x (updateFunc (n + 1) f e1)
   (Unique x e1) -> Unique x (updateFunc (n + 1) f e1)
-  (ForallFunc x k e1) -> ForallFunc x k (updateFunc (n + 1) f e1)
-  (ForallPred x k e1) -> ForallPred x k (updateFunc (n + 1) f e1)
+  (ForallFunc x k s e1) -> ForallFunc x k s (updateFunc (n + 1) f e1)
   (Lam x e1) -> Lam x (updateFunc (n + 1) f e1)
-  (LamFunc x k e1) -> LamFunc x k (updateFunc (n + 1) f e1)
-  (LamPred x k e1) -> LamPred x k (updateFunc (n + 1) f e1)
 
 makeBoundFunc :: String -> Expr -> Expr
 makeBoundFunc id = updateFunc 0 (\n f args -> if f == Free id then Func (Bound n) args else Func f args)
@@ -234,37 +220,6 @@ makeBoundFunc id = updateFunc 0 (\n f args -> if f == Free id then Func (Bound n
 makeReplaceFunc :: Expr -> Expr -> Expr
 makeReplaceFunc lamt = updateFunc 0 (\n f args -> if f == Bound n then makeReplace' args t else Func f args)
   where t = getBody lamt
-
--- n = (number of binders on top of current node)
-updatePred :: Int -> (Int -> VarName -> [Expr] -> Expr) -> Expr -> Expr
-updatePred n f e = case e of
-  (Var x) -> e
-  (Func x es) -> Func x (map (updatePred n f) es)
-  (Pred x es) -> f n x args where args = map (updatePred n f) es
-  (SchemaInst x es) -> SchemaInst x (map (updatePred n f) es)
-  (Eq e1 e2) -> Eq (updatePred n f e1) (updatePred n f e2)
-  Top -> e
-  Bottom -> e
-  (Not e1) -> Not (updatePred n f e1)
-  (And e1 e2) -> And (updatePred n f e1) (updatePred n f e2)
-  (Or e1 e2) -> Or (updatePred n f e1) (updatePred n f e2)
-  (Implies e1 e2) -> Implies (updatePred n f e1) (updatePred n f e2)
-  (Iff e1 e2) -> Iff (updatePred n f e1) (updatePred n f e2)
-  (Forall x e1) -> Forall x (updatePred (n + 1) f e1)
-  (Exists x e1) -> Exists x (updatePred (n + 1) f e1)
-  (Unique x e1) -> Unique x (updatePred (n + 1) f e1)
-  (ForallFunc x k e1) -> ForallFunc x k (updatePred (n + 1) f e1)
-  (ForallPred x k e1) -> ForallPred x k (updatePred (n + 1) f e1)
-  (Lam x e1) -> Lam x (updatePred (n + 1) f e1)
-  (LamFunc x k e1) -> LamFunc x k (updatePred (n + 1) f e1)
-  (LamPred x k e1) -> LamPred x k (updatePred (n + 1) f e1)
-
-makeBoundPred :: String -> Expr -> Expr
-makeBoundPred id = updatePred 0 (\n p args -> if p == Free id then Pred (Bound n) args else Pred p args)
-
-makeReplacePred :: Expr -> Expr -> Expr
-makeReplacePred lamphi = updatePred 0 (\n p args -> if p == Bound n then makeReplace' args phi else Pred p args)
-  where phi = getBody lamphi
 
 
 data Judgment = HasType Expr Type | Provable Expr
@@ -291,110 +246,81 @@ weaken (Theorem (ctx, j)) ctx' =
 -- Formation rules (as in `notes/design.md`)
 
 varMk :: Context -> String -> Theorem
-varMk ctx id = case lookup id (ctxList ctx) of
-  (Just (CVar t))
-    | t == TFunc 0 -> Theorem (ctx, HasType (Var (Free id)) (TFunc 0))
+varMk ctx id =
+  case lookup id (ctxList ctx) of
+    (Just (CVar TTerm)) ->
+      Theorem (ctx, HasType (Var (Free id)) TTerm)
 
 funcMk :: Context -> String -> [Theorem] -> Theorem
-funcMk ctx id js = case lookup id (ctxList ctx) of
-  (Just (CVar t))
-    | t == TFunc (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, HasType (Func (Free id) as) (TFunc 0))
-    where
-      (ctxs, as) = unzip . map (\x -> let Theorem (c, HasType t (TFunc 0)) = x in (c, t)) $ js
+funcMk ctx id js =
+  case lookup id (ctxList ctx) of
+    (Just (CVar (TFunc l s)))
+      | l == length as && all (== ctx) ctxs ->
+        Theorem (ctx, HasType (Func (Free id) as) (TFunc 0 s))
+      where
+        (ctxs, as) = unzip . map (\x -> let Theorem (c, HasType t TTerm) = x in (c, t)) $ js
 
-predMk :: Context -> String -> [Theorem] -> Theorem
-predMk ctx id js = case lookup id (ctxList ctx) of
-  (Just (CVar t))
-    | t == TPred (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, HasType (Pred (Free id) as) (TPred 0))
-    where
-      (ctxs, as) = unzip . map (\x -> let Theorem (c, HasType t (TFunc 0)) = x in (c, t)) $ js
-
--- TODO: schemaInstMk ...
+schemaMk :: String -> Theorem -> Theorem
+schemaMk id (Theorem (ctx, HasType e (TFunc k1 s1))) =
+  case lookup id (ctxList ctx) of
+    (Just (CVar (TSchema k1' s1' k2 s2)))
+      | k1 == k1' && s1 == s1' ->
+        Theorem (ctx, HasType (Schema (Free id) e) (TFunc k2 s2))
 
 eqMk :: Theorem -> Theorem -> Theorem
-eqMk (Theorem (ctx, HasType t1 (TFunc 0))) (Theorem (ctx', HasType t2 (TFunc 0)))
-  | ctx == ctx' = Theorem (ctx, HasType (Eq t1 t2) (TPred 0))
+eqMk (Theorem (ctx, HasType t1 TTerm)) (Theorem (ctx', HasType t2 TTerm))
+  | ctx == ctx' = Theorem (ctx, HasType (Eq t1 t2) TFormula)
 
 topMk :: Context -> Theorem
-topMk ctx = Theorem (ctx, HasType Top (TPred 0))
+topMk ctx = Theorem (ctx, HasType Top TFormula)
 
 bottomMk :: Context -> Theorem
-bottomMk ctx = Theorem (ctx, HasType Bottom (TPred 0))
+bottomMk ctx = Theorem (ctx, HasType Bottom TFormula)
 
 notMk :: Theorem -> Theorem
-notMk (Theorem (ctx, HasType e (TPred 0))) =
-  Theorem (ctx, HasType (Not e) (TPred 0))
+notMk (Theorem (ctx, HasType e TFormula)) =
+  Theorem (ctx, HasType (Not e) TFormula)
 
 andMk :: Theorem -> Theorem -> Theorem
-andMk (Theorem (ctx, HasType e1 (TPred 0))) (Theorem (ctx', HasType e2 (TPred 0)))
-  | ctx == ctx' = Theorem (ctx, HasType (And e1 e2) (TPred 0))
+andMk (Theorem (ctx, HasType e1 TFormula)) (Theorem (ctx', HasType e2 TFormula))
+  | ctx == ctx' = Theorem (ctx, HasType (And e1 e2) TFormula)
 
 orMk :: Theorem -> Theorem -> Theorem
-orMk (Theorem (ctx, HasType e1 (TPred 0))) (Theorem (ctx', HasType e2 (TPred 0)))
-  | ctx == ctx' = Theorem (ctx, HasType (Or e1 e2) (TPred 0))
+orMk (Theorem (ctx, HasType e1 TFormula)) (Theorem (ctx', HasType e2 TFormula))
+  | ctx == ctx' = Theorem (ctx, HasType (Or e1 e2) TFormula)
 
 impliesMk :: Theorem -> Theorem -> Theorem
-impliesMk (Theorem (ctx, HasType e1 (TPred 0))) (Theorem (ctx', HasType e2 (TPred 0)))
-  | ctx == ctx' = Theorem (ctx, HasType (Implies e1 e2) (TPred 0))
+impliesMk (Theorem (ctx, HasType e1 TFormula)) (Theorem (ctx', HasType e2 TFormula))
+  | ctx == ctx' = Theorem (ctx, HasType (Implies e1 e2) TFormula)
 
 iffMk :: Theorem -> Theorem -> Theorem
-iffMk (Theorem (ctx, HasType e1 (TPred 0))) (Theorem (ctx', HasType e2 (TPred 0)))
-  | ctx == ctx' = Theorem (ctx, HasType (Iff e1 e2) (TPred 0))
+iffMk (Theorem (ctx, HasType e1 TFormula)) (Theorem (ctx', HasType e2 TFormula))
+  | ctx == ctx' = Theorem (ctx, HasType (Iff e1 e2) TFormula)
 
 -- (Context-changing rule)
 forallMk :: Theorem -> Theorem
-forallMk (Theorem (Context ((id, CVar (TFunc 0)) : ls), HasType e (TPred 0))) =
-  Theorem (Context ls, HasType (Forall id (makeBound id e)) (TPred 0))
+forallMk (Theorem (Context ((id, CVar TTerm) : ls), HasType e TFormula)) =
+  Theorem (Context ls, HasType (Forall id (makeBound id e)) TFormula)
 
 -- (Context-changing rule)
 existsMk :: Theorem -> Theorem
-existsMk (Theorem (Context ((id, CVar (TFunc 0)) : ls), HasType e (TPred 0))) =
-  Theorem (Context ls, HasType (Exists id (makeBound id e)) (TPred 0))
+existsMk (Theorem (Context ((id, CVar TTerm) : ls), HasType e TFormula)) =
+  Theorem (Context ls, HasType (Exists id (makeBound id e)) TFormula)
 
 -- (Context-changing rule)
 uniqueMk :: Theorem -> Theorem
-uniqueMk (Theorem (Context ((id, CVar (TFunc 0)) : ls), HasType e (TPred 0))) =
-  Theorem (Context ls, HasType (Unique id (makeBound id e)) (TPred 0))
+uniqueMk (Theorem (Context ((id, CVar TTerm) : ls), HasType e TFormula)) =
+  Theorem (Context ls, HasType (Unique id (makeBound id e)) TFormula)
 
 -- (Context-changing rule)
 forallFuncMk :: Theorem -> Theorem
-forallFuncMk (Theorem (Context ((id, CVar (TFunc k)) : ls), HasType e (TPred 0))) =
-  Theorem (Context ls, HasType (ForallFunc id k (makeBoundFunc id e)) (TPred 0))
-
--- (Context-changing rule)
-forallPredMk :: Theorem -> Theorem
-forallPredMk (Theorem (Context ((id, CVar (TPred k)) : ls), HasType e (TPred 0))) =
-  Theorem (Context ls, HasType (ForallPred id k (makeBoundPred id e)) (TPred 0))
+forallFuncMk (Theorem (Context ((id, CVar (TFunc k s)) : ls), HasType e TFormula)) =
+  Theorem (Context ls, HasType (ForallFunc id k s (makeBoundFunc id e)) TFormula)
 
 -- (Context-changing rule)
 lamMk :: Theorem -> Theorem
-lamMk (Theorem (Context ((id, CVar (TFunc 0)) : ls), HasType e (TFunc k))) =
-  Theorem (Context ls, HasType (Lam id (makeBound id e)) (TFunc (k + 1)))
-lamMk (Theorem (Context ((id, CVar (TFunc 0)) : ls), HasType e (TPred k))) =
-  Theorem (Context ls, HasType (Lam id (makeBound id e)) (TPred (k + 1)))
-
--- (Context-changing rule)
-lamFuncMk :: Theorem -> Theorem
-lamFuncMk (Theorem (Context ((id, CVar (TFunc a)) : ls), HasType e t)) =
-  Theorem (Context ls, HasType (LamFunc id a (makeBound id e)) (TPiFunc a t))
-
--- (Context-changing rule)
-lamPredMk :: Theorem -> Theorem
-lamPredMk (Theorem (Context ((id, CVar (TPred a)) : ls), HasType e t)) =
-  Theorem (Context ls, HasType (LamPred id a (makeBound id e)) (TPiPred a t))
-
--- (This is not needed?)
-{-
--- Not a "formation rule", exactly...
--- (The presence of a lambda binder should ensure k > 0)
-appMk :: Theorem -> Theorem -> Theorem
-appMk (Theorem (ctx, HasType (Lam x e1) (TFunc k))) (Theorem (ctx', HasType e2 (TFunc 0)))
-  | ctx == ctx' = Theorem (ctx, HasType (makeReplace e2 e1) (TFunc (k - 1)))
-appMk (Theorem (ctx, HasType (Lam x e1) (TPred k))) (Theorem (ctx', HasType e2 (TFunc 0)))
-  | ctx == ctx' = Theorem (ctx, HasType (makeReplace e2 e1) (TPred (k - 1)))
--}
+lamMk (Theorem (Context ((id, CVar TTerm) : ls), HasType e (TFunc k s))) =
+  Theorem (Context ls, HasType (Lam id (makeBound id e)) (TFunc (k + 1) s))
 
 
 -- Introduction & elimination rules
@@ -409,30 +335,30 @@ andIntro :: Theorem -> Theorem -> Theorem
 andIntro (Theorem (ctx,  Provable p))
          (Theorem (ctx', Provable q))
          | ctx == ctx' =
-          Theorem (ctx,  Provable (And p q)) 
+          Theorem (ctx,  Provable (p `And` q)) 
 
 andLeft :: Theorem -> Theorem
-andLeft (Theorem (ctx, Provable (And p q))) =
+andLeft (Theorem (ctx, Provable (p `And` q))) =
          Theorem (ctx, Provable p) 
 
 andRight :: Theorem -> Theorem
-andRight (Theorem (ctx, Provable (And p q))) =
+andRight (Theorem (ctx, Provable (p `And` q))) =
           Theorem (ctx, Provable q)
 
 orLeft :: Theorem -> Theorem -> Theorem
 orLeft (Theorem (ctx,  Provable p))
-       (Theorem (ctx', HasType q (TPred 0)))
+       (Theorem (ctx', HasType q TFormula))
        | ctx == ctx' =
-        Theorem (ctx,  Provable (Or p q))
+        Theorem (ctx,  Provable (p `Or` q))
 
 orRight :: Theorem -> Theorem -> Theorem
-orRight (Theorem (ctx,  HasType p (TPred 0)))
+orRight (Theorem (ctx,  HasType p TFormula))
         (Theorem (ctx', Provable q))
         | ctx == ctx' =
-         Theorem (ctx,  Provable (Or p q))
+         Theorem (ctx,  Provable (p `Or` q))
 
 orElim :: Theorem -> Theorem -> Theorem -> Theorem
-orElim (Theorem (ctx,   Provable (Or p q)))
+orElim (Theorem (ctx,   Provable (p `Or` q)))
        (Theorem (ctx',  Provable (p' `Implies` r)))
        (Theorem (ctx'', Provable (q' `Implies` r')))
        | ctx == ctx' && ctx == ctx'' && p == p' && q == q' && r == r' =
@@ -482,7 +408,7 @@ trueIntro ctx = Theorem (ctx, Provable Top)
 
 falseElim :: Theorem -> Theorem -> Theorem
 falseElim (Theorem (ctx,  Provable Bottom))
-          (Theorem (ctx', HasType p (TPred 0)))
+          (Theorem (ctx', HasType p TFormula))
           | ctx == ctx' =
            Theorem (ctx,  Provable p)
 
@@ -491,11 +417,11 @@ raa (Theorem (ctx, Provable (Not p `Implies` Bottom))) =
      Theorem (ctx, Provable p)
 
 eqIntro :: Theorem -> Theorem
-eqIntro (Theorem (ctx, HasType t (TFunc 0))) =
+eqIntro (Theorem (ctx, HasType t TTerm)) =
          Theorem (ctx, Provable (t `Eq` t))
 
 eqElim :: Theorem -> Theorem -> Theorem -> Theorem
-eqElim (Theorem (ctx,   HasType (Lam x px) (TPred 1)))
+eqElim (Theorem (ctx,   HasType (Lam x px) (TFunc 1 SProp)))
        (Theorem (ctx',  Provable (a `Eq` b)))
        (Theorem (ctx'', Provable pa))
        | ctx == ctx' && pa == makeReplace a px =
@@ -503,18 +429,18 @@ eqElim (Theorem (ctx,   HasType (Lam x px) (TPred 1)))
 
 -- (Context-changing rule)
 forallIntro :: Theorem -> Theorem
-forallIntro (Theorem (Context ((id, CVar (TFunc 0)) : ls), Provable p)) =
+forallIntro (Theorem (Context ((id, CVar TTerm) : ls), Provable p)) =
              Theorem (Context ls, Provable (Forall id (makeBound id p)))
 
 forallElim :: Theorem -> Theorem -> Theorem
 forallElim (Theorem (ctx,  Provable (Forall x q)))
-           (Theorem (ctx', HasType t (TFunc 0)))
+           (Theorem (ctx', HasType t TTerm))
            | ctx == ctx' =
             Theorem (ctx,  Provable (makeReplace t q))
 
 existsIntro :: Theorem -> Theorem -> Theorem -> Theorem
-existsIntro (Theorem (ctx',  HasType (Exists x p) (TPred 0)))
-            (Theorem (ctx'', HasType t (TFunc 0)))
+existsIntro (Theorem (ctx',  HasType (Exists x p) TFormula))
+            (Theorem (ctx'', HasType t TTerm))
             (Theorem (ctx,   Provable pt))
             | ctx == ctx' && pt == makeReplace t p =
              Theorem (ctx,   Provable (Exists x p))
@@ -522,7 +448,7 @@ existsIntro (Theorem (ctx',  HasType (Exists x p) (TPred 0)))
 existsElim :: Theorem -> Theorem -> Theorem -> Theorem
 existsElim (Theorem (ctx,   Provable (Exists x p)))
            (Theorem (ctx',  Provable (Forall y (p' `Implies` q))))
-           (Theorem (ctx'', HasType q' (TPred 0)))
+           (Theorem (ctx'', HasType q' TFormula))
            | ctx == ctx' && ctx == ctx'' && p == p' && q == q' =
             Theorem (ctx,   Provable q)
 
@@ -543,23 +469,12 @@ uniqueRight (Theorem (ctx, Provable (Unique x px))) =
 
 -- (Context-changing rule)
 forallFuncIntro :: Theorem -> Theorem
-forallFuncIntro (Theorem (Context ((id, CVar (TFunc k)) : ls), Provable p)) =
-                 Theorem (Context ls, Provable (ForallFunc id k (makeBoundFunc id p)))
+forallFuncIntro (Theorem (Context ((id, CVar (TFunc k s)) : ls), Provable p)) =
+                 Theorem (Context ls, Provable (ForallFunc id k s (makeBoundFunc id p)))
 
 forallFuncElim :: Theorem -> Theorem -> Theorem
-forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k q)))
-               (Theorem (ctx', HasType t (TFunc k')))
-               | ctx == ctx' && k == k' =
+forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k s q)))
+               (Theorem (ctx', HasType t (TFunc k' s')))
+               | ctx == ctx' && k == k' && s == s' =
                 Theorem (ctx,  Provable (makeReplaceFunc t q))
-
--- (Context-changing rule)
-forallPredIntro :: Theorem -> Theorem
-forallPredIntro (Theorem (Context ((id, CVar (TPred k)) : ls), Provable p)) =
-                 Theorem (Context ls, Provable (ForallPred id k (makeBoundPred id p)))
-
-forallPredElim :: Theorem -> Theorem -> Theorem
-forallPredElim (Theorem (ctx,  Provable (ForallPred p k q)))
-               (Theorem (ctx', HasType phi (TPred k')))
-               | ctx == ctx' && k == k' =
-                Theorem (ctx,  Provable (makeReplacePred phi q))
 
