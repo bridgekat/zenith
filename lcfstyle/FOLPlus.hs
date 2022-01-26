@@ -59,17 +59,20 @@ ctxEmpty :: Context
 ctxEmpty = Context [[]]
 
 ctxVar :: String -> Context -> Context
-ctxVar id (Context a) =
-  Context (a ++ [[(id, CVar TTerm)]])
+ctxVar id ctx@(Context a)
+  | id `notElem` ctxAllNames ctx = Context (a ++ [[(id, CVar TTerm)]])
+  | otherwise = error ("ctxVar: name " ++ id ++ "already taken")
 
 ctxFunc :: String -> Int -> Sort -> Context -> Context
-ctxFunc id arity sort (Context a)
-  | arity >= 0 = Context (a ++ [[(id, CVar $ TFunc arity sort)]])
+ctxFunc id arity sort ctx@(Context a)
+  | id `notElem` ctxAllNames ctx && arity >= 0 = Context (a ++ [[(id, CVar $ TFunc arity sort)]])
+  | arity >= 0 = error ("ctxFunc: name " ++ id ++ "already taken")
   | otherwise  = error "ctxFunc: Negative arity"
 
 ctxAssumption :: String -> Theorem -> Context
-ctxAssumption id (Theorem (Context a, HasType p TFormula)) =
-  Context (a ++ [[(id, CHyp p)]])
+ctxAssumption id (Theorem (ctx@(Context a), HasType p TFormula))
+  | id `notElem` ctxAllNames ctx = Context (a ++ [[(id, CHyp p)]])
+  | otherwise     = error ("ctxAssumption: name " ++ id ++ "already taken")
 ctxAssumption _ _ = error "ctxAssumption: not a formula"
 
 -- Returns True if the first context is an extension of the second one (used in the weakening rule)
@@ -343,35 +346,36 @@ iffMk (Theorem (ctx,  HasType e1 TFormula))
 forallMk :: Theorem -> Theorem
 forallMk (Theorem (ctx,  HasType e TFormula)) =
           Theorem (ctx', HasType (Forall s' e') TFormula)
-  where (ctx', s', e') = ctxGenPop ctx e
+  where (ctx', s', 0, SVar, e') = ctxGenPop ctx e
 forallMk _ = error "forallMk: invalid application"
 
 -- (Context-changing rule)
 existsMk :: Theorem -> Theorem
 existsMk (Theorem (ctx,  HasType e TFormula)) =
           Theorem (ctx', HasType (Exists s' e') TFormula)
-  where (ctx', s', e') = ctxGenPop ctx e
+  where (ctx', s', 0, SVar, e') = ctxGenPop ctx e
 existsMk _ = error "existsMk: invalid application"
 
 -- (Context-changing rule)
 uniqueMk :: Theorem -> Theorem
 uniqueMk (Theorem (ctx,  HasType e TFormula)) =
           Theorem (ctx', HasType (Unique s' e') TFormula)
-  where (ctx', s', e') = ctxGenPop ctx e
+  where (ctx', s', 0, SVar, e') = ctxGenPop ctx e
 uniqueMk _ = error "uniqueMk: invalid application"
 
 -- (Context-changing rule)
 forallFuncMk :: Theorem -> Theorem
 forallFuncMk (Theorem (ctx,  HasType e TFormula)) =
               Theorem (ctx', HasType (ForallFunc str' k' s' e') TFormula)
-  where (ctx', str', k', s', e') = ctxGenFuncPop ctx e
+  where (ctx', str', k', s', e') = ctxGenPop ctx e
 forallFuncMk _ = error "forallFuncMk: invalid application"
 
 -- (Context-changing rule)
 lamMk :: Theorem -> Theorem
 lamMk (Theorem (ctx,  HasType e (TFunc k sort))) =
        Theorem (ctx', HasType (Lam s' e') (TFunc (k + 1) sort))
-  where (ctx', s', e') = ctxGenPop ctx e
+  where (ctx', s', 0, SVar, e') = ctxGenPop ctx e
+lamMk _ = error "lamMk: invalid application"
 
 -- Introduction & elimination rules
 -- Pre & post: `Provable ctx p` => `IsPred 0 ctx p`
@@ -418,8 +422,8 @@ orElim (Theorem (ctx,   Provable (p `Or` q)))
 -- (Context-changing rule)
 impliesIntro :: Theorem -> Theorem
 impliesIntro (Theorem (ctx,  Provable q)) =
-              Theorem (ctx', Provable (p' `Implies` q'))
-  where (ctx', p', q') = ctxAssumePop ctx q
+              Theorem (ctx', Provable (p' `Implies` q))
+  where (ctx', p') = ctxAssumePop ctx
 
 impliesElim :: Theorem -> Theorem -> Theorem
 impliesElim (Theorem (ctx,  Provable (p `Implies` q)))
@@ -483,7 +487,7 @@ eqElim (Theorem (ctx,   HasType (Lam x px) (TFunc 1 SProp)))
 forallIntro :: Theorem -> Theorem
 forallIntro (Theorem (ctx,  Provable p)) =
              Theorem (ctx', Provable (Forall s' p'))
-  where (ctx', s', p') = ctxGenPop ctx p
+  where (ctx', s', 0, SVar, p') = ctxGenPop ctx p
 
 forallElim :: Theorem -> Theorem -> Theorem
 forallElim (Theorem (ctx,  Provable (Forall x q)))
@@ -524,7 +528,7 @@ uniqueRight (Theorem (ctx, Provable (Unique x px))) =
 forallFuncIntro :: Theorem -> Theorem
 forallFuncIntro (Theorem (ctx,  Provable p)) =
                  Theorem (ctx', Provable (ForallFunc str' k' s' p'))
-  where (ctx', str', k', s', p') = ctxGenFuncPop ctx p
+  where (ctx', str', k', s', p') = ctxGenPop ctx p
 
 forallFuncElim :: Theorem -> Theorem -> Theorem
 forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k s q)))
@@ -536,11 +540,13 @@ forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k s q)))
 
 -- (Hidden)
 ctxAddDef :: String -> Type -> Context -> Context
-ctxAddDef s t (Context a) = Context (init a ++ [last a ++ [(s, CVar t)]])
+ctxAddDef id t ctx@(Context a)
+  | id `notElem` ctxAllNames ctx = Context (init a ++ [last a ++ [(id, CVar t)]])
+  | otherwise                    = error ("ctxAddDef: name " ++ id ++ "already taken")
 
 -- Function/predicate definition
 funcDef :: String -> Sort -> Theorem -> Theorem
-funcDef id SVar (Theorem (ctx,  HasType t TTerm)) =
+funcDef id SVar (Theorem (ctx,  HasType t TTerm)) = 
                  Theorem (ctx', Provable (Var (Free id) [] `Eq` t))
   where ctx' = ctxAddDef id (TFunc 0 SVar) ctx
 
@@ -563,58 +569,35 @@ funcIDef id (Theorem (ctx,  Provable (Exists _ p))) =
 -- Definition generalization rules (executed on context in context-changing rules)
 
 -- (Hidden)
-ctxAssumePop :: Context -> Expr -> (Context, Expr, Expr)
-ctxAssumePop (Context a) e = (Context (ls ++ [put l l']), hyp, modify e)
+ctxAssumePop :: Context -> (Context, Expr)
+ctxAssumePop (Context a) = (Context (ls ++ [put l l']), hyp)
   where
     (l, l', ls) = (last a, last (init a), init (init a))
-    ((_, CHyp hyp) : _) = l -- The hypothesized formula
-    level = length a - 1
-    begin = length l'
+    (_, CHyp hyp) = head l -- The hypothesized formula
     -- Put the definitions in the topmost layer into the second-to-top layer.
     put (_ : defs) l' = l' ++ defs
-    -- Modify the expression to reflect changes in definitions (none)
-    modify = id
 
 -- (Hidden)
-ctxGenPop :: Context -> Expr -> (Context, String, Expr)
-ctxGenPop (Context a) e = (Context (ls ++ [put l l']), name, modify e)
+ctxGenPop :: Context -> Expr -> (Context, String, Int, Sort, Expr)
+ctxGenPop (Context a) e = (Context (ls ++ [put l l']), name, k, s, modify e)
   where
     (l, l', ls) = (last a, last (init a), init (init a))
-    ((name, CVar TTerm) : _) = l -- The name of the hypothesized variable
-    ids = map fst (tail l)       -- The names of definitions in the last layer (excluding the hypothesized one)
+    (name, CVar (TFunc k s)) = head l -- The name, arity and sort of the hypothesized variable
+    ids = map fst (tail l)            -- The names of definitions in the last layer (excluding the hypothesized one)
+    
     -- Put the definitions in the topmost layer into the second-to-top layer,
-    -- adding arity by one (TFunc) or adding abstraction over nullary function (TSchema)
+    -- adding abstraction over the hypothesized variable.
     put (_ : defs) l' =
       l' ++
       map (\(name, CVar t) -> case t of
-        (TFunc k s)        -> (name, CVar $ TFunc (k + 1) s)
-        (TSchema {})       -> (name, CVar $ TSchema 0 SVar t))
-        defs
-    -- Modify the expression to reflect changes in definitions,
-    -- then prepare to bind the hypothesized variable.
-    modify =
-      updateVars 0 (\n x args -> case x of
-        (Free id) | id `elem` ids -> Var (Free id) (Var (Bound n) [] : args)
-                  | id == name    -> Var (Bound n) args
-        _                         -> Var x args)
-
--- (Hidden)
-ctxGenFuncPop :: Context -> Expr -> (Context, String, Int, Sort, Expr)
-ctxGenFuncPop (Context a) e = (Context (ls ++ [put l l']), name, k, s, modify e)
-  where
-    (l, l', ls) = (last a, last (init a), init (init a))
-    ((name, CVar (TFunc k s)) : _) = l -- The name, arity and sort of the hypothesized function/predicate
-    ids = map fst (tail l)             -- The names of definitions in the last layer (excluding the hypothesized one)
-    -- Put the definitions in the topmost layer into the second-to-top layer,
-    -- adding abstraction over k-ary function/predicate.
-    put (_ : defs) l' =
-      l' ++
-      map (\(name, CVar t) -> case t of
-        (TFunc {})         -> (name, CVar $ TSchema k s t)
+        (TFunc k' s')      -> if (k, s) == (0, SVar)
+                              then (name, CVar $ TFunc (k' + 1) s')
+                              else (name, CVar $ TSchema k s t)
         (TSchema {})       -> (name, CVar $ TSchema k s t))
         defs
+    
     -- Modify the expression to reflect changes in definitions,
-    -- then prepare to bind the hypothesized function/predicate variable.
+    -- then prepare to bind the hypothesized variable.
     modify =
       updateVars 0 (\n x args -> case x of
         (Free id) | id `elem` ids -> Var (Free id) (Var (Bound n) [] : args)

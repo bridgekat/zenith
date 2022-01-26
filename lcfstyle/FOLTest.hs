@@ -8,8 +8,8 @@ import FOL
 convertAndCheck' :: Context -> Expr -> Theorem
 convertAndCheck' ctx e = case e of
   (Var (Free x)) -> varMk ctx x
-  (Func (Free f) ts) -> funcMk ctx f (map (convertAndCheck ctx) ts)
-  (Pred (Free p) ts) -> predMk ctx p (map (convertAndCheck ctx) ts)
+  (Func f ts) -> funcMk ctx f (map (convertAndCheck ctx) ts)
+  (Pred p ts) -> predMk ctx p (map (convertAndCheck ctx) ts)
   (Eq t1 t2) -> eqMk (convertAndCheck ctx t1) (convertAndCheck ctx t2)
   Top -> topMk
   Bottom -> bottomMk
@@ -28,8 +28,8 @@ convertAndCheck ctx e = weaken (convertAndCheck' ctx e) ctx
 -- TEMP CODE
 
 var = Var . Free
-func = Func . Free
-pred = Pred . Free
+func = Func
+pred = Pred
 
 {-
 ctx' :: Context
