@@ -21,9 +21,9 @@ pattern TFormula = TFunc 0 SProp
 
 -- Convert to de Brujin indices and check types.
 convertAndCheck :: Context -> Expr -> Theorem
-convertAndCheck ctx e = case e of
+convertAndCheck ctx e' = case e' of
   (Var (Free x) ts) -> varMk ctx x (map (convertAndCheck ctx) ts)
-  (Var (Bound i) ts) -> error "Please use names for bound variables in the input expression"
+  (Var _ ts) -> error "Please use names for variables in the input expression"
   (Eq t1 t2) -> eqMk (convertAndCheck ctx t1) (convertAndCheck ctx t2)
   Top -> topMk ctx
   Bottom -> bottomMk ctx
@@ -119,6 +119,20 @@ lookupPool id = StatefulVal $ \ls ->
     Nothing ls,
   ls)
 
+-- Apply impliesIntro and then pop.
+-- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some formula assumed last 
+assumePop :: WithState ()
+assumePop = StatefulVal $ \(top : second : ls) -> ((),
+  let
+    second' = Map.foldlWithKey'
+      (\acc id thm ->
+        case thmJudgment thm of
+          Provable p -> Map.insert id (impliesIntro thm) acc
+          _          -> acc)
+      second top
+  in
+    second' : ls)
+
 -- Generalize over a variable and then pop.
 -- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some variable assumed last
 genPop :: WithState ()
@@ -143,20 +157,6 @@ genFuncPop = StatefulVal $ \(top : second : ls) -> ((),
         case thmJudgment thm of
           Provable p            -> Map.insert id (forallFuncIntro thm) acc
           _                     -> acc)
-      second top
-  in
-    second' : ls)
-
--- Apply impliesIntro and then pop.
--- Pre: all theorems in the form of (Provable ctx, p) in the top layer must have the same context, with some formula assumed last 
-assumePop :: WithState ()
-assumePop = StatefulVal $ \(top : second : ls) -> ((),
-  let
-    second' = Map.foldlWithKey'
-      (\acc id thm ->
-        case thmJudgment thm of
-          Provable p -> Map.insert id (impliesIntro thm) acc
-          _          -> acc)
       second top
   in
     second' : ls)
