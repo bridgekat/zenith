@@ -49,8 +49,8 @@ data Type =
 
 data Expr =
     Var VarName
-  | Func VarName [Expr]
-  | Pred VarName [Expr]
+  | Func String [Expr]
+  | Pred String [Expr]
   | Eq Expr Expr
   | Top    -- To avoid naming clashes I did not use `True` here
   | Bottom -- Also here
@@ -91,8 +91,8 @@ showName stk (Bound i) = stk !! i
 showE :: [String] -> [String] -> Expr -> String
 showE used stk e = case e of
   (Var x) -> showName stk x
-  (Func x as) -> "(" ++ showName stk x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
-  (Pred x as) -> "(" ++ showName stk x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
+  (Func x as) -> "(" ++ x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
+  (Pred x as) -> "(" ++ x ++ concatMap ((" " ++) . showE used stk) as ++ ")"
   (Eq t1 t2) -> "(" ++ showE used stk t1 ++ " = " ++ showE used stk t2 ++ ")"
   Top -> "true"
   Bottom -> "false"
@@ -180,7 +180,7 @@ funcMk :: Context -> String -> [Theorem] -> Theorem
 funcMk ctx id js = case lookup id (ctxList ctx) of
   (Just t)
     | t == TFunc (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, IsTerm (Func (Free id) as))
+        Theorem (ctx, IsTerm (Func id as))
     where
       (ctxs, as) = unzip . map (\x -> let Theorem (c, IsTerm t) = x in (c, t)) $ js
 
@@ -188,7 +188,7 @@ predMk :: Context -> String -> [Theorem] -> Theorem
 predMk ctx id js = case lookup id (ctxList ctx) of
   (Just t)
     | t == TPred (length as) && all (== ctx) ctxs ->
-        Theorem (ctx, IsFormula (Pred (Free id) as))
+        Theorem (ctx, IsFormula (Pred id as))
     where
       (ctxs, as) = unzip . map (\x -> let Theorem (c, IsTerm t) = x in (c, t)) $ js
 

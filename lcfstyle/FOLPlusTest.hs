@@ -22,12 +22,8 @@ pattern TFormula = TFunc 0 SProp
 -- Convert to de Brujin indices and check types.
 convertAndCheck :: Context -> Expr -> Theorem
 convertAndCheck ctx e = case e of
-  (Var (Free x)) -> varMk ctx x
-  (Var (Bound i)) -> error "Please use names for bound variables in the input expression"
-  (Func (Free f) ts) -> funcMk ctx f (map (convertAndCheck ctx) ts)
-  (Func (Bound i) ts) -> error "Please use names for bound variables in the input expression"
-  (Schema (Free x) e) -> schemaMk x (convertAndCheck ctx e)
-  (Schema (Bound i) e) -> error "Please use names for bound variables in the input expression"
+  (Var (Free x) ts) -> varMk ctx x (map (convertAndCheck ctx) ts)
+  (Var (Bound i) ts) -> error "Please use names for bound variables in the input expression"
   (Eq t1 t2) -> eqMk (convertAndCheck ctx t1) (convertAndCheck ctx t2)
   Top -> topMk ctx
   Bottom -> bottomMk ctx
@@ -262,9 +258,9 @@ checkDecl ctx e = case e of
 -- TEMP CODE
 
 var :: String -> Expr
-var = Var . Free
+var s = Var (Free s) []
 func :: String -> [Expr] -> Expr
-func = Func . Free
+func = Var . Free
 
 pool :: TheoremPool
 pool = [Map.empty]
