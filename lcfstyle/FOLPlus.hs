@@ -27,6 +27,25 @@ import Data.List
 import Data.Maybe
 
 
+-- Possible "types" of expressions (ι means Var, * means Prop):
+--   Terms:      TFunc 0 SVar  (ι)
+--   Functions:  TFunc k SVar  (ι → ... → ι → ι)
+--   Formulas:   TFunc 0 SProp (*)
+--   Predicates: TFunc k SProp (ι → ... → ι → *)
+-- Function/predicate schemas have "second-order parameters":
+--   TSchema k1 s1 (TFunc k2 s2) means ((ι → ... → ι → s1) → ι → ... → ι → s2), etc.
+-- (This is similar to Metamath definition checkers, according to Mario Carneiro!)
+data Sort = SVar | SProp
+  deriving (Eq, Show)
+data Type = TFunc Int Sort | TSchema Int Sort Type
+  deriving (Eq, Show)
+
+pattern TTerm :: Type
+pattern TTerm = TFunc 0 SVar
+
+pattern TFormula :: Type
+pattern TFormula = TFunc 0 SProp
+
 -- Context entry
 data CInfo = CVar Type | CHyp Expr
   deriving (Eq, Show)
@@ -91,25 +110,6 @@ ctxLookup s (Context a) = ctxLookup' a
 --   (0 = binds to the deepest binder, 1 = escapes one binder, and so on)
 data VarName = Free String | Bound Int
   deriving (Eq)
-
--- Possible "types" of expressions (ι means Var, * means Prop):
---   Terms:      TFunc 0 SVar  (ι)
---   Functions:  TFunc k SVar  (ι → ... → ι → ι)
---   Formulas:   TFunc 0 SProp (*)
---   Predicates: TFunc k SProp (ι → ... → ι → *)
--- Schemas have "second-order parameters":
---   TSchema k1 s1 (TFunc k2 s2) means ((ι → ... → ι → s1) → ι → ... → ι → s2), etc.
--- (This is similar to Metamath definition checkers, according to Mario Carneiro!)
-data Sort = SVar | SProp
-  deriving (Eq, Show)
-data Type = TFunc Int Sort | TSchema Int Sort Type
-  deriving (Eq, Show)
-
-pattern TTerm :: Type
-pattern TTerm = TFunc 0 SVar
-
-pattern TFormula :: Type
-pattern TFormula = TFunc 0 SProp
 
 -- Main expression type
 data Expr =

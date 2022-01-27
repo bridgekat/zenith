@@ -145,7 +145,7 @@ The introduction rules for `implies`, `forall`, `forallfunc` and `forallpred` ar
   - The proof for `exists f, <formula-with-f-free>` must be provided.
 - On leaving from `assume (h : <assumption>)` sections, their arities are unchanged; `<assumption> →` will be added in front of all local theorems (including their defining axioms).
 - On leaving from `any` sections, their arities will be added by one; a new argument (the variable `x` being generalized on) is inserted at the beginning; `forall x` will be added in front of all local theorems (including their defining axioms).
-- On leaving from `anyfunc` or `anypred` sections, they will not be preserved. We can't represent higher-order functions directly in the first-order language, and this is also unnecessary.
+- On leaving from `anyfunc` or `anypred` sections, ~~they will not be preserved. We can't represent higher-order functions directly in the first-order language, and this is also unnecessary.~~ they will become "function/predicate schemas" with one or more function/predicate arguments.
 
 (Put definitions inside `assume` sections to get partial functions & predicates (i.e. you have nothing to say about them unless you have all the preconditions. The metatheoretic interpretation could be a three-valued logic with an "undefined" value, and every formula with "undefined" value cannot be proved or disproved...))
 

@@ -216,7 +216,7 @@ checkDecl ctx e = case e of
   (PredDef s e) -> undefined
   -- Function definition by definite description
   (FuncDDef s e pf) -> undefined
-  -- Function definition by indefinit description
+  -- Function definition by indefinite description
   (FuncIDef s e pf) -> undefined
 
 -- TEMP CODE
@@ -232,10 +232,10 @@ pool = [Map.empty]
 decls :: Decl
 decls =
   AnyFunc "L" 2 SProp (AnyFunc "B" 3 SProp (Any "Q" (
-    Assume "h1" (Forall "x" (Forall "y" (func "L" [var "x", var "y"] `Implies` Forall "z" (Not (Eq (var "z") (var "y")) `Implies` Not (func "L" [var "x", var "z"]))))) (
+    Assume "h1" (Forall "x" (Forall "y" (func "L" [var "x", var "y"] `Implies` Forall "z" (Not (var "z" `Eq` var "y") `Implies` Not (func "L" [var "x", var "z"]))))) (
       Assume "h2" (Forall "x" (Forall "y" (Forall "z" (func "B" [var "x", var "y", var "z"] `Implies` (func "L" [var "x", var "z"] `Implies` func "L" [var "x", var "y"]))))) (
-        Assume "h3" (Exists "x" (Not (Eq (var "x") (var "Q")) `And` Forall "y" (func "B" [var "y", var "x", var "Q"]))) (Block [
-          Any "c" (Assume "hc" (Not (Eq (var "c") (var "Q")) `And` Forall "x" (func "B" [var "x", var "c", var "Q"])) (Block [
+        Assume "h3" (Exists "x" (Not (var "x" `Eq` var "Q") `And` Forall "y" (func "B" [var "y", var "x", var "Q"]))) (Block [
+          Any "c" (Assume "hc" (Not (var "c" `Eq` var "Q") `And` Forall "x" (func "B" [var "x", var "c", var "Q"])) (Block [
             Assertion "hc1" Nothing (AndL (As "hc")),
             Assertion "hc2" Nothing (AndR (As "hc")),
             Assume "hex" (Exists "x" (func "L" [var "x", var "Q"])) (Block [
