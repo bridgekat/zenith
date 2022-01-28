@@ -43,15 +43,17 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
 - The domain of discourse `ι` is considered to be non-empty (inhabited). The individual variable `initial : ι` can be used anywhere.
 - For convenience in writing proofs, I will also define the set of well-formed n-ary functions/predicates, generalizing the previous definition of well-formed terms/formulas.
   - Well-formed terms/formulas themselves are nullary functions/predicates.
-  - (Context) For any `f/n` in `F`, `f` itself is also an n-ary function. Similarly for `p/n` in `P`.
+  - ~~(Context) For any `f/n` in `F`, `f` itself is also an n-ary function. Similarly for `p/n` in `P`.~~
   - (Abstraction)
     - For any list of strings `xᵢ` each not occurring in `F`, if `t` is an m-ary function under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | t)` is an (n+m)-ary function (expression of type `ι → ι → ... → ι`) under `F` and `P`.
     - For any list of strings `xᵢ` each not occurring in `F`, if `e` is an m-ary predicate under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | e)` is an (n+m)-ary predicate (expression of type `ι → ι → ... → *`) under `F` and `P`.
+    - This is used to supply second-order arguments to some rules and constants; they are never directly applied to term variables. (Probably we could discard it and use definitions instead? But it looks more convenient for now...)
   - ~~(Application)~~
     - ~~For any n-ary function `f` with n > 0 and term `t`, `(f t)` is an (n-1)-ary function, the same as replacing `x₁` by `t` in the body of `f`.~~
     - ~~For any n-ary predicate `p` with n > 0 and term `t`, `(p t)` is an (n-1)-ary predicate, the same as replacing `x₁` by `t` in the body of `p`.~~
+    - Convention: every function must be fully applied in an expression...
     - (Possible feature: for any nullary function (term) `f` and another term `t`, `(f t)` is the same as `(funapp f t)`, where `funapp` is a binary function assigned using the `#el +implicit_funapp` preprocessor command.)
-  - These look like a kind of "lambda expressions", but are all first-order so very trivial (I will store them in normal forms). They are weaker than the "function definition rules" introduced below, since they must be total, and cannot utilize definite/indefinite descriptions. (Probably I will need to unify these two ways of specifying functions, by e.g. supporting inline iota/epsilon operators... but for now I just want to make a working demo so don't care)
+  - ~~These look like a kind of "lambda expressions", but are all first-order so very trivial (I will store them in normal forms). They are weaker than the "function definition rules" introduced below, since they must be total, and cannot utilize definite/indefinite descriptions. (Probably I will need to unify these two ways of specifying functions, by e.g. supporting inline iota/epsilon operators... but for now I just want to make a working demo so don't care)~~
 
 
 

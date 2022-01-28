@@ -232,8 +232,8 @@ getBody (Lam _ e) = (n + 1, body) where (n, body) = getBody e
 getBody body      = (0,     body)
 
 -- Substitute in k overflow variables simultaneously, with t's possibly containing bound variables...
-makeReplace' :: Int -> [Expr] -> Expr -> Expr
-makeReplace' k ts
+makeReplaceK :: Int -> [Expr] -> Expr -> Expr
+makeReplaceK k ts
   | k == length ts = updateVars 0 (\n x args -> case x of Bound m | m >= n -> makeGap n (ts' !! (m - n)); _ -> Var x args)
   | otherwise      = error "makeReplace': arity do not match"
   where ts' = reverse ts -- Leftmost arguments are used to substitute highest lambdas
@@ -243,11 +243,9 @@ makeReplace' k ts
 -- In the 3rd argument, all applications of the "overflow-bound" function/predicate must have k arguments (will be checked)
 -- To ensure that the resulting expression is well-formed, functions must be replaced by functions and
 -- predicates must be replaced by predicates (i.e. types must match)
-makeReplaceLam :: Int -> Expr -> Expr -> Expr
-makeReplaceLam k lam
-  | k == k'   = updateVars 0 (\n f args -> if f == Bound n then makeReplace' k args body else Var f args)
-  | otherwise = error "makeReplaceLam: arity do not match"
-  where (k', body) = getBody lam
+makeReplaceLam :: Expr -> Expr -> Expr
+makeReplaceLam lam = updateVars 0 (\n f args -> if f == Bound n then makeReplaceK k args body else Var f args)
+  where (k, body) = getBody lam
 
 -- Kinds of judgments
 data Judgment = HasType Expr Type | Provable Expr
@@ -524,7 +522,7 @@ forallFuncElim :: Theorem -> Theorem -> Theorem
 forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k s q)))
                (Theorem (ctx', HasType t (TFunc k' s')))
                | ctx == ctx' && k == k' && s == s' =
-                Theorem (ctx,  Provable (makeReplaceLam k t q))
+                Theorem (ctx,  Provable (makeReplaceLam t q))
 
 -- Definition rules
 
