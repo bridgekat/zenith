@@ -18,7 +18,7 @@
 #include <variant>
 #include <string>
 #include <sstream>
-#include <cassert>
+#include <exception>
 
 using std::initializer_list;
 using std::vector;
@@ -41,7 +41,7 @@ private:
   vector<T*> blocks;
 
 public:
-  Allocator(size_t blockSize = 1024): bSize(blockSize), next(0) {}
+  Allocator(size_t blockSize = 1024): bSize(blockSize), next(0), blocks() {}
   Allocator(const Allocator&) = delete;
   Allocator& operator=(const Allocator&) = delete;
   ~Allocator() { for (auto p: blocks) delete[] p; }
@@ -70,7 +70,7 @@ public:
 //   {{ k1, s1 }, { k2, s2 }} means ((ι → ... → ι → s1) → ι → ... → ι → s2), etc.
 // (This is similar to Metamath definition checkers, according to Mario Carneiro!)
 enum Sort: unsigned char { SVAR, SPROP };
-typedef vector<pair<unsigned short, Sort> > Type;
+typedef vector<pair<unsigned short, Sort>> Type;
 
 const Type TTerm    = {{ 0, SVAR }};
 const Type TFormula = {{ 0, SPROP }};
@@ -87,7 +87,17 @@ string showType(const Type& t) {
   return res;
 }
 
+
+class Context;
 class Node;
+class Proof;
+class Decl;
+
+// Some exception classes...
+struct InvalidExpr: public std::logic_error { InvalidExpr(const string& s, const Context& ctx, const Node* e); };
+struct InvalidProof: public std::logic_error { InvalidProof(const string& s, const Context& ctx, const Proof* e); };
+struct InvalidDecl: public std::logic_error { InvalidDecl(const string& s, const Context& ctx, const Decl* e); };
+struct Unreachable: public std::logic_error { Unreachable(): std::logic_error("\"Unreachable\" code was reached") {} };
 
 // The context is stored as a stack (an std::vector whose last element denotes the topmost layer).
 // Here, all hypotheses and definitions are stored "linearly" in one array.
@@ -104,17 +114,17 @@ public:
   const unsigned int eq;
 
   // Insert a built-in equality relation during initialization
-  Context(): eq(static_cast<unsigned int>(addDef("eq", {{ 2, SPROP }}))) {}
+  Context(): pool(), a(), eq(static_cast<unsigned int>(addDef("eq", {{ 2, SPROP }}))) {}
 
   // Add a definition to the top.
-  size_t addDef(const string& s, const Type& t) { a.push_back(Entry{ s, t }); return a.size() - 1; }
+  size_t addDef(const string& s, const Type& t);
   // Add a hypothesis to the top, copying the expression to pool.
-//	size_t addHyp(const string& s, const Node* e) { a.push_back(Entry{ s, e->clone(pool) }); return a.size() - 1; }
+	size_t addHyp(const string& s, const Node* e);
 
-  // Look up by index.
+  // Look up by index, performing bound checks.
   bool valid(size_t index) const { return index < a.size(); }
-  const variant<Type, const Node*>& operator[](size_t index) const { return a[index].info; }
-  const string& nameOf(size_t index) const { return a[index].name; }
+  const variant<Type, const Node*>& operator[](size_t index) const { return a.at(index).info; }
+  const string& nameOf(size_t index) const { return a.at(index).name; }
 
   // Look up by literal name. (Slow, not commonly used)
   optional<unsigned int> lookup(const string& s) const {
@@ -123,13 +133,8 @@ public:
       if (a[i].name == s) return make_optional(i);
     return nullopt;
   }
-
-  unsigned int lookup1(const string& s) const {
-    auto res = lookup(s);
-    if (!res.has_value()) cout << "lookup1: unknown identifier " << s << endl;
-    return res.value();
-  }
 };
+
 
 // Formula (schema) tree node, and related syntactic operations
 // Pre (for all methods): there is no "cycle" throughout the tree
@@ -271,7 +276,7 @@ public:
              *(binder.r)  == *(rhs.binder.r);
     }
     // Unreachable
-    return false;
+    throw Unreachable();
   }
   bool operator!=(const Node& rhs) const { return !(*this == rhs); }
 
@@ -279,7 +284,7 @@ public:
   // Pre: all nonzero pointers are valid
   // `stk` will be unchanged
   // O(size)
-  string toString(const Context& ctx, vector<pair<Type, string> >& stk) const {
+  string toString(const Context& ctx, vector<pair<Type, string>>& stk) const {
     switch (symbol) {
     case EMPTY: return "[?]";
     case VAR: {
@@ -326,42 +331,47 @@ public:
     }
     }
     // Unreachable
-    return "";
+    throw Unreachable();
+  }
+
+  string toString(const Context& ctx) const {
+    vector<pair<Type, string>> stk;
+    return toString(ctx, stk);
   }
 
   // Check if the subtree is well-formed, and return its type
+  // Throws exception on failure
   // Pre: all nonzero pointers are valid
   // `stk` will be unchanged
   // O(size)
-  optional<Type> checkType(const Context& ctx, vector<Type>& stk) const {
+  Type checkType(const Context& ctx, vector<Type>& stk) const {
 
     // Formation rules here
     switch (symbol) {
     case EMPTY:
-      return nullopt;
-
+      throw InvalidExpr("unexpected empty tag", ctx, this);
+    
     case VAR: {
       // Get type of the LHS
       const Type* t_ = var.free ?
         (ctx.valid(var.id)   ? get_if<Type>(&ctx[var.id])    : nullptr) :
         (var.id < stk.size() ? &stk[stk.size() - 1 - var.id] : nullptr);
-      if (!t_ || t_->empty()) return nullopt;
+      if (!t_ || t_->empty())
+        throw InvalidExpr(var.free? "free variable not in context" :
+                                    "de Brujin index too large", ctx, this);
       const Type& t = *t_;
 
       // Try applying arguments one by one
       size_t i = 0, j = 0;
       for (const Node* p = var.c; p; p = p->s) {
-        auto tp_ = p->checkType(ctx, stk);
-        if (!tp_.has_value()) return nullopt; // Subexpression does not typecheck
-        const Type& tp = *tp_;
-
+        const Type& tp = p->checkType(ctx, stk);
         if      (i + 1  < t.size() && tp.size() == 1 && tp[0] == t[i] ) i++; // Schema instantiation
         else if (i + 1 == t.size() && tp == TTerm    && j < t[i].first) j++; // Function application
-        else return nullopt; // Types not match
+        else throw InvalidExpr("argument type mismatch", ctx, this);
       }
 
       if (i + 1 == t.size() && j == t[i].first) return Type{{ 0, t[i].second }}; // Fully applied
-      else return nullopt; // Not fully applied
+      else throw InvalidExpr("function or predicate not fully applied", ctx, this);
       }
 
     case TRUE: case FALSE:
@@ -369,18 +379,20 @@ public:
 
     case NOT:
       if (conn.l && conn.l->checkType(ctx, stk) == TFormula) return TFormula;
-      else return nullopt;
+      else throw InvalidExpr("connective should connect propositions", ctx, this);
 
     case AND: case OR: case IMPLIES: case IFF:
       if (conn.l && conn.l->checkType(ctx, stk) == TFormula &&
           conn.r && conn.r->checkType(ctx, stk) == TFormula) return TFormula;
-      else return nullopt;
+      else throw InvalidExpr("connective should connect propositions", ctx, this);
 
     case FORALL: case EXISTS: case UNIQUE:
-      if (binder.arity != 0 || binder.sort != SVAR) return nullopt;
+      if (binder.arity != 0 || binder.sort != SVAR)
+        throw InvalidExpr("binder should bind a term variable", ctx, this);
       [[fallthrough]];
     case FORALLFUNC: {
-      if (!binder.r) return nullopt;
+      if (!binder.r)
+        throw InvalidExpr("null pointer", ctx, this);
 
       // Check recursively
       stk.push_back(Type{{ binder.arity, binder.sort }});
@@ -388,27 +400,34 @@ public:
       stk.pop_back();
 
       if (t == TFormula) return TFormula;
-      else return nullopt;
+      else throw InvalidExpr("binder body should be a proposition", ctx, this);
     }
 
     case LAM: {
-      if (binder.arity != 0 || binder.sort != SVAR) return nullopt;
-      if (!binder.r) return nullopt;
+      if (binder.arity != 0 || binder.sort != SVAR)
+        throw InvalidExpr("binder should bind a term variable", ctx, this);
+      if (!binder.r)
+        throw InvalidExpr("null pointer", ctx, this);
 
       // Check recursively
       stk.push_back(Type{{ binder.arity, binder.sort }});
       auto t = binder.r->checkType(ctx, stk);
       stk.pop_back();
 
-      if (t.value().size() == 1) {
-        auto [k, s] = t.value()[0];
+      if (t.size() == 1) {
+        auto [k, s] = t[0];
         return Type{{ k + 1, s }};
       }
-      else return nullopt;
+      else throw InvalidExpr("function body has invalid type", ctx, this);
     }
     }
     // Unreachable
-    return nullopt;
+    throw Unreachable();
+  }
+
+  Type checkType(const Context& ctx) const {
+    vector<Type> stk;
+    return checkType(ctx, stk);
   }
 
   // Modification (deep copying whole expression)
@@ -445,11 +464,10 @@ public:
       return res;
     }
     // Unreachable
-    return res;
+    throw Unreachable();
   }
 
-  // Prepare to bind a free variable (deep copying whole expression)
-  // Note that the resulting `this` is not well-formed until one additional layer of binder is added (there are "binding overflows by exactly one")
+  // Make a free variable into an overflow variable (deep copying whole expression)
   Node* makeBound(unsigned int id, Allocator<Node>& pool) const {
     return updateVars(0, pool, [id] (unsigned int n, Node* x) {
       if (x->var.free && x->var.id == id) { x->var.free = false; x->var.id = n; }
@@ -457,8 +475,7 @@ public:
     });
   }
 
-  // makeFree + replaceVar in one go (deep copying whole expression)
-  // `this` can be a subexpression which is not well-formed by itself (there can be "binding overflows by exactly one")
+  // Replace one overflow variable by an expression (deep copying whole expression)
   Node* makeReplace(const Node* t, Allocator<Node>& pool) const {
     return updateVars(0, pool, [t, &pool] (unsigned int n, Node* x) {
       if (!x->var.free && x->var.id == n) return t->clone(pool);
@@ -466,8 +483,7 @@ public:
     });
   }
 
-  // Prepare to insert k binders around a subexpression (deep copying whole expression)
-  // `this` can be a subexpression which is not well-formed by itself
+  // Prepare to insert k binders around a subexpression with overflow variables (deep copying whole expression)
   Node* makeGap(unsigned int k, Allocator<Node>& pool) const {
     return updateVars(0, pool, [k] (unsigned int n, Node* x) {
       if (!x->var.free && x->var.id >= n) x->var.id += k;
@@ -476,15 +492,15 @@ public:
   }
 
   // Skip through lambda binders
+  // Pre: expression must be well-formed
   pair<unsigned int, const Node*> getBody() const {
-    if (symbol == LAM) {
-      auto [n, body] = binder.r->getBody();
-      return { n + 1, body };
-    }
-    return { 0, this };
+    unsigned int res = 0;
+    const Node* p = this;
+    while (p->symbol == LAM) p = p->binder.r, res++;
+    return { res, p };
   }
 
-  // Substitute in k overflow variables simultaneously, with t's possibly containing bound variables...
+  // Replace k overflow variables simultaneously, with t's possibly containing overflow variables...
   // (Deep copying whole expression)
   // Pre: ts.size() >= "maximum index overflow" (x->var.id - n + 1)
   Node* makeReplaceK(vector<const Node*> ts, Allocator<Node>& pool) const {
@@ -496,8 +512,8 @@ public:
   }
 
   // Substitute in a lambda function (deep copying whole expression).
-  // The 2nd argument is a lambda function/predicate with k lambda binders
-  // In the 3rd argument, all applications of the "overflow-bound" function/predicate must have k arguments (will be checked)
+  // Pre: the 2nd argument is a lambda function/predicate with k lambda binders
+  // Pre: in the 3rd argument, all applications of the "overflow-bound" function/predicate must have k arguments
   // To ensure that the resulting expression is well-formed, functions must be replaced by functions and
   // predicates must be replaced by predicates (i.e. types must match)
   Node* makeReplaceLam(const Node* lam, Allocator<Node>& pool) const {
@@ -508,7 +524,7 @@ public:
       if (!x->var.free && x->var.id == n) {
         vector<const Node*> args;
         for (const Node* p = x->var.c; p; p = p->s) args.push_back(p);
-        assert(k == args.size());
+        if (k != args.size()) throw Unreachable();
         return body->makeReplaceK(args, pool);
       }
       return x;
@@ -519,43 +535,145 @@ public:
 };
 
 template<typename ...Ts>
-Node* newNode(Allocator<Node>& pool, const Ts&... args) {
+inline Node* newNode(Allocator<Node>& pool, const Ts&... args) {
   return &pool.push_back(Node(args...));
 }
 
-/*
-class Derivation {
+inline size_t Context::addDef(const string& s, const Type& t) {
+  a.push_back(Entry{ s, t });
+  return a.size() - 1;
+}
+
+inline size_t Context::addHyp(const string& s, const Node* e) {
+  a.push_back(Entry{ s, e->clone(pool) });
+  return a.size() - 1;
+}
+
+
+class Decl;
+
+// Derivation trees (aka. proof terms)
+class Proof {
 public:
-  enum Rule: unsigned int {
+  enum Rule: unsigned char {
     EMPTY = 0,
-    BLOCK,
-    THM,
+    EXPR, THM, DECL,
     AND_I, AND_L, AND_R,
     OR_L, OR_R, OR_E,
     IMPLIES_E,
     NOT_I, NOT_E,
     IFF_I, IFF_L, IFF_R,
+    TRUE_I, FALSE_E, RAA,
     EQ_I, EQ_E,
     FORALL_E,
     EXISTS_I, EXISTS_E,
-    UNIQUE_I, UNIQUE_E,
-    FORALLFUNC_E,
-    FORALLPRED_E,
-    TRUE_I, FALSE_E, RAA
-  } const rule;
+    UNIQUE_I, UNIQUE_L, UNIQUE_R,
+    FORALLFUNC_E
+  } rule;
 
-  // Conclusion
-  Node* a;
+  // Since most rules have less or equal than 3 child proofs, I guess I could
+  // save writing some boilerplate code for a discriminated union...
+  union {
+    struct { Node* p; } expr;
+    struct { unsigned int id; } thm;
+    struct { Decl* p; } decl;
+    struct { Proof* p[3]; } c;
+  };
 
-  // Auxiliary data (not going to put "non-POD" data types into a union...)
-  string name;
-  Node* tmpl;
-  vector<unsigned int> loc;
+  // TODO: constructors
 
-  // Child derivations
-  // DAGs are allowed (used in Fitch-style notation)
-  vector<const Derivation*> c;
-  // Assuming: pointer is present <=> pointer is valid
+  Type checkExpr(Context& ctx, Allocator<Node>& pool) const {
+    switch (rule) {
+    case EMPTY:
+      throw InvalidProof("unexpected empty tag", ctx, this);
+
+    case EXPR:
+      if (!expr.p) throw InvalidProof("null pointer", ctx, this);
+      return expr.p->checkType(ctx);
+
+    default:
+      throw InvalidProof("type mismatch, expected expression", ctx, this);
+    }
+  }
+
+  // Returned pointer is valid & points to a well-formed formula
+  Node* check(Context& ctx, Allocator<Node>& pool) const {
+
+    // Some helper functions that try "pattern matching on" a given node
+    // Pre: must be valid & well-formed formula
+    auto match1 = [&ctx, this] (Node::Symbol sym, Node* a) {
+      if (a->symbol != sym) throw InvalidProof("invalid argument", ctx, this);
+      if (!a->conn.l)       throw InvalidProof("null pointer", ctx, this);
+      return a->conn.l;
+    };
+    auto match2 = [&ctx, this] (Node::Symbol sym, Node* a) -> pair<Node*, Node*> {
+      if (a->symbol != sym)         throw InvalidProof("invalid argument", ctx, this);
+      if (!a->conn.l || !a->conn.r) throw InvalidProof("null pointer", ctx, this);
+      return { a->conn.l, a->conn.r };
+    };
+    // Check if child proofs are valid
+    auto proved = [&ctx, &pool, this] (Proof* a) -> Node* {
+      if (!a)                                  throw InvalidProof("null pointer", ctx, this);
+      return a->check(ctx, pool);
+    };
+    auto wff = [&ctx, &pool, this] (Proof* a) -> Node* {
+      if (!a)                                  throw InvalidProof("null pointer", ctx, this);
+      if (a->checkExpr(ctx, pool) != TFormula) throw InvalidProof("invalid argument", ctx, this);
+      return a->expr.p;
+    };
+
+    // Introduction & elimination rules here
+    switch (rule) {
+    case EMPTY:
+      throw InvalidProof("unexpected empty tag", ctx, this);
+
+    case EXPR:
+      throw InvalidProof("type mismatch, expected proof", ctx, this);
+
+    case THM: {
+      if (!ctx.valid(thm.id)) throw InvalidProof("referred theorem not in context", ctx, this);
+      auto res = get_if<const Node*>(&ctx[thm.id]);
+      if (!res) throw InvalidProof("referred theorem not in context", ctx, this);
+      return (*res)->clone(pool);
+    }
+    case DECL: {
+      // TODO
+    }
+    case AND_I: return newNode(pool, Node::AND, proved(c.p[0]), proved(c.p[1]));
+    case AND_L: return match2(Node::AND, proved(c.p[0])).first;
+    case AND_R: return match2(Node::AND, proved(c.p[0])).second;
+    case OR_L:  return newNode(pool, Node::OR, proved(c.p[0]), wff(c.p[1]));
+    case OR_R:  return newNode(pool, Node::OR, wff(c.p[0]), proved(c.p[1]));
+    case OR_E: {
+      auto [p0, q0] = match2(Node::OR, proved(c.p[0]));
+      auto [p1, r0] = match2(Node::IMPLIES, proved(c.p[1]));
+      auto [q1, r1] = match2(Node::IMPLIES, proved(c.p[2]));
+      if (*p0 != *p1 || *q0 != *q1 || *r0 != *r1) throw InvalidProof("invalid argument", ctx, this);
+      return r0;
+    }
+    case IMPLIES_E: {
+      auto [p0, q] = match2(Node::IMPLIES, proved(c.p[0]));
+      auto p1 = proved(c.p[1]);
+      if (*p0 != *p1) throw InvalidProof("invalid argument", ctx, this);
+      return q;
+    }
+    case NOT_I: {
+      auto [p, f] = match2(Node::IMPLIES, proved(c.p[0]));
+      if (f->symbol != Node::Symbol::FALSE) throw InvalidProof("invalid argument", ctx, this);
+      return newNode(pool, Node::NOT, p);
+    }
+    case NOT_E: {
+      // #####
+    }
+
+    }
+    // Unreachable
+    throw Unreachable();
+  }
+
+};
+
+/*
 
   // Implicitly-defined default constructor does nothing...
   Derivation(): rule(EMPTY), a(nullptr), tmpl(nullptr) {}
@@ -577,153 +695,67 @@ public:
 private:
 
   // Returns: (current result, the set of uncancelled hypotheses)
-  pair<bool, vector<const Node*> > check_(const Signature& sig, const map<string, const Node*>& theorems) const {
-    pair<bool, vector<const Node*> > fail = { false, {} };
-    vector<vector<const Node*> > hyps;
+  pair<bool, vector<const Node*>> check_(const Signature& sig, const map<string, const Node*>& theorems) const {
+    pair<bool, vector<const Node*>> FAIL = { false, {} };
+    vector<vector<const Node*>> hyps;
     // Check if initialized
-    if (rule == EMPTY) return fail;
+    if (rule == EMPTY) return FAIL;
     // Check if conclusion is present and wff
-    if (!a || !a->isForm(sig)) return fail;
+    if (!a || !a->isForm(sig)) return FAIL;
     // Check if all premises are present, wff and valid; store all uncancelled hypotheses
     for (auto p: c) {
-      if (!p) return fail;
+      if (!p) return FAIL;
       auto res = p->check_(sig, theorems);
-      if (!res.first) return fail;
+      if (!res.first) return FAIL;
       hyps.push_back(res.second);
     }
     // Natural Deduction rules (major premises are listed first)
     switch (rule) {
-    case THEOREM: {
-      if (c.size() != 0) return fail;
-      auto it = theorems.find(name);
-      if (it == theorems.end() || *(it->second) != *a) return fail;
-      return { true, {} };
-    }
-    case ASSUMPTION: {
-      if (c.size() != 0) return fail;
-      return { true, { a } };
-    }
-    case FUNCTION_S: {
-      // #####
-      return fail;
-    }
-    case CONJUNCTION_I: {
-      if (c.size() != 2) return fail;
-      const Node *l = c[0]->a, *r = c[1]->a;
-      // Two premises l and r, conclusion in the form of (l ∧ r)
-      if (a->symbol == Node::CONJUNCTION &&
-        *(a->conn.l) == *l && *(a->conn.r) == *r)
-        return { true, set_union(hyps[0], hyps[1]) };
-      else return fail;
-    }
-    case CONJUNCTION_E: {
-      if (c.size() != 1) return fail;
-      const Node* p = c[0]->a;
-      // One premise in the form of (l ∧ r), conclusion equals to l or r
-      if (p->symbol == Node::CONJUNCTION &&
-        (*a == *(p->conn.l) || *a == *(p->conn.r)))
-        return { true, hyps[0] };
-      else return fail;
-    }
-    case DISJUNCTION_I: {
-      if (c.size() != 1) return fail;
-      const Node* p = c[0]->a;
-      // One premise p, conclusion in the form of (p ∨ r) or (l ∨ p)
-      if (a->symbol == Node::DISJUNCTION &&
-        (*(a->conn.l) == *p || *(a->conn.r) == *p))
-        return { true, hyps[0] };
-      else return fail;
-    }
-    case DISJUNCTION_E: {
-      if (c.size() != 3) return fail;
-      const Node *d = c[0]->a, *r0 = c[1]->a, *r1 = c[2]->a;
-      // Three premises (p ∨ q), r, r, conclusion is r, cancelling hypotheses p, q in left, right
-      if (d->symbol != Node::DISJUNCTION || *r0 != *r1) return fail;
-      const Node *p = d->conn.l, *q = d->conn.r;
-      if (*a == *r0)
-        return { true, set_union(hyps[0],
-                 set_union(ptr_set_minus_elem(hyps[1], p), ptr_set_minus_elem(hyps[2], q))) };
-      else return fail;
-    }
-    case IMPLICATION_I: {
-      if (c.size() != 1) return fail;
-      const Node* p = c[0]->a;
-      // One premise p, conclusion in the form of (q → p), cancelling hypothesis q
-      if (a->symbol != Node::IMPLICATION || *(a->conn.r) != *p) return fail;
-      const Node* q = a->conn.l;
-      return { true, ptr_set_minus_elem(hyps[0], q) };
-    }
-    case IMPLICATION_E: {
-      if (c.size() != 2) return fail;
-      const Node *l = c[0]->a, *r = c[1]->a;
-      // Two premises in the form of (p → q), p, conclusion is q
-      if (l->symbol == Node::IMPLICATION &&
-        (*r == *(l->conn.l) && *a == *(l->conn.r)))
-        return { true, set_union(hyps[0], hyps[1]) };
-      else return fail;
-    }
-    case NEGATION_I: {
-      if (c.size() != 1) return fail;
-      const Node* f = c[0]->a;
-      // One premise ⊥, conclusion in the form of (¬p), cancelling hypothesis p
-      if (a->symbol != Node::NEGATION || f->symbol != Node::ABSURDITY) return fail;
-      const Node* p = a->conn.l;
-      return { true, ptr_set_minus_elem(hyps[0], p) };
-    }
-    case NEGATION_E: {
-      if (c.size() != 2) return fail;
-      const Node *l = c[0]->a, *r = c[1]->a;
-      // Two premises (¬p), p, conclusion is ⊥
-      if (a->symbol != Node::ABSURDITY || l->symbol != Node::NEGATION) return fail;
-      if (*r == *(l->conn.l))
-        return { true, set_union(hyps[0], hyps[1]) };
-      else return fail;
-    }
     case EQUIVALENCE_I: {
-      if (c.size() != 2) return fail;
+      if (c.size() != 2) return FAIL;
       const Node *l = c[0]->a, *r = c[1]->a;
       // Two premises l, r, conclusion in the form of (l ↔ r), cancelling hypotheses r and l in left, right
-      if (a->symbol != Node::EQUIVALENCE) return fail;
+      if (a->symbol != Node::EQUIVALENCE) return FAIL;
       if (*(a->conn.l) == *l && *(a->conn.r) == *r)
         return { true, set_union(ptr_set_minus_elem(hyps[0], r), ptr_set_minus_elem(hyps[1], l)) };
-      else return fail;
+      else return FAIL;
     }
     case EFQ: {
-      if (c.size() != 1) return fail;
+      if (c.size() != 1) return FAIL;
       const Node* f = c[0]->a;
       // One premise in the form of ⊥
-      if (f->symbol != Node::ABSURDITY) return fail;
+      if (f->symbol != Node::ABSURDITY) return FAIL;
       return { true, hyps[0] };
     }
     case RAA: {
-      if (c.size() != 1) return fail;
+      if (c.size() != 1) return FAIL;
       const Node* f = c[0]->a;
       // One premise in the form of ⊥, conclusion is p, cancelling hypotheses (¬p)
-      if (f->symbol != Node::ABSURDITY) return fail;
+      if (f->symbol != Node::ABSURDITY) return FAIL;
       Node t(Node::NEGATION); t.conn.l = a;
       return { true, ptr_set_minus_elem(hyps[0], &t) };
     }
     case UNIVERSAL_I: {
-      if (c.size() != 1) return fail;
+      if (c.size() != 1) return FAIL;
       const Node* p = c[0]->a;
       // One premise p, conclusion in the form of (∀xi, p), with xi does not occur free in any hypothesis
-      if (a->symbol != Node::UNIVERSAL || *(a->binder.r) != *p) return fail;
+      if (a->symbol != Node::UNIVERSAL || *(a->binder.r) != *p) return FAIL;
       unsigned int i = a->binder.l;
-      for (const Node* hyp: hyps[0]) if (hyp->isFV(i)) return fail;
+      for (const Node* hyp: hyps[0]) if (hyp->isFV(i)) return FAIL;
       return { true, hyps[0] };
     }
     case UNIVERSAL_E: {
-      if (c.size() != 1) return fail;
+      if (c.size() != 1) return FAIL;
       const Node* p = c[0]->a;
       // Check if t is present and well-formed
       const Node* t = tmpl;
-      if (!t || !t->isForm(sig)) return fail;
+      if (!t || !t->isForm(sig)) return FAIL;
       // One premise in the form of (∀xi, p), conclusion is p[t/xi]
-      if (p->symbol != Node::UNIVERSAL) return fail;
+      if (p->symbol != Node::UNIVERSAL) return FAIL;
       unsigned int i = p->binder.l;
       p = p->binder.r;
       // Check if substitution is "proper", or "free"
-      if (!p->variableIsFreeFor(t, i)) return fail;
+      if (!p->variableIsFreeFor(t, i)) return FAIL;
       // Do the substitution
       Allocator<Node> pool;
       Node* p_ = p->clone(pool);
@@ -731,20 +763,20 @@ private:
       // Check if results matched
       if (*p_ == *a)
         return { true, hyps[0] };
-      else return fail;
+      else return FAIL;
     }
     case EXISTENTIAL_I: {
-      if (c.size() != 1) return fail;
+      if (c.size() != 1) return FAIL;
       const Node* p = c[0]->a;
       // Check if t is present and well-formed
       const Node* t = tmpl;
-      if (!t || !t->isForm(sig)) return fail;
+      if (!t || !t->isForm(sig)) return FAIL;
       // One premise q[t/xi], conclusion in the form of (∃xi, q)
-      if (a->symbol != Node::EXISTENTIAL) return fail;
+      if (a->symbol != Node::EXISTENTIAL) return FAIL;
       unsigned int i = a->binder.l;
       const Node* q = a->binder.r;
       // Check if substitution is "proper", or "free"
-      if (!q->variableIsFreeFor(t, i)) return fail;
+      if (!q->variableIsFreeFor(t, i)) return FAIL;
       // Do the substitution
       Allocator<Node> pool;
       Node* q_ = q->clone(pool);
@@ -752,47 +784,47 @@ private:
       // Check if results matched
       if (*q_ == *p)
         return { true, hyps[0] };
-      else return fail;
+      else return FAIL;
     }
     case EXISTENTIAL_E: {
-      if (c.size() != 2) return fail;
+      if (c.size() != 2) return FAIL;
       const Node *p = c[0]->a, *q = c[1]->a;
       // Two premises in the form of (∃xi, p) and q, with xi does not occur free in q or any hypothesis
       // from q (except p), conclusion is q, cancelling hypothesis p in right
-      if (p->symbol != Node::EXISTENTIAL || *a != *q) return fail;
+      if (p->symbol != Node::EXISTENTIAL || *a != *q) return FAIL;
       unsigned int i = p->binder.l;
       p = p->binder.r;
-      if (q->isFV(i)) return fail;
-      for (const Node* hyp: hyps[1]) if (hyp->isFV(i) && *hyp != *p) return fail;
+      if (q->isFV(i)) return FAIL;
+      for (const Node* hyp: hyps[1]) if (hyp->isFV(i) && *hyp != *p) return FAIL;
       return { true, set_union(hyps[0], ptr_set_minus_elem(hyps[1], p)) };
     }
     case EQUALITY_I: {
-      if (c.size() != 0) return fail;
+      if (c.size() != 0) return FAIL;
       // No premise, conclusion is in the form of (t = t)
-      if (a->symbol != Node::PREDICATE || a->predicate.id != 0) return fail;
+      if (a->symbol != Node::PREDICATE || a->predicate.id != 0) return FAIL;
       const Node* l = a->predicate.c;
       const Node* r = l->s;
       if (*l == *r) return { true, {} };
-      else return fail;
+      else return FAIL;
     }
     case EQUALITY_E: {
-      if (c.size() < 1) return fail;
+      if (c.size() < 1) return FAIL;
       int n = int(c.size()) - 1;
       const Node* q = c.back()->a;
       // Check if template is present and well-formed
-      if (!tmpl || !tmpl->isForm(sig)) return fail;
+      if (!tmpl || !tmpl->isForm(sig)) return FAIL;
       // Check if replacement locations are correct (duplicated or "invalid" entries are tolerated)
-      if (loc.size() != n) return fail;
+      if (loc.size() != n) return FAIL;
       // n major premises in the form of (li = ri), one minor premise
       // Minor premise and conclusion are equal to template substituted by li's and ri's respectively
       map<unsigned int, const Node*> qreps, areps;
       for (int i = 0; i < n; i++) {
         const Node* pi = c[i]->a;
         // Check if major premise i is in the correct form
-        if (pi->symbol != Node::PREDICATE || pi->predicate.id != 0) return fail;
+        if (pi->symbol != Node::PREDICATE || pi->predicate.id != 0) return FAIL;
         const Node *li = pi->predicate.c, *ri = li->s;
         // Check if substitution is "proper", or "free"
-        if (!tmpl->variableIsFreeFor(li, loc[i]) || !tmpl->variableIsFreeFor(ri, loc[i])) return fail;
+        if (!tmpl->variableIsFreeFor(li, loc[i]) || !tmpl->variableIsFreeFor(ri, loc[i])) return FAIL;
         qreps[loc[i]] = li; areps[loc[i]] = ri;
       }
       // Do the substitution
@@ -804,10 +836,11 @@ private:
         vector<const Node*> allHyps;
         for (int i = 0; i < n; i++) allHyps = set_union(allHyps, hyps[i]);
         return { true, allHyps };
-      } else return fail;
+      } else return FAIL;
     }
     }
-    return fail; // Unreachable
+    // Unreachable
+    throw Unreachable();
   }
 
 public:
@@ -837,10 +870,21 @@ public:
 };
 */
 
+InvalidExpr::InvalidExpr(const string& s, const Context& ctx, const Node* e):
+  std::logic_error("Invalid expression, " + s + ": " + e->toString(ctx)) {}
+InvalidProof::InvalidProof(const string& s, const Context&, const Proof*):
+  std::logic_error("Invalid proof, " + s) {}
+InvalidDecl::InvalidDecl(const string& s, const Context&, const Decl*):
+  std::logic_error("Invalid expression, " + s) {}
+
 // TODO: read text & binary files
 
 int main() {
   Allocator<Node> pool;
+
+  cout << sizeof(string) << endl;
+  cout << sizeof(Node) << endl;
+  cout << sizeof(Proof) << endl;
 
   #define N(...) newNode(pool, __VA_ARGS__)
   #define I initializer_list<Node*>
@@ -866,8 +910,6 @@ int main() {
 
   {
     Context ctx;
-    vector<pair<Type, string> > stk;
-    vector<Type> stk1;
 
     unsigned int EQ = ctx.eq;
     unsigned int IN = ctx.addDef("in", {{ 2, SPROP }});
@@ -875,21 +917,21 @@ int main() {
     // The axiom schema of separation...
     Node* x = FORALLPRED(2, FORALL(EXISTS(FORALL(IFF(FF(IN, BV(0), BV(1)), AND(FF(IN, BV(0), BV(2)), BF(3, BV(2), BV(0))))))));
 
-    cout << x->toString(ctx, stk) << endl;
-    cout << showType(x->checkType(ctx, stk1).value()) << endl;
+    cout << x->toString(ctx) << endl;
+    cout << showType(x->checkType(ctx)) << endl;
 
     unsigned int SUBSET = ctx.addDef("subset", {{ 2, SPROP }, { 1, SVAR }});
     unsigned int ISSC = ctx.addDef("is_subclass", {{ 1, SPROP }, { 1, SPROP }, { 0, SPROP }});
 
     Node* y = LAM(FF(SUBSET, LAM(LAM(TRUE)), BV(0)));
 
-    cout << y->toString(ctx, stk) << endl;
-    cout << showType(y->checkType(ctx, stk1).value()) << endl;
+    cout << y->toString(ctx) << endl;
+    cout << showType(y->checkType(ctx)) << endl;
 
     Node* z = FF(ISSC, LAM(FALSE), LAM(TRUE));
 
-    cout << z->toString(ctx, stk) << endl;
-    cout << showType(z->checkType(ctx, stk1).value()) << endl;
+    cout << z->toString(ctx) << endl;
+    cout << showType(z->checkType(ctx)) << endl;
 
     cout << (*x == *y) << (*y == *z) << (*z == *x) << endl;
     cout << (*x == *x) << (*y == *y) << (*z == *z) << endl;
@@ -898,13 +940,13 @@ int main() {
     Node* xrep = x->binder.r->makeReplaceLam(LAM(LAM(FF(EQ, BV(1), BV(0)))), pool);
 
     cout << (*x == *x1) << endl;
-    cout << xrep->toString(ctx, stk) << endl;
-    cout << showType(xrep->checkType(ctx, stk1).value()) << endl;
+    cout << xrep->toString(ctx) << endl;
+    cout << showType(xrep->checkType(ctx)) << endl;
   }
 
   /* {
     Context ctx;
-    vector<pair<Type, string> > stk;
+    vector<pair<Type, string>> stk;
     vector<Type> stk1;
   } */
 

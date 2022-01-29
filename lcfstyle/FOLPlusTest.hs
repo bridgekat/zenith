@@ -40,7 +40,7 @@ convertAndCheck ctx e' = case e' of
 
 -- Derivation trees (aka. proof terms)
 data Proof =
-    As String
+    Thm String
   | Decl Decl
   | AndI Proof Proof        | AndL Proof              | AndR Proof
   | OrL Proof Expr          | OrR Expr Proof          | OrE Proof Proof Proof
@@ -136,7 +136,7 @@ introReturn intro thm' = return $ do
 -- Check if a (non-context-changing) proof is well-formed; returns its judgment.
 checkProof :: Context -> Proof -> WithState Theorem
 checkProof ctx e = case e of
-  (As id) -> do
+  (Thm id) -> do
     res <- lookupPool id;
     case res of
       (Just thm) -> return (weaken thm ctx);
@@ -236,22 +236,22 @@ decls =
       Assume "h2" (Forall "x" (Forall "y" (Forall "z" (func "B" [var "x", var "y", var "z"] `Implies` (func "L" [var "x", var "z"] `Implies` func "L" [var "x", var "y"]))))) (
         Assume "h3" (Exists "x" (Not (var "x" `Eq` var "Q") `And` Forall "y" (func "B" [var "y", var "x", var "Q"]))) (Block [
           Any "c" (Assume "hc" (Not (var "c" `Eq` var "Q") `And` Forall "x" (func "B" [var "x", var "c", var "Q"])) (Block [
-            Assertion "hc1" Nothing (AndL (As "hc")),
-            Assertion "hc2" Nothing (AndR (As "hc")),
+            Assertion "hc1" Nothing (AndL (Thm "hc")),
+            Assertion "hc2" Nothing (AndR (Thm "hc")),
             Assume "hex" (Exists "x" (func "L" [var "x", var "Q"])) (Block [
               Any "x" (Assume "hx" (func "L" [var "x", var "Q"]) (Block [
-                Assertion "t1" Nothing (ImpliesE (ForallE (ForallE (As "h1") (var "x")) (var "Q")) (As "hx")),
-                Assertion "t2" Nothing (ImpliesE (ForallE (As "t1") (var "c")) (As "hc1")),
-                Assertion "t3" Nothing (ForallE (As "hc2") (var "x")),
-                Assertion "t4" Nothing (ImpliesE (ImpliesE (ForallE (ForallE (ForallE (As "h2") (var "x")) (var "c")) (var "Q")) (As "t3")) (As "hx")),
-                Assertion "t5" Nothing (NotE (As "t2") (As "t4"))
+                Assertion "t1" Nothing (ImpliesE (ForallE (ForallE (Thm "h1") (var "x")) (var "Q")) (Thm "hx")),
+                Assertion "t2" Nothing (ImpliesE (ForallE (Thm "t1") (var "c")) (Thm "hc1")),
+                Assertion "t3" Nothing (ForallE (Thm "hc2") (var "x")),
+                Assertion "t4" Nothing (ImpliesE (ImpliesE (ForallE (ForallE (ForallE (Thm "h2") (var "x")) (var "c")) (var "Q")) (Thm "t3")) (Thm "hx")),
+                Assertion "t5" Nothing (NotE (Thm "t2") (Thm "t4"))
               ])),
-              Assertion "t6" Nothing (ExistsE (As "hex") (As "t5") Bottom)
+              Assertion "t6" Nothing (ExistsE (Thm "hex") (Thm "t5") Bottom)
             ]),
-            Assertion "t7" Nothing (NotI (As "t6"))
+            Assertion "t7" Nothing (NotI (Thm "t6"))
           ])),
           Assertion "t8" (Just (Not (Exists "x" (func "L" [var "x", var "Q"]))))
-            (ExistsE (As "h3") (As "t7") (Not (Exists "x" (func "L" [var "x", var "Q"]))))
+            (ExistsE (Thm "h3") (Thm "t7") (Not (Exists "x" (func "L" [var "x", var "Q"]))))
         ])
       )
     )
@@ -266,12 +266,12 @@ decls1 =
     -- eq.symm, in natural style
     Any "x" (Any "y" (Assume "h" (var "x" `Eq` var "y") (Block [
       Assertion "t1" (Just $ var "x" `Eq` var "x") (EqI (var "x")),
-      Assertion "eq.symm" (Just $ var "y" `Eq` var "x") (EqE (Lam "#" (var "#" `Eq` var "x")) (As "h") (As "t1"))
+      Assertion "eq.symm" (Just $ var "y" `Eq` var "x") (EqE (Lam "#" (var "#" `Eq` var "x")) (Thm "h") (Thm "t1"))
     ]))),
     -- eq.trans, in proof term style
     Assertion "eq.trans" (Just $ Forall "a" $ Forall "b" $ Forall "c" $ (var "a" `Eq` var "b") `Implies` ((var "b" `Eq` var "c") `Implies` (var "a" `Eq` var "c")))
       (Decl $ Any "x" $ Any "y" $ Any "z" $ Assume "h1" (var "x" `Eq` var "y") $ Assume "h2" (var "y" `Eq` var "z") (
-        Assertion "" (Just $ var "x" `Eq` var "z") (EqE (Lam "#" (var "x" `Eq` var "#")) (As "h2") (As "h1"))
+        Assertion "" (Just $ var "x" `Eq` var "z") (EqE (Lam "#" (var "x" `Eq` var "#")) (Thm "h2") (Thm "h1"))
       ))
   ]
 

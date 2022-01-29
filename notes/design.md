@@ -6,7 +6,7 @@ General idea: every line you write down after `=>` will become a theorem, which 
 
 ## Syntax of first-order formulas
 
-ApiMu will use a standard first-order logic with equality, extended with function and predicate metavariables to express formula schemas like the separation and replacement axioms in ZFC.
+ApiMu will use a standard first-order logic with equality, extended with function and predicate (meta)variables to express formula schemas like the separation and replacement axioms in ZFC.
 
 A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of predicates**, and **`Γ` of assumptions**. (It replaces the notions of "signature" and "theory".)
 
@@ -32,14 +32,13 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
       > Alternatively written as `(∀ x, e)`, `(∃ x, e)` and `(∃! x, e)`.
   - The set of "formula schemas" (expression schemas of type `*`) under some `F` and `P` is inductively defined as:
     - ~~Any formula under `F` and `P` is also a formula schema.~~
-    - For any string `f` not occurring in `F`, and any positive integer `n`, if `e` is a formula or schema under `F ∪ {f/n}` and `P`, then `(forallfunc f/n, e)` is a formula schema under `F` and `P`. (The `n = 0` case is already covered in the previous rule, so it's not included here.)
+    - For any string `f` not occurring in `F`, and any nonnegative integer `n`, if `e` is a formula or schema under `F ∪ {f/n}` and `P`, then `(forallfunc f/n, e)` is a formula schema under `F` and `P`. (The `n = 0` case is already covered in the previous rule, so it's not included here.)
       > Alternatively written as `(∀# f/n, e)`.
     - For any string `p` not occurring in `P`, and any nonnegative integer `n`, if `e` is a formula or schema under `F` and `P ∪ {p/n}`, then `(forallpred p/n, e)` is a formula schema under `F` and `P`.
       > Alternatively written as `(∀$ p/n, e)`.
   - The last two rules should be understood as a way to express "formula schemas" (infinite sets of formulas obtained by specializing those function and predicate variables). Although they could as well represent second-order quantifications, I'm not going to fully support second-order logic (you can see there's no second-order existential quantifiers, and the `∀#` and `∀$` must appear at the beginning). Instead I will use sets to represent functions and higher-order functions...
 - As explained above, the definition of a formula/schema depends on `F` and `P`. A context `(F, P, Γ)` is well-formed only if all formulas/schemas in `Γ` are well-formed under `F` and `P`.
 - For simplicity we assume that no two elements in `F`, `P` or `Γ` share the same name. Below, context extensions like `Γ ∪ {h : p ∧ q}` are assumed to be well-formed (no duplicate names).
-  - (In the actual implementation, later names will "override" earlier names)
 - The domain of discourse `ι` is considered to be non-empty (inhabited). The individual variable `initial : ι` can be used anywhere.
 - For convenience in writing proofs, I will also define the set of well-formed n-ary functions/predicates, generalizing the previous definition of well-formed terms/formulas.
   - Well-formed terms/formulas themselves are nullary functions/predicates.
@@ -51,7 +50,7 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
   - ~~(Application)~~
     - ~~For any n-ary function `f` with n > 0 and term `t`, `(f t)` is an (n-1)-ary function, the same as replacing `x₁` by `t` in the body of `f`.~~
     - ~~For any n-ary predicate `p` with n > 0 and term `t`, `(p t)` is an (n-1)-ary predicate, the same as replacing `x₁` by `t` in the body of `p`.~~
-    - Convention: every function must be fully applied in an expression...
+    - Every function must be fully applied in an expression...
     - (Possible feature: for any nullary function (term) `f` and another term `t`, `(f t)` is the same as `(funapp f t)`, where `funapp` is a binary function assigned using the `#el +implicit_funapp` preprocessor command.)
   - ~~These look like a kind of "lambda expressions", but are all first-order so very trivial (I will store them in normal forms). They are weaker than the "function definition rules" introduced below, since they must be total, and cannot utilize definite/indefinite descriptions. (Probably I will need to unify these two ways of specifying functions, by e.g. supporting inline iota/epsilon operators... but for now I just want to make a working demo so don't care)~~
 
