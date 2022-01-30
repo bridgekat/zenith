@@ -17,7 +17,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
   - [ ] Core part (WIP)
   - [ ] Text & binary file formats for FOL and ND trees (WIP)
   - [ ] Core API
-  - [ ] User-defined connectives (will require higher-order reasoning to express)
+  - [ ] User-defined connectives (requires "implicit arguments"?)
 - [ ] The elaborator
   - [ ] Boilerplate code & CLI
   - [ ] Parser & pretty-printer

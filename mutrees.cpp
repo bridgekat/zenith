@@ -103,7 +103,7 @@ struct InvalidDecl: public CheckFailure { InvalidDecl(const string& s, const Con
 struct Unreachable: public std::logic_error { Unreachable(): std::logic_error("\"Unreachable\" code was reached") {} };
 
 // The context is stored as a stack (an std::vector whose last element denotes the topmost layer).
-// Here, all hypotheses and definitions are stored "linearly" in one array.
+// Here, "assumed" and "defined" entries are interleaved, stored linearly in one array.
 class Context {
 public:
   // Context entry
@@ -112,19 +112,25 @@ public:
     variant<Type, const Expr*> info;
   };
 
-  Allocator<Expr> pool;
-  vector<Entry> a;
+  vector<Entry> a; // All entries
+  vector<unsigned int> ind; // Indices of "assumed" entries
   const unsigned int eq;
 
   // Insert a built-in equality relation during initialization
-  Context(): pool(), a(), eq(static_cast<unsigned int>(addDef("eq", {{ 2, SPROP }}))) {}
+  Context(): a(), ind(), eq(static_cast<unsigned int>(addDef("eq", {{ 2, SPROP }}))) {}
 
-  // Add a definition to the top.
-  size_t addDef(const string& s, const Type& t);
-  // Add a hypothesis to the top, copying the expression to pool.
-	size_t addHyp(const string& s, const Expr* e);
+  // Add entries...
+  size_t addDef         (const string& s, const Type& t) { a.push_back(Entry{ s, t }); return a.size() - 1; }
+  size_t addTheorem     (const string& s, const Expr* e) { a.push_back(Entry{ s, e }); return a.size() - 1; }
+  size_t pushVar        (const string& s, const Type& t) { a.push_back(Entry{ s, t }); ind.push_back(a.size() - 1); return a.size() - 1; }
+	size_t pushAssumption (const string& s, const Expr* e) { a.push_back(Entry{ s, e }); ind.push_back(a.size() - 1); return a.size() - 1; }
+  // Pops the last "assumed" entry, performs appropriate changes to all definitions and theorems in the top layer,
+  // storing the new expression nodes in `pool`.
+  // Returns false if there is no "assumed" entry left.
+  bool pop(Allocator<Expr>& pool);
 
   // Look up by index.
+  // Use `valid(i)` to perform bound checks before accessing, and throw appropriate exception if index is too large.
   bool valid(size_t index) const { return index < a.size(); }
   const variant<Type, const Expr*>& operator[](size_t index) const { return a.at(index).info; }
   const string& nameOf(size_t index) const { return a.at(index).name; }
@@ -156,8 +162,6 @@ class Expr {
 public:
   Symbol symbol;
   Expr* s; // Next sibling (for children of VAR nodes only)
-
-  // Union-like classes: https://en.cppreference.com/w/cpp/language/union
   union {
     // VAR (`id` stands for context index for free variables, de Brujin index for bound variables)
     struct { bool free; unsigned int id; Expr* c; } var;
@@ -167,7 +171,6 @@ public:
     struct { unsigned short arity; Sort sort; Expr* r; } binder;
   };
 
-  // Implicitly-defined default constructor does nothing: https://en.cppreference.com/w/cpp/language/default_constructor
   // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
   Expr(): symbol(EMPTY), s(nullptr) {}
   Expr(Symbol sym): symbol(sym), s(nullptr) {
@@ -190,16 +193,6 @@ public:
   Expr(Symbol sym, unsigned short arity, Sort sort, Expr* r): Expr(sym) {
     binder.arity = arity; binder.sort = sort; binder.r = r;
   }
-  // Implicitly-defined copy constructor copies all non-static members: https://en.cppreference.com/w/cpp/language/copy_constructor
-  // Expr(const Expr& rhs) = default;
-  // Implicitly-defined move constructor moves all non-static members: https://en.cppreference.com/w/cpp/language/move_constructor
-  // Expr(Expr&&) = default;
-  // Implicitly-defined copy assignment operator copies all non-static members: https://en.cppreference.com/w/cpp/language/copy_assignment
-  // Expr& operator= (const Expr&) = default;
-  // Implicitly-defined move assignment operator moves all non-static members: https://en.cppreference.com/w/cpp/language/move_assignment
-  // Expr& operator= (Expr&&) = default;
-  // Implicitly-defined destructor does nothing: https://en.cppreference.com/w/cpp/language/destructor
-  // ~Expr() = default;
 
   // Deep copy
   // Pre: all nonzero pointers are valid
@@ -326,7 +319,6 @@ public:
     }
     throw Unreachable();
   }
-
   string toString(const Context& ctx) const {
     vector<pair<Type, string>> stk;
     return toString(ctx, stk);
@@ -416,7 +408,6 @@ public:
     }
     throw Unreachable();
   }
-
   Type checkType(const Context& ctx) const {
     vector<Type> stk;
     return checkType(ctx, stk);
@@ -530,14 +521,96 @@ inline Expr* newNode(Allocator<Expr>& pool, const Ts&... args) {
   return &pool.push_back(Expr(args...));
 }
 
-inline size_t Context::addDef(const string& s, const Type& t) {
-  a.push_back(Entry{ s, t });
-  return a.size() - 1;
-}
+// Context-changing rules (implies-intro, forall[func, pred]-intro) here
+bool Context::pop(Allocator<Expr>& pool) {
+  if (ind.empty()) return false;
+  size_t index = ind.back(); ind.pop_back();
+  auto entry = a[index];
 
-inline size_t Context::addHyp(const string& s, const Expr* e) {
-  a.push_back(Entry{ s, e->clone(pool) });
-  return a.size() - 1;
+  // Some helper functions and macros
+  auto concat = [] (Type a, const Type& b) {
+    for (auto x: b) a.push_back(x);
+    return a;
+  };
+
+  #define node2(l_, sym_, r_)   newNode(pool, sym_, l_, r_)
+  #define nodebinder(sym_, r_)  newNode(pool, sym_, 0, SVAR, r_) // This binds term variables only
+  #define nodebinderks(sym_, k_, s_, r_) \
+                                newNode(pool, sym_, k_, s_, r_)
+  #define nodevar(f_, id_, ...) newNode(pool, VAR, f_, id_, initializer_list<Expr*>{__VA_ARGS__})
+  #define isexpr(info)          holds_alternative<const Expr*>(info)
+  #define istype(info)          holds_alternative<Type>(info)
+  #define expr(info)            get<const Expr*>(info)
+  #define type(info)            get<Type>(info)
+
+  // Which kind of assumption?
+  if (isexpr(entry.info)) {
+    const Expr* hyp = expr(entry.info);
+
+    for (size_t i = index; i + 1 < a.size(); i++) {
+      // Copy a[i + 1] to a[i], with necessary modifications...
+      if (isexpr(a[i + 1].info)) {
+        // Implies-intro for theorems
+        a[i] = {
+          a[i + 1].name,
+          node2(hyp->clone(pool), IMPLIES, expr(a[i + 1].info)->clone(pool))
+        };
+      } else if (istype(a[i + 1].info)) {
+        // No change for definitions
+        a[i] = a[i + 1];
+      } else throw Unreachable();
+    }
+    a.pop_back();
+
+  } else if (istype(entry.info)) {
+    const Type& t = type(entry.info);
+    // Assumed variable must be first- or second-order
+    if (t.size() != 1) throw Unreachable();
+
+    for (size_t i = index; i + 1 < a.size(); i++) {
+      // Copy a[i + 1] to a[i], with necessary modifications...
+      if (isexpr(a[i + 1].info)) {
+        // Forall[func, pred]-intro for theorems
+        auto makeBoundAddArg = [index, &pool] (unsigned int n, Expr* x) {
+          if (x->var.free && x->var.id == index) { // If it is the assumed variable..
+            x->var.free = false; x->var.id = n;
+          } else if (x->var.free && x->var.id > index) { // If defined after the assumed variable...
+            Expr* arg = nodevar(BOUND, n);
+            arg->s = x->var.c; x->var.c = arg;
+          }
+          return x;
+        };
+        const Expr* ei = expr(a[i + 1].info);
+        a[i] = {
+          a[i + 1].name,
+          (t == TTerm && ei->symbol != FORALLFUNC) ?
+            nodebinder(FORALL, ei->updateVars(0, pool, makeBoundAddArg)) :
+            nodebinderks(FORALLFUNC, t[0].first, t[0].second, ei->updateVars(0, pool, makeBoundAddArg))
+        };
+      } else if (istype(a[i + 1].info)) {
+        // Add abstraction for definitions
+        const Type& ti = type(a[i + 1].info);
+        a[i] = {
+          a[i + 1].name,
+          (t == TTerm && ti.size() == 1) ?
+            Type{{ ti[0].first + 1, ti[0].second }} :
+            concat(t, ti)
+        };
+      } else throw Unreachable();
+    }
+    a.pop_back();
+
+  } else throw Unreachable();
+
+  #undef node2
+  #undef nodebinder
+  #undef nodebinderks
+  #undef nodevar
+  #undef isexpr
+  #undef istype
+  #undef expr
+  #undef type
+  return true;
 }
 
 
@@ -593,9 +666,9 @@ public:
     }
   }
 
-  // Checks proof, side-effecting the context `ctx`
+  // Checks proof (currently no side-effects on `ctx`)
   // Returned pointer is valid & points to a well-formed formula
-  Expr* check(Context& ctx, Allocator<Expr>& pool) const {
+  Expr* check(const Context& ctx, Allocator<Expr>& pool) const {
 
     // Some helper functions for checking subproofs
     // Throws exception on failure
@@ -788,19 +861,68 @@ inline Proof* newProof(Allocator<Proof>& pool, const Ts&... args) {
 
 class Decl {
 public:
-  enum Entry {
-    BLOCK,
-    ANY, ANYFUNC, ASSUME, POP,
-    ASSERTION, // Proof
-    DEF,   // Extension by definitions (using "shorthands")
-    DDEF,  // Extension by definitions (using "definite descriptions")
-    IDEF,  // Extension by definitions (using "indefinite descriptions")
-    UNDEF, // Undefining functions (removing all axioms/theorems that contain them) or theorems
+  enum Category: unsigned char {
+    BLOCK, ASSERTION,
+    ASSUME, ANY, POP,
+    DEF, DDEF, IDEF, UNDEF
+  } category;
+
+  Decl* s; // Next sibling
+  string name; // Non-POD class instance cannot be stored inside unions
+  union {
+    struct { Decl* c; } block;
+    struct { Expr* e; Proof* pf; } assertion, def, ddef, idef;
+    struct { unsigned short arity; Sort sort; } any;
+    struct { Expr* e; } assume;
   };
 
   // TODO: constructors
   // TODO: debug output
 
+  // Checks declarations, side-effecting the context `ctx` (newly created nodes will be stored in `pool`)
+  // Throws exception on failure
+  void check(Context& ctx, Allocator<Expr>& pool) const {
+
+    auto proved = [&ctx, &pool, this] (const Proof* p) -> Expr* {
+      if (!p) throw InvalidDecl("null pointer", ctx, this);
+      return p->check(ctx, pool);
+    };
+    auto wff = [&ctx, &pool, this] (Expr* p) -> Expr* {
+      if (!p) throw InvalidDecl("null pointer", ctx, this);
+      if (p->checkType(ctx) != TFormula) throw InvalidDecl("type mismatch, expected formula", ctx, this);
+      return p;
+    };
+
+    switch (category) {
+      case BLOCK:
+        for (const Decl* p = block.c; p; p = p->s) p->check(ctx, pool);
+        return;
+      case ASSERTION: {
+        const Expr* res = proved(assertion.pf);
+        if (assertion.e && *res != *(assertion.e))
+          throw InvalidDecl("statement and proof do not match", ctx, this);
+        ctx.addTheorem(name, assertion.e);
+        return;
+      }
+      case ASSUME: ctx.pushAssumption(name, wff(assume.e)); return;
+      case ANY:    ctx.pushVar(name, Type{{ any.arity, any.sort }}); return;
+      case POP:    ctx.pop(pool); return;
+      case DEF:
+        // TODO
+        return;
+      case DDEF:
+        // TODO
+        return;
+      case IDEF:
+        // TODO
+        return;
+      case UNDEF:
+        // TODO
+        return;
+    }
+
+    throw Unreachable();
+  }
 };
 
 InvalidExpr::InvalidExpr(const string& s, const Context& ctx, const Expr* e):
