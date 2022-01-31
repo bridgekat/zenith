@@ -10,27 +10,19 @@
 // Currently it does not support "inline" declarations (declarations within non-context-changing proof terms).
 
 #include <iostream>
-#include <stdio.h>
 #include <initializer_list>
 #include <vector>
-#include <set>
-#include <map>
-#include <algorithm>
+#include <string>
 #include <optional>
 #include <variant>
-#include <string>
-#include <sstream>
 #include <exception>
 
 using std::initializer_list;
 using std::vector;
-using std::set;
-using std::map;
-using std::pair, std::make_pair;
-using std::tuple, std::get, std::make_tuple;
-using std::optional, std::make_optional, std::nullopt;
-using std::variant, std::holds_alternative, std::get_if;
 using std::string;
+using std::pair, std::make_pair;
+using std::optional, std::make_optional, std::nullopt;
+using std::variant, std::holds_alternative, std::get, std::get_if;
 using std::cin, std::cout, std::endl;
 
 
@@ -123,9 +115,9 @@ public:
   size_t addDef         (const string& s, const Type& t) { a.push_back(Entry{ s, t }); return a.size() - 1; }
   size_t addTheorem     (const string& s, const Expr* e) { a.push_back(Entry{ s, e }); return a.size() - 1; }
   size_t pushVar        (const string& s, const Type& t) { a.push_back(Entry{ s, t }); ind.push_back(a.size() - 1); return a.size() - 1; }
-	size_t pushAssumption (const string& s, const Expr* e) { a.push_back(Entry{ s, e }); ind.push_back(a.size() - 1); return a.size() - 1; }
+  size_t pushAssumption (const string& s, const Expr* e) { a.push_back(Entry{ s, e }); ind.push_back(a.size() - 1); return a.size() - 1; }
   // Pops the last "assumed" entry, performs appropriate changes to all definitions and theorems in the top layer,
-  // storing the new expression nodes in `pool`.
+  // storing the new expressions in `pool`.
   // Returns false if there is no "assumed" entry left.
   bool pop(Allocator<Expr>& pool);
 
@@ -158,6 +150,7 @@ enum Symbol: unsigned char {
 // Formula (schema) tree node, and related syntactic operations
 // Pre (for all methods): there is no "cycle" throughout the tree
 // Pre & invariant (for all methods): pointer is nonzero <=> pointer is valid (exception: root nodes have undefined *s pointer)
+// Will just stick to this old-fashioned tagged union approach before C++ admits a better way to represent sum types
 class Expr {
 public:
   Symbol symbol;
@@ -184,7 +177,7 @@ public:
         binder.r = nullptr; break;
     }
   }
-  // Some convenient constructors (using unsafe attach)
+  // Some convenient constructors (using no-copy attach)
   Expr(Symbol sym, bool free, unsigned int id, const initializer_list<Expr*>& c): Expr(sym) {
     var.free = free; var.id = id; attachChildren(c);
   }
@@ -572,7 +565,7 @@ bool Context::pop(Allocator<Expr>& pool) {
       if (isexpr(a[i + 1].info)) {
         // Forall[func, pred]-intro for theorems
         auto makeBoundAddArg = [index, &pool] (unsigned int n, Expr* x) {
-          if (x->var.free && x->var.id == index) { // If it is the assumed variable..
+          if (x->var.free && x->var.id == index) { // If it is the assumed variable...
             x->var.free = false; x->var.id = n;
           } else if (x->var.free && x->var.id > index) { // If defined after the assumed variable...
             Expr* arg = nodevar(BOUND, n);
@@ -631,10 +624,10 @@ public:
   // Unlike expressions, DAGs are allowed for proofs: each node may be attached to multiple parent nodes at a time.
   // Unused fields/pointers are ignored (will not be checked).
   union {
-    struct { Expr* p; } expr;
+    struct { const Expr* p; } expr;
     struct { unsigned int id; } thm;
-//    struct { Decl* p; } decl;
-    struct { Proof* p[3]; } subpfs;
+    struct { const Decl* p; } decl;
+    struct { const Proof* p[3]; } subpfs;
   };
 
   // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
@@ -643,7 +636,7 @@ public:
     switch (rule) {
       case EMPTY: break;
       case EXPR: expr.p = nullptr; break;
-//      case DECL: decl.p = nullptr; break;
+      case DECL: decl.p = nullptr; break;
       default: subpfs.p[0] = subpfs.p[1] = subpfs.p[2] = nullptr; break;
     }
   }
@@ -673,29 +666,30 @@ public:
     // Some helper functions for checking subproofs
     // Throws exception on failure
     auto proved = [&ctx, &pool, this] (int i) -> Expr* {
-      Proof* p = subpfs.p[i];
+      const Proof* p = subpfs.p[i];
       if (!p) throw InvalidProof("null pointer", ctx, this);
       return p->check(ctx, pool);
     };
-    auto wff = [&ctx, &pool, this] (int i) -> Expr* {
-      Proof* p = subpfs.p[i];
+    // These may require additional clone() since they return expression pointers pointing to subproof data
+    auto wff = [&ctx, &pool, this] (int i) -> const Expr* {
+      const Proof* p = subpfs.p[i];
       if (!p) throw InvalidProof("null pointer", ctx, this);
       if (p->checkExpr(ctx) != TFormula) throw InvalidProof("type mismatch, expected formula", ctx, this);
       return p->expr.p;
     };
-    auto wft = [&ctx, &pool, this] (int i) -> Expr* {
-      Proof* p = subpfs.p[i];
+    auto wft = [&ctx, &pool, this] (int i) -> const Expr* {
+      const Proof* p = subpfs.p[i];
       if (!p) throw InvalidProof("null pointer", ctx, this);
       if (p->checkExpr(ctx) != TTerm) throw InvalidProof("type mismatch, expected term", ctx, this);
       return p->expr.p;
     };
-    auto exprtype = [&ctx, &pool, this] (int i) -> pair<Expr*, Type> {
-      Proof* p = subpfs.p[i];
+    auto exprtype = [&ctx, &pool, this] (int i) -> pair<const Expr*, Type> {
+      const Proof* p = subpfs.p[i];
       if (!p) throw InvalidProof("null pointer", ctx, this);
       return { p->expr.p, p->checkExpr(ctx) };
     };
 
-    // Some helper macros that try "pattern matching on" a given node
+    // Some helper macros that try "pattern matching on" a given node (infix for binary connectives)
     //   *a_ must be a valid & well-formed formula
     //   sym_ must be a constant
     //   l_, r_ must be identifiers
@@ -756,8 +750,8 @@ public:
       case AND_I: return node2(proved(0), AND, proved(1));
       case AND_L: { match2(proved(0), p, AND, q); return p; }
       case AND_R: { match2(proved(0), p, AND, q); return q; }
-      case OR_L: return node2(proved(0), OR, wff(1));
-      case OR_R: return node2(wff(0), OR, proved(1));
+      case OR_L: return node2(proved(0), OR, wff(1)->clone(pool));
+      case OR_R: return node2(wff(0)->clone(pool), OR, proved(1));
       case OR_E: { match2(proved(0), p0, OR, q0);
                    match2(proved(1), p1, IMPLIES, r0);
                    match2(proved(2), q1, IMPLIES, r1);
@@ -770,11 +764,11 @@ public:
       case IFF_L: { match2(proved(0), p, IFF, q); asserteq(p, proved(1)); return q; }
       case IFF_R: { match2(proved(0), p, IFF, q); asserteq(q, proved(1)); return p; }
       case TRUE_I: return node0(TRUE);
-      case FALSE_E: { match0(proved(0), FALSE); return wff(1); }
+      case FALSE_E: { match0(proved(0), FALSE); return wff(1)->clone(pool); }
       case RAA: { match2(proved(0), np, IMPLIES, f); match1(np, NOT, p); match0(f, FALSE); return p; }
       case EQ_I: {
-        Expr* t = wft(0);
-        return nodevar(FREE, ctx.eq, t, t->clone(pool));
+        const Expr* t = wft(0);
+        return nodevar(FREE, ctx.eq, t->clone(pool), t->clone(pool));
       }
       case EQ_E: {
         auto [p, type] = exprtype(0);
@@ -790,7 +784,7 @@ public:
         return px->makeReplace(wft(1), pool);
       }
       case EXISTS_I: {
-        Expr* conc = wff(0);
+        Expr* conc = wff(0)->clone(pool);
         matchbinder(conc, EXISTS, px);
         asserteq(px->makeReplace(wft(1), pool), proved(2));
         return conc;
@@ -862,65 +856,118 @@ inline Proof* newProof(Allocator<Proof>& pool, const Ts&... args) {
 class Decl {
 public:
   enum Category: unsigned char {
+    EMPTY = 0,
     BLOCK, ASSERTION,
     ASSUME, ANY, POP,
-    DEF, DDEF, IDEF, UNDEF
+    FDEF, PDEF, DDEF, IDEF, UNDEF
   } category;
 
   Decl* s; // Next sibling
-  string name; // Non-POD class instance cannot be stored inside unions
+  // Non-POD class instance cannot be stored inside unions
+  // (or I will have to manually call their constructors & destructors)
+  string name, namedef;
   union {
-    struct { Decl* c; } block;
-    struct { Expr* e; Proof* pf; } assertion, def, ddef, idef;
+    struct { const Decl* c; } block;
+    struct { const Expr* e; const Proof* pf; } assertion, ddef, idef;
+    struct { const Expr* e; } assume, fdef, pdef;
     struct { unsigned short arity; Sort sort; } any;
-    struct { Expr* e; } assume;
   };
 
-  // TODO: constructors
+  // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
+  Decl(): category(EMPTY) {}
+  Decl(Category cat): category(cat) {
+    switch (category) {
+      case EMPTY: case ANY: case POP: break;
+      case BLOCK: block.c = nullptr; break;
+      case ASSERTION: assertion.e = nullptr; assertion.pf = nullptr; break;
+      case ASSUME: assume.e = nullptr; break;
+      case FDEF: fdef.e = nullptr; break;
+      case PDEF: pdef.e = nullptr; break;
+      case DDEF: ddef.e = nullptr; ddef.pf = nullptr; break;
+      case IDEF: idef.e = nullptr; idef.pf = nullptr; break;
+    }
+  }
+  // TODO: some convenient constructors
   // TODO: debug output
 
-  // Checks declarations, side-effecting the context `ctx` (newly created nodes will be stored in `pool`)
+  // Checks declarations, side-effecting the context `ctx` (newly created expressions will be stored in `pool`)
   // Throws exception on failure
   void check(Context& ctx, Allocator<Expr>& pool) const {
 
-    auto proved = [&ctx, &pool, this] (const Proof* p) -> Expr* {
+    auto proved = [&ctx, &pool, this] (const Proof* p) -> const Expr* {
       if (!p) throw InvalidDecl("null pointer", ctx, this);
       return p->check(ctx, pool);
     };
-    auto wff = [&ctx, &pool, this] (Expr* p) -> Expr* {
+    auto wff = [&ctx, this] (const Expr* p) -> const Expr* {
       if (!p) throw InvalidDecl("null pointer", ctx, this);
       if (p->checkType(ctx) != TFormula) throw InvalidDecl("type mismatch, expected formula", ctx, this);
       return p;
     };
+    auto wft = [&ctx, this] (const Expr* p) -> const Expr* {
+      if (!p) throw InvalidDecl("null pointer", ctx, this);
+      if (p->checkType(ctx) != TTerm) throw InvalidDecl("type mismatch, expected term", ctx, this);
+      return p;
+    };
+
+    #define matchbinder(a_, sym_, r_) [[maybe_unused]] Expr* r_; { \
+      Expr* x = a_; \
+      if (x->symbol != sym_) throw InvalidDecl("incorrect binder", ctx, this); \
+      if (!x->binder.r)      throw Unreachable(); \
+      r_ = x->binder.r; \
+    }
+    #define node2(l_, sym_, r_)   newNode(pool, sym_, l_, r_)
+    #define nodebinder(sym_, r_)  newNode(pool, sym_, 0, SVAR, r_) // This binds term variables only
+    #define nodevar(f_, id_, ...) newNode(pool, VAR, f_, id_, initializer_list<Expr*>{__VA_ARGS__})
 
     switch (category) {
+      case EMPTY: throw InvalidDecl("unexpected empty tag", ctx, this);
       case BLOCK:
         for (const Decl* p = block.c; p; p = p->s) p->check(ctx, pool);
         return;
       case ASSERTION: {
         const Expr* res = proved(assertion.pf);
         if (assertion.e && *res != *(assertion.e))
-          throw InvalidDecl("statement and proof do not match", ctx, this);
-        ctx.addTheorem(name, assertion.e);
+          throw InvalidDecl("invalid assertion - statement and proof do not match", ctx, this);
+        ctx.addTheorem(name, assertion.e->clone(pool));
         return;
       }
-      case ASSUME: ctx.pushAssumption(name, wff(assume.e)); return;
+      case ASSUME: ctx.pushAssumption(name, wff(assume.e)->clone(pool)); return;
       case ANY:    ctx.pushVar(name, Type{{ any.arity, any.sort }}); return;
-      case POP:    ctx.pop(pool); return;
-      case DEF:
-        // TODO
+      case POP:    if (!ctx.pop(pool)) throw InvalidDecl("error popping - assumption stack is empty at this point", ctx, this); return;
+      
+      // Definition rules here
+      
+      case FDEF: {
+        unsigned int id = ctx.addDef(name, TTerm);
+        ctx.addTheorem(namedef, nodevar(FREE, ctx.eq, nodevar(FREE, id), wft(fdef.e)->clone(pool)));
         return;
-      case DDEF:
-        // TODO
+      }
+      case PDEF: {
+        unsigned int id = ctx.addDef(name, TFormula);
+        ctx.addTheorem(namedef, node2(nodevar(FREE, id), IFF, wff(pdef.e)->clone(pool)));
         return;
-      case IDEF:
-        // TODO
+      }
+      case DDEF: {
+        matchbinder(proved(ddef.pf)->clone(pool), UNIQUE, p);
+        unsigned int id = ctx.addDef(name, TTerm);
+        ctx.addTheorem(namedef, nodebinder(FORALL, node2(p, IFF, nodevar(FREE, ctx.eq, nodevar(BOUND, 0), nodevar(FREE, id)))));
         return;
-      case UNDEF:
-        // TODO
+      }
+      case IDEF: {
+        matchbinder(proved(ddef.pf)->clone(pool), EXISTS, p);
+        unsigned int id = ctx.addDef(name, TTerm);
+        ctx.addTheorem(namedef, p->makeReplace(nodevar(FREE, id), pool));
         return;
+      }
+      case UNDEF: {
+        throw InvalidDecl("TODO", ctx, this);
+      }
     }
 
+    #undef matchbinder
+    #undef node2
+    #undef nodebinder
+    #undef nodevar
     throw Unreachable();
   }
 };
@@ -931,6 +978,7 @@ InvalidProof::InvalidProof(const string& s, const Context&, const Proof*):
   CheckFailure("Invalid proof, " + s) {}
 InvalidDecl::InvalidDecl(const string& s, const Context&, const Decl*):
   CheckFailure("Invalid expression, " + s) {}
+
 
 // TODO: read text & binary files
 

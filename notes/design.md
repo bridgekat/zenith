@@ -31,8 +31,7 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
     - For any string `x` not occurring in `F`, if `e` is a formula under `F ∪ {x/0}` and `P`, then `(forall x, e)`, `(exists x, e)` and `(unique x, e)` are formulas under `F` and `P`.
       > Alternatively written as `(∀ x, e)`, `(∃ x, e)` and `(∃! x, e)`.
   - The set of "formula schemas" (expression schemas of type `*`) under some `F` and `P` is inductively defined as:
-    - ~~Any formula under `F` and `P` is also a formula schema.~~
-    - For any string `f` not occurring in `F`, and any nonnegative integer `n`, if `e` is a formula or schema under `F ∪ {f/n}` and `P`, then `(forallfunc f/n, e)` is a formula schema under `F` and `P`. (The `n = 0` case is already covered in the previous rule, so it's not included here.)
+    - For any string `f` not occurring in `F`, and any nonnegative integer `n`, if `e` is a formula or schema under `F ∪ {f/n}` and `P`, then `(forallfunc f/n, e)` is a formula schema under `F` and `P`.
       > Alternatively written as `(∀# f/n, e)`.
     - For any string `p` not occurring in `P`, and any nonnegative integer `n`, if `e` is a formula or schema under `F` and `P ∪ {p/n}`, then `(forallpred p/n, e)` is a formula schema under `F` and `P`.
       > Alternatively written as `(∀$ p/n, e)`.
@@ -40,20 +39,10 @@ A **context `(F, P, Γ)`** is composed of **the set `F` of functions**, **`P` of
 - As explained above, the definition of a formula/schema depends on `F` and `P`. A context `(F, P, Γ)` is well-formed only if all formulas/schemas in `Γ` are well-formed under `F` and `P`.
 - For simplicity we assume that no two elements in `F`, `P` or `Γ` share the same name. Below, context extensions like `Γ ∪ {h : p ∧ q}` are assumed to be well-formed (no duplicate names).
 - The domain of discourse `ι` is considered to be non-empty (inhabited). The individual variable `initial : ι` can be used anywhere.
-- For convenience in writing proofs, I will also define the set of well-formed n-ary functions/predicates, generalizing the previous definition of well-formed terms/formulas.
-  - Well-formed terms/formulas themselves are nullary functions/predicates.
-  - ~~(Context) For any `f/n` in `F`, `f` itself is also an n-ary function. Similarly for `p/n` in `P`.~~
-  - (Abstraction)
-    - For any list of strings `xᵢ` each not occurring in `F`, if `t` is an m-ary function under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | t)` is an (n+m)-ary function (expression of type `ι → ι → ... → ι`) under `F` and `P`.
-    - For any list of strings `xᵢ` each not occurring in `F`, if `e` is an m-ary predicate under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | e)` is an (n+m)-ary predicate (expression of type `ι → ι → ... → *`) under `F` and `P`.
-    - This is used to supply second-order arguments to some rules and constants; they are never directly applied to term variables. (Probably we could discard it and use definitions instead? But it looks more convenient for now...)
-  - ~~(Application)~~
-    - ~~For any n-ary function `f` with n > 0 and term `t`, `(f t)` is an (n-1)-ary function, the same as replacing `x₁` by `t` in the body of `f`.~~
-    - ~~For any n-ary predicate `p` with n > 0 and term `t`, `(p t)` is an (n-1)-ary predicate, the same as replacing `x₁` by `t` in the body of `p`.~~
-    - Every function must be fully applied in an expression...
-    - (Possible feature: for any nullary function (term) `f` and another term `t`, `(f t)` is the same as `(funapp f t)`, where `funapp` is a binary function assigned using the `#el +implicit_funapp` preprocessor command.)
-  - ~~These look like a kind of "lambda expressions", but are all first-order so very trivial (I will store them in normal forms). They are weaker than the "function definition rules" introduced below, since they must be total, and cannot utilize definite/indefinite descriptions. (Probably I will need to unify these two ways of specifying functions, by e.g. supporting inline iota/epsilon operators... but for now I just want to make a working demo so don't care)~~
-
+- For convenience in writing proofs, I will also define the set of well-formed n-ary functions/predicates, generalizing the previous definition of terms/formulas.
+  - For any list of strings `xᵢ` each not occurring in `F`, if `t` is a term under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | t)` is an n-ary function (expression of type `ι → ι → ... → ι`) under `F` and `P`.
+  - For any list of strings `xᵢ` each not occurring in `F`, if `e` is an formula under `F ∪ {x₁/0, x₂/0, ..., xₙ/0}` and `P`, then `(x₁ x₂ ... xₙ | e)` is an n-ary predicate (expression of type `ι → ι → ... → *`) under `F` and `P`.
+  - These are used to supply function/predicate arguments (second-order arguments) to some rules and constants; they are never directly applied to term variables.
 
 
 ## "Natural deduction" rules
@@ -146,9 +135,9 @@ The introduction rules for `implies`, `forall`, `forallfunc` and `forallpred` ar
   - The proof for `exists f, <formula-with-f-free>` must be provided.
 - On leaving from `assume (h : <assumption>)` sections, their arities are unchanged; `<assumption> →` will be added in front of all local theorems (including their defining axioms).
 - On leaving from `any` sections, their arities will be added by one; a new argument (the variable `x` being generalized on) is inserted at the beginning; `forall x` will be added in front of all local theorems (including their defining axioms).
-- On leaving from `anyfunc` or `anypred` sections, ~~they will not be preserved. We can't represent higher-order functions directly in the first-order language, and this is also unnecessary.~~ they will become "function/predicate schemas" with one or more function/predicate arguments.
+- On leaving from `anyfunc` or `anypred` sections, they will become "function/predicate schemas" (or equivalently, third-order constants) with one or more function/predicate (second-order) arguments.
 
-(Put definitions inside `assume` sections to get partial functions & predicates (i.e. you have nothing to say about them unless you have all the preconditions. The metatheoretic interpretation could be a three-valued logic with an "undefined" value, and every formula with "undefined" value cannot be proved or disproved...))
+(Put definitions inside `assume` sections to get partial functions & predicates (i.e. you have nothing to say about them unless you have all the preconditions. The metatheoretic interpretation could be a three-valued logic with an "undefined" value, and every formula with "undefined" value cannot be proved or disproved...?))
 
 
 
