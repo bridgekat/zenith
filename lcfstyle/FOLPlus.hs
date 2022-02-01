@@ -7,7 +7,7 @@
 
 -- This is a VERY INEFFICIENT implementation that serves mainly as a specification:
 -- EVERY theorem has a context attached to it, so if there are many definitions, the program will
--- take up a lot of time and memory.
+-- take up a lot of time and memory. (Probably I will need to rewrite this...)
 
 -- {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -21,7 +21,7 @@ module FOLPlus
     assumption, andIntro, andLeft, andRight, orLeft, orRight, orElim, impliesIntro, impliesElim,
     notIntro, notElim, iffIntro, iffLeft, iffRight, trueIntro, falseElim, raa, eqIntro, eqElim,
     forallIntro, forallElim, existsIntro, existsElim, uniqueIntro, uniqueLeft, uniqueRight,
-    forallFuncIntro, forallFuncElim, funcDef, funcDDef, funcIDef ) where
+    forallFuncIntro, forallFuncElim, funcDef, predDef, funcDDef, funcIDef ) where
 
 import Data.List
 import Data.Maybe
@@ -526,14 +526,16 @@ forallFuncElim (Theorem (ctx,  Provable (ForallFunc f k s q)))
 
 -- Definition rules
 
--- Function/predicate definition
-funcDef :: String -> Sort -> Theorem -> Theorem
-funcDef id SVar (Theorem (ctx,  HasType t TTerm)) = 
-                 Theorem (ctx', Provable (Var (Free id) [] `Eq` t))
+-- Function definition
+funcDef :: String -> Theorem -> Theorem
+funcDef id (Theorem (ctx,  HasType t TTerm)) = 
+            Theorem (ctx', Provable (Var (Free id) [] `Eq` t))
   where ctx' = ctxAddDef id TTerm ctx
 
-funcDef id SProp (Theorem (ctx,  HasType phi TFormula)) =
-                  Theorem (ctx', Provable (Var (Free id) [] `Iff` phi))
+-- Predicate definition
+predDef :: String -> Theorem -> Theorem
+predDef id (Theorem (ctx,  HasType phi TFormula)) =
+            Theorem (ctx', Provable (Var (Free id) [] `Iff` phi))
   where ctx' = ctxAddDef id TFormula ctx
 
 -- Function definition by definite description

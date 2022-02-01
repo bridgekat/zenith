@@ -61,10 +61,10 @@ data Decl =
   | Any String Decl
   | AnyFunc String Int Sort Decl
   | Assume String Expr Decl
-  | FuncDef String Expr
-  | PredDef String Expr
-  | FuncDDef String Expr Proof -- Definite description
-  | FuncIDef String Expr Proof -- Indefinite description
+  | FuncDef String String Expr
+  | PredDef String String Expr
+  | FuncDDef String String Proof -- Definite description
+  | FuncIDef String String Proof -- Indefinite description
 
 -- `StatefulVal s` is a "state monad" (i.e. an expression/procedure that reads & modifies a state when being evaluated).
 newtype StatefulVal s a = StatefulVal { eval :: s -> (a, s) }
@@ -210,14 +210,24 @@ checkDecl ctx e = case e of
     thm' <- checkDecl (ctxAssumption x (convertAndCheck ctx e)) d;
     introPop impliesIntro;
     introReturn impliesIntro thm';
-  -- Function definition
-  (FuncDef s e) -> undefined
-  -- Predicate definition
-  (PredDef s e) -> undefined
-  -- Function definition by definite description
-  (FuncDDef s e pf) -> undefined
-  -- Function definition by indefinite description
-  (FuncIDef s e pf) -> undefined
+  -- Function definition (TODO)
+  (FuncDef s sdef e) -> do
+    addTheorem sdef $ funcDef s (convertAndCheck ctx e);
+    return Nothing;
+  -- Predicate definition (TODO)
+  (PredDef s sdef e) -> do
+    addTheorem sdef $ predDef s (convertAndCheck ctx e);
+    return Nothing;
+  -- Function definition by definite description (TODO)
+  (FuncDDef s sdef pf) -> do
+    thm <- checkProof ctx pf;
+    addTheorem sdef $ funcDDef s thm;
+    return Nothing;
+  -- Function definition by indefinite description (TODO)
+  (FuncIDef s sdef pf) -> do
+    thm <- checkProof ctx pf;
+    addTheorem sdef $ funcIDef s thm;
+    return Nothing;
 
 -- TEMP CODE
 

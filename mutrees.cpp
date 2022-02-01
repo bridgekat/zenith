@@ -4,10 +4,8 @@
 // This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...
 // Additional features are described in `notes/design.md`.
 
-// This is more efficient compared to the Haskell version, but it can be harder to read,
-// and may contain (many) errors.
-
-// Currently it does not support "inline" declarations (declarations within non-context-changing proof terms).
+// This is much more efficient compared to the Haskell version, but can be harder to read, and may contain (many) errors.
+// Currently it does not support "undef".
 
 #include <iostream>
 #include <initializer_list>
@@ -40,10 +38,10 @@ public:
   Allocator& operator=(const Allocator&) = delete;
   ~Allocator() { for (auto p: blocks) delete[] p; }
 
-  T& push_back(const T& obj) {
+  T* push_back(const T& obj) {
     if (next == 0) blocks.push_back(new T[bSize]);
-    T& res = blocks.back()[next];
-    res = obj;
+    T* res = &blocks.back()[next];
+    *res = obj;
     next++; if (next >= bSize) next = 0;
     return res;
   }
@@ -123,6 +121,7 @@ public:
 
   // Look up by index.
   // Use `valid(i)` to perform bound checks before accessing, and throw appropriate exception if index is too large.
+  size_t nextIndex() const { return a.size(); }
   bool valid(size_t index) const { return index < a.size(); }
   const variant<Type, const Expr*>& operator[](size_t index) const { return a.at(index).info; }
   const string& nameOf(size_t index) const { return a.at(index).name; }
@@ -154,7 +153,7 @@ enum Symbol: unsigned char {
 class Expr {
 public:
   Symbol symbol;
-  Expr* s; // Next sibling (for children of VAR nodes only)
+  Expr* s = nullptr; // Next sibling (for children of VAR nodes only)
   union {
     // VAR (`id` stands for context index for free variables, de Brujin index for bound variables)
     struct { bool free; unsigned int id; Expr* c; } var;
@@ -165,8 +164,8 @@ public:
   };
 
   // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
-  Expr(): symbol(EMPTY), s(nullptr) {}
-  Expr(Symbol sym): symbol(sym), s(nullptr) {
+  Expr(): symbol(EMPTY) {}
+  Expr(Symbol sym): symbol(sym) {
     switch (sym) {
       case EMPTY: break;
       case VAR:
@@ -177,7 +176,11 @@ public:
         binder.r = nullptr; break;
     }
   }
+  // Assignment is shallow copy
+  Expr(const Expr&) = default;
+  Expr& operator=(const Expr&) = default;
   // Some convenient constructors (using no-copy attach)
+  // TODO: check symbol
   Expr(Symbol sym, bool free, unsigned int id, const initializer_list<Expr*>& c): Expr(sym) {
     var.free = free; var.id = id; attachChildren(c);
   }
@@ -191,7 +194,7 @@ public:
   // Pre: all nonzero pointers are valid
   // O(size)
   Expr* clone(Allocator<Expr>& pool) const {
-    Expr* res = &pool.push_back(*this);
+    Expr* res = pool.push_back(*this);
     switch (symbol) {
       case EMPTY: break;
       case VAR: {
@@ -412,7 +415,7 @@ public:
   template <typename F>
   Expr* updateVars(unsigned int n, Allocator<Expr>& pool, const F& f) const {
     // First shallow copy to pool
-    Expr* res = &pool.push_back(*this);
+    Expr* res = pool.push_back(*this);
     switch (symbol) {
       case EMPTY: return res;
       case VAR: {
@@ -511,7 +514,7 @@ public:
 
 template<typename ...Ts>
 inline Expr* newNode(Allocator<Expr>& pool, const Ts&... args) {
-  return &pool.push_back(Expr(args...));
+  return pool.push_back(Expr(args...));
 }
 
 // Context-changing rules (implies-intro, forall[func, pred]-intro) here
@@ -614,7 +617,7 @@ class Proof {
 public:
   enum Rule: unsigned char {
     EMPTY = 0,
-    EXPR, THM, DECL,
+    EXPR, THM,
     AND_I, AND_L, AND_R, OR_L, OR_R, OR_E, IMPLIES_E, NOT_I, NOT_E, IFF_I, IFF_L, IFF_R, TRUE_I, FALSE_E, RAA,
     EQ_I, EQ_E, FORALL_E, EXISTS_I, EXISTS_E, UNIQUE_I, UNIQUE_L, UNIQUE_R, FORALLFUNC_E
   } rule;
@@ -626,7 +629,6 @@ public:
   union {
     struct { const Expr* p; } expr;
     struct { unsigned int id; } thm;
-    struct { const Decl* p; } decl;
     struct { const Proof* p[3]; } subpfs;
   };
 
@@ -636,11 +638,14 @@ public:
     switch (rule) {
       case EMPTY: break;
       case EXPR: expr.p = nullptr; break;
-      case DECL: decl.p = nullptr; break;
       default: subpfs.p[0] = subpfs.p[1] = subpfs.p[2] = nullptr; break;
     }
   }
+  // Assignment is shallow copy
+  Proof(const Proof&) = default;
+  Proof& operator=(const Proof&) = default;
   // Some convenient constructors
+  // TODO: check rule
   Proof(Expr* e): rule(EXPR) { expr.p = e; }
   Proof(unsigned int id): rule(THM) { thm.id = id; }
   Proof(Rule r, Proof* p0): rule(r) { subpfs.p[0] = p0; subpfs.p[1] = subpfs.p[2] = nullptr; }
@@ -686,7 +691,8 @@ public:
     auto exprtype = [&ctx, &pool, this] (int i) -> pair<const Expr*, Type> {
       const Proof* p = subpfs.p[i];
       if (!p) throw InvalidProof("null pointer", ctx, this);
-      return { p->expr.p, p->checkExpr(ctx) };
+      const Type& t = p->checkExpr(ctx);
+      return { p->expr.p, t };
     };
 
     // Some helper macros that try "pattern matching on" a given node (infix for binary connectives)
@@ -739,9 +745,6 @@ public:
         auto res = get_if<const Expr*>(&ctx[thm.id]);
         if (!res) throw InvalidProof("referred theorem not in context", ctx, this);
         return (*res)->clone(pool);
-      }
-      case DECL: {
-        throw InvalidProof("TODO", ctx, this);
       }
 
       // Introduction & elimination rules here
@@ -849,7 +852,7 @@ public:
 
 template<typename ...Ts>
 inline Proof* newProof(Allocator<Proof>& pool, const Ts&... args) {
-  return &pool.push_back(Proof(args...));
+  return pool.push_back(Proof(args...));
 }
 
 
@@ -862,13 +865,14 @@ public:
     FDEF, PDEF, DDEF, IDEF, UNDEF
   } category;
 
-  Decl* s; // Next sibling
+  Decl* s = nullptr; // Next sibling
   // Non-POD class instance cannot be stored inside unions
   // (or I will have to manually call their constructors & destructors)
-  string name, namedef;
+  string name = "", namedef = "";
   union {
-    struct { const Decl* c; } block;
-    struct { const Expr* e; const Proof* pf; } assertion, ddef, idef;
+    struct { Decl* c; } block;
+    struct { const Expr* e; const Proof* pf; } assertion;
+    struct { const Proof* pf; } ddef, idef;
     struct { const Expr* e; } assume, fdef, pdef;
     struct { unsigned short arity; Sort sort; } any;
   };
@@ -877,24 +881,59 @@ public:
   Decl(): category(EMPTY) {}
   Decl(Category cat): category(cat) {
     switch (category) {
-      case EMPTY: case ANY: case POP: break;
+      case EMPTY: case ANY: case POP: case UNDEF: break;
       case BLOCK: block.c = nullptr; break;
       case ASSERTION: assertion.e = nullptr; assertion.pf = nullptr; break;
       case ASSUME: assume.e = nullptr; break;
       case FDEF: fdef.e = nullptr; break;
       case PDEF: pdef.e = nullptr; break;
-      case DDEF: ddef.e = nullptr; ddef.pf = nullptr; break;
-      case IDEF: idef.e = nullptr; idef.pf = nullptr; break;
+      case DDEF: ddef.pf = nullptr; break;
+      case IDEF: idef.pf = nullptr; break;
     }
   }
-  // TODO: some convenient constructors
+  // Assignment is shallow copy
+  Decl(const Decl&) = default;
+  Decl& operator=(const Decl&) = default;
+  // Some convenient constructors
+  // TODO: check category
+  Decl(const initializer_list<Decl*>& c): category(BLOCK) { attachChildren(c); }
+  Decl(const Expr* e, const Proof* pf): category(ASSERTION) { assertion.e = e; assertion.pf = pf; }
+  Decl(Category cat, const Proof* pf): category(cat) {
+    switch (category) {
+      case DDEF: ddef.pf = pf; break;
+      case IDEF: idef.pf = pf; break;
+      default: throw Unreachable();
+    }
+  }
+  Decl(Category cat, const Expr* e): category(cat) {
+    switch (category) {
+      case ASSUME: assume.e = e; break;
+      case FDEF: fdef.e = e; break;
+      case PDEF: pdef.e = e; break;
+      default: throw Unreachable();
+    }
+  }
+  Decl(unsigned short arity, Sort sort): category(ANY) { any.arity = arity; any.sort = sort; }
+
   // TODO: debug output
+
+  // Attach children (no-copy)
+  // Each node may only be attached to **one** parent node at a time!
+  // Pre: category is BLOCK
+  void attachChildren(const initializer_list<Decl*>& nodes) {
+    if (category != BLOCK) return;
+    Decl* last = nullptr;
+    for (Decl* node: nodes) {
+      (last? last->s : block.c) = node;
+      last = node;
+    }
+  }
 
   // Checks declarations, side-effecting the context `ctx` (newly created expressions will be stored in `pool`)
   // Throws exception on failure
   void check(Context& ctx, Allocator<Expr>& pool) const {
 
-    auto proved = [&ctx, &pool, this] (const Proof* p) -> const Expr* {
+    auto proved = [&ctx, &pool, this] (const Proof* p) -> Expr* {
       if (!p) throw InvalidDecl("null pointer", ctx, this);
       return p->check(ctx, pool);
     };
@@ -928,15 +967,15 @@ public:
         const Expr* res = proved(assertion.pf);
         if (assertion.e && *res != *(assertion.e))
           throw InvalidDecl("invalid assertion - statement and proof do not match", ctx, this);
-        ctx.addTheorem(name, assertion.e->clone(pool));
+        ctx.addTheorem(name, assertion.e? assertion.e->clone(pool) : res);
         return;
       }
       case ASSUME: ctx.pushAssumption(name, wff(assume.e)->clone(pool)); return;
       case ANY:    ctx.pushVar(name, Type{{ any.arity, any.sort }}); return;
       case POP:    if (!ctx.pop(pool)) throw InvalidDecl("error popping - assumption stack is empty at this point", ctx, this); return;
-      
+
       // Definition rules here
-      
+
       case FDEF: {
         unsigned int id = ctx.addDef(name, TTerm);
         ctx.addTheorem(namedef, nodevar(FREE, ctx.eq, nodevar(FREE, id), wft(fdef.e)->clone(pool)));
@@ -948,13 +987,13 @@ public:
         return;
       }
       case DDEF: {
-        matchbinder(proved(ddef.pf)->clone(pool), UNIQUE, p);
+        matchbinder(proved(ddef.pf), UNIQUE, p);
         unsigned int id = ctx.addDef(name, TTerm);
         ctx.addTheorem(namedef, nodebinder(FORALL, node2(p, IFF, nodevar(FREE, ctx.eq, nodevar(BOUND, 0), nodevar(FREE, id)))));
         return;
       }
       case IDEF: {
-        matchbinder(proved(ddef.pf)->clone(pool), EXISTS, p);
+        matchbinder(proved(idef.pf), EXISTS, p);
         unsigned int id = ctx.addDef(name, TTerm);
         ctx.addTheorem(namedef, p->makeReplace(nodevar(FREE, id), pool));
         return;
@@ -972,6 +1011,11 @@ public:
   }
 };
 
+template<typename ...Ts>
+inline Decl* newDecl(Allocator<Decl>& pool, const Ts&... args) {
+  return pool.push_back(Decl(args...));
+}
+
 InvalidExpr::InvalidExpr(const string& s, const Context& ctx, const Expr* e):
   CheckFailure("Invalid expression, " + s + ": " + e->toString(ctx)) {}
 InvalidProof::InvalidProof(const string& s, const Context&, const Proof*):
@@ -983,11 +1027,10 @@ InvalidDecl::InvalidDecl(const string& s, const Context&, const Decl*):
 // TODO: read text & binary files
 
 int main() {
-  Allocator<Expr> pool;
-
   cout << sizeof(string) << endl;
   cout << sizeof(Expr) << endl;
   cout << sizeof(Proof) << endl;
+  cout << sizeof(Decl) << endl;
 
   #define N(...) newNode(pool, __VA_ARGS__)
 
@@ -1007,6 +1050,7 @@ int main() {
 
   {
     Context ctx;
+    Allocator<Expr> pool;
 
     unsigned int eq = ctx.eq;
     unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
@@ -1041,11 +1085,76 @@ int main() {
     cout << showType(xrep->checkType(ctx)) << endl;
   }
 
-  /* {
+  {
     Context ctx;
-    vector<pair<Type, string>> stk;
-    vector<Type> stk1;
-  } */
+    Allocator<Expr> pool;
+    Allocator<Proof> ps;
+    Allocator<Decl> ds;
+
+    #define block initializer_list<Decl*>
+
+    unsigned int eq = ctx.eq;
+    unsigned int i = ctx.nextIndex();
+
+    Decl* d =
+      newDecl(ds, block{
+        newDecl(ds, 0, SPROP), // +0
+        newDecl(ds, Decl::ASSUME, un(NOT, bin(fv(i + 0), OR, un(NOT, fv(i + 0))))), // +1
+        newDecl(ds, Decl::ASSUME, fv(i + 0)), // +2
+        newDecl(ds, bin(fv(i + 0), OR, un(NOT, fv(i + 0))),
+                    newProof(ps, Proof::OR_L, newProof(ps, i + 2), newProof(ps, un(NOT, fv(i + 0))))), // +3
+        newDecl(ds, nullptr /* false */,
+                    newProof(ps, Proof::NOT_E, newProof(ps, i + 1), newProof(ps, i + 3))), // +4
+        newDecl(ds, Decl::POP),
+        // +0: p : SPROP
+        // +1: (not (p or not p))
+        // +2: (p -> (p or not p))
+        // +3: (p -> false)
+        newDecl(ds, un(NOT, fv(i + 0)), 
+                    newProof(ps, Proof::NOT_I, newProof(ps, i + 3))), // +4
+        newDecl(ds, nullptr /* p or not p */,
+                    newProof(ps, Proof::OR_R, newProof(ps, fv(i + 0)), newProof(ps, i + 4))), // +5
+        newDecl(ds, F,
+                    newProof(ps, Proof::NOT_E, newProof(ps, i + 1), newProof(ps, i + 5))), // +6
+        newDecl(ds, Decl::POP),
+        // +0: p : SPROP
+        // +1: (not (p or not p) -> p -> (p or not p))
+        // +2: (not (p or not p) -> p -> false)
+        // +3: (not (p or not p) -> not p)
+        // +4: (not (p or not p) -> (p or not p))
+        // +5: (not (p or not p) -> false)
+        newDecl(ds, nullptr /* p or not p*/,
+                    newProof(ps, Proof::RAA, newProof(ps, i + 5))), // +6
+        newDecl(ds, Decl::POP),
+        // +0: (forallpred p/0, not (p or not p) -> p -> (p or not p))
+        // +1: (forallpred p/0, not (p or not p) -> p -> false)
+        // +2: (forallpred p/0, not (p or not p) -> not p)
+        // +3: (forallpred p/0, not (p or not p) -> (p or not p))
+        // +4: (forallpred p/0, not (p or not p) -> false)
+        // +5: (forallpred p/0, p or not p)
+      });
+    
+    d->check(ctx, pool);
+
+    Decl* d1 =
+      newDecl(ds, block{
+        newDecl(ds, 0, SVAR), // +6
+        newDecl(ds, 0, SVAR), // +7
+        newDecl(ds, nullptr /* x = y or not x = y */,
+                    newProof(ps, Proof::FORALLFUNC_E, newProof(ps, i + 5), newProof(ps, fv(eq, fv(i + 6), fv(i + 7))))), // +8
+        newDecl(ds, Decl::POP),
+        newDecl(ds, Decl::POP),
+        // +6: (forall x y, x = y not x = y)
+      });
+    
+    d1->check(ctx, pool);
+
+    for (size_t i = 0; i < ctx.nextIndex(); i++) {
+      cout << i << ": ";
+      if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
+      if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
+    }
+  }
 
   return 0;
 }
