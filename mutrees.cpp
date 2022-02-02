@@ -5,7 +5,8 @@
 // Additional features are described in `notes/design.md`.
 
 // This is much more efficient compared to the Haskell version, but can be harder to read, and may contain (many) errors.
-// Currently it does not support "undef".
+// Currently it does not support "private" and "undef".
+// (I will need a parser and a pretty-printer to properly debug it...)
 
 #include <iostream>
 #include <initializer_list>
@@ -547,9 +548,14 @@ bool Context::pop(Allocator<Expr>& pool) {
       // Copy a[i + 1] to a[i], with necessary modifications...
       if (isexpr(a[i + 1].info)) {
         // Implies-intro for theorems
+        auto modify = [index, &pool] (unsigned int, Expr* x) {
+          // If defined after the hypothesis...
+          if (x->var.free && x->var.id > index) x->var.id--;
+          return x;
+        };
         a[i] = {
           a[i + 1].name,
-          node2(hyp->clone(pool), IMPLIES, expr(a[i + 1].info)->clone(pool))
+          node2(hyp->clone(pool), IMPLIES, expr(a[i + 1].info)->updateVars(0, pool, modify))
         };
       } else if (istype(a[i + 1].info)) {
         // No change for definitions
@@ -567,10 +573,14 @@ bool Context::pop(Allocator<Expr>& pool) {
       // Copy a[i + 1] to a[i], with necessary modifications...
       if (isexpr(a[i + 1].info)) {
         // Forall[func, pred]-intro for theorems
-        auto makeBoundAddArg = [index, &pool] (unsigned int n, Expr* x) {
-          if (x->var.free && x->var.id == index) { // If it is the assumed variable...
+        auto modify = [index, &pool] (unsigned int n, Expr* x) {
+          // If it is the assumed variable...
+          if (x->var.free && x->var.id == index) {
             x->var.free = false; x->var.id = n;
-          } else if (x->var.free && x->var.id > index) { // If defined after the assumed variable...
+          }
+          // If defined after the assumed variable...
+          else if (x->var.free && x->var.id > index) {
+            x->var.id--;
             Expr* arg = nodevar(BOUND, n);
             arg->s = x->var.c; x->var.c = arg;
           }
@@ -580,8 +590,8 @@ bool Context::pop(Allocator<Expr>& pool) {
         a[i] = {
           a[i + 1].name,
           (t == TTerm && ei->symbol != FORALLFUNC) ?
-            nodebinder(FORALL, ei->updateVars(0, pool, makeBoundAddArg)) :
-            nodebinderks(FORALLFUNC, t[0].first, t[0].second, ei->updateVars(0, pool, makeBoundAddArg))
+            nodebinder(FORALL, ei->updateVars(0, pool, modify)) :
+            nodebinderks(FORALLFUNC, t[0].first, t[0].second, ei->updateVars(0, pool, modify))
         };
       } else if (istype(a[i + 1].info)) {
         // Add abstraction for definitions
@@ -897,23 +907,23 @@ public:
   // Some convenient constructors
   // TODO: check category
   Decl(const initializer_list<Decl*>& c): category(BLOCK) { attachChildren(c); }
-  Decl(const Expr* e, const Proof* pf): category(ASSERTION) { assertion.e = e; assertion.pf = pf; }
-  Decl(Category cat, const Proof* pf): category(cat) {
+  Decl(string name, const Expr* e, const Proof* pf): category(ASSERTION), name(name) { assertion.e = e; assertion.pf = pf; }
+  Decl(Category cat, string name, string namedef, const Proof* pf): category(cat), name(name), namedef(namedef) {
     switch (category) {
       case DDEF: ddef.pf = pf; break;
       case IDEF: idef.pf = pf; break;
       default: throw Unreachable();
     }
   }
-  Decl(Category cat, const Expr* e): category(cat) {
+  Decl(Category cat, string name, string namedef, const Expr* e): category(cat), name(name), namedef(namedef) {
     switch (category) {
-      case ASSUME: assume.e = e; break;
       case FDEF: fdef.e = e; break;
       case PDEF: pdef.e = e; break;
       default: throw Unreachable();
     }
   }
-  Decl(unsigned short arity, Sort sort): category(ANY) { any.arity = arity; any.sort = sort; }
+  Decl(string name, const Expr* e): category(ASSUME), name(name) { assume.e = e; }
+  Decl(string name, unsigned short arity, Sort sort): category(ANY), name(name) { any.arity = arity; any.sort = sort; }
 
   // TODO: debug output
 
@@ -1098,23 +1108,23 @@ int main() {
 
     Decl* d =
       newDecl(ds, block{
-        newDecl(ds, 0, SPROP), // +0
-        newDecl(ds, Decl::ASSUME, un(NOT, bin(fv(i + 0), OR, un(NOT, fv(i + 0))))), // +1
-        newDecl(ds, Decl::ASSUME, fv(i + 0)), // +2
-        newDecl(ds, bin(fv(i + 0), OR, un(NOT, fv(i + 0))),
+        newDecl(ds, "p", 0, SPROP), // +0
+        newDecl(ds, "h1", un(NOT, bin(fv(i + 0), OR, un(NOT, fv(i + 0))))), // +1
+        newDecl(ds, "h2", fv(i + 0)), // +2
+        newDecl(ds, "t1", bin(fv(i + 0), OR, un(NOT, fv(i + 0))),
                     newProof(ps, Proof::OR_L, newProof(ps, i + 2), newProof(ps, un(NOT, fv(i + 0))))), // +3
-        newDecl(ds, nullptr /* false */,
+        newDecl(ds, "t2", nullptr /* false */,
                     newProof(ps, Proof::NOT_E, newProof(ps, i + 1), newProof(ps, i + 3))), // +4
         newDecl(ds, Decl::POP),
         // +0: p : SPROP
         // +1: (not (p or not p))
         // +2: (p -> (p or not p))
         // +3: (p -> false)
-        newDecl(ds, un(NOT, fv(i + 0)), 
+        newDecl(ds, "t3", un(NOT, fv(i + 0)), 
                     newProof(ps, Proof::NOT_I, newProof(ps, i + 3))), // +4
-        newDecl(ds, nullptr /* p or not p */,
+        newDecl(ds, "t4", nullptr /* p or not p */,
                     newProof(ps, Proof::OR_R, newProof(ps, fv(i + 0)), newProof(ps, i + 4))), // +5
-        newDecl(ds, F,
+        newDecl(ds, "t5", F,
                     newProof(ps, Proof::NOT_E, newProof(ps, i + 1), newProof(ps, i + 5))), // +6
         newDecl(ds, Decl::POP),
         // +0: p : SPROP
@@ -1123,7 +1133,7 @@ int main() {
         // +3: (not (p or not p) -> not p)
         // +4: (not (p or not p) -> (p or not p))
         // +5: (not (p or not p) -> false)
-        newDecl(ds, nullptr /* p or not p*/,
+        newDecl(ds, "t6", nullptr /* p or not p*/,
                     newProof(ps, Proof::RAA, newProof(ps, i + 5))), // +6
         newDecl(ds, Decl::POP),
         // +0: (forallpred p/0, not (p or not p) -> p -> (p or not p))
@@ -1138,9 +1148,9 @@ int main() {
 
     Decl* d1 =
       newDecl(ds, block{
-        newDecl(ds, 0, SVAR), // +6
-        newDecl(ds, 0, SVAR), // +7
-        newDecl(ds, nullptr /* x = y or not x = y */,
+        newDecl(ds, "x", 0, SVAR), // +6
+        newDecl(ds, "y", 0, SVAR), // +7
+        newDecl(ds, "t7", nullptr /* x = y or not x = y */,
                     newProof(ps, Proof::FORALLFUNC_E, newProof(ps, i + 5), newProof(ps, fv(eq, fv(i + 6), fv(i + 7))))), // +8
         newDecl(ds, Decl::POP),
         newDecl(ds, Decl::POP),
@@ -1149,8 +1159,71 @@ int main() {
     
     d1->check(ctx, pool);
 
+    Decl* d2 =
+      newDecl(ds, block{
+        newDecl(ds, "q", 2, SPROP), // +7
+        newDecl(ds, "x", 0, SVAR), // +8
+        newDecl(ds, "y", 0, SVAR), // +9
+        newDecl(ds, "t8", bin(fv(i + 7, fv(i + 8), fv(i + 9)), OR, un(NOT, fv(i + 7, fv(i + 8), fv(i + 9)))),
+                    newProof(ps, Proof::FORALLFUNC_E, newProof(ps, i + 5), newProof(ps, fv(i + 7, fv(i + 8), fv(i + 9))))), // +10
+        newDecl(ds, Decl::POP),
+        newDecl(ds, Decl::POP),
+        newDecl(ds, Decl::POP),
+        // +7: (forallpred q/2, forall x y, q x y or not q x y)
+      });
+    
+    d2->check(ctx, pool);
+
     for (size_t i = 0; i < ctx.nextIndex(); i++) {
-      cout << i << ": ";
+      cout << ctx.nameOf(i) << ": ";
+      if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
+      if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
+    }
+  }
+
+  {
+    Context ctx;
+    Allocator<Expr> pool;
+    Allocator<Proof> ps;
+    Allocator<Decl> ds;
+
+    unsigned int eq = ctx.eq;
+    unsigned int i = ctx.nextIndex();
+
+    Decl* d =
+      newDecl(ds, block{
+        newDecl(ds, "x", 0, SVAR), // +0
+        newDecl(ds, "y", 0, SVAR), // +1
+        newDecl(ds, Decl::PDEF, "phi", "phi_def",
+                    bin(fv(eq, fv(i + 0), fv(i + 1)), AND, fv(eq, fv(i + 1), fv(i + 0)))), // +2, +3
+        newDecl(ds, Decl::POP),
+        newDecl(ds, Decl::POP)
+        // +0: phi: SVAR -> SVAR -> SPROP
+        // +1: phi_def : (forall x y, phi x y <-> (x = y and y = x))
+      });
+    
+    d->check(ctx, pool);
+
+    Decl* d1 =
+      newDecl(ds, block{
+        newDecl(ds, "+", 2, SVAR), // +2
+        newDecl(ds, "x", 0, SVAR), // +3
+        newDecl(ds, "y", 0, SVAR), // +4
+        newDecl(ds, "h1", fv(eq, fv(i + 3), fv(i + 4))), // +5
+        newDecl(ds, Decl::FDEF, "f", "f_def",
+                    fv(i + 2, fv(i + 3), fv(i + 4))), // +6, +7
+        newDecl(ds, Decl::POP),
+        newDecl(ds, Decl::POP),
+        newDecl(ds, Decl::POP)
+        // +2: +: SVAR -> SVAR -> SVAR
+        // +3: f: SVAR -> SVAR -> SVAR
+        // +4: f_def : (forall x y, x = y -> f x y = x + y)
+      });
+
+    d1->check(ctx, pool);
+
+    for (size_t i = 0; i < ctx.nextIndex(); i++) {
+      cout << ctx.nameOf(i) << ": ";
       if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
       if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
     }

@@ -109,15 +109,13 @@ any x y assume (x = y) {
 }
 #ls // f_def : (forall x y, x = y -> f x y = x + y)
 
-// Defined predicates and functions can be used to substitute metavariables too
+// Defined predicates and functions can be used to substitute metavariables too (syntactic sugar)
 => (forall x y, phi x y or not phi x y) by random_lemma phi;
 
 // One could do "inline definitions" using something similar to the "lambda notation"!
 // This saves some typing by avoiding defining and undefining named functions / predicates. They are not necessary to the theory.
 // Note that the `a` `b` here are all individual variables.
-=> (forall x y, x + y = 2 or not x + y = 2) by random_lemma (any a b (a + b = 2));
-// (TODO: similar notation for in/definite description)
-// (any x y (def z :: (x + y) by ...))
+=> (forall x y, x + y = 2 or not x + y = 2) by random_lemma (a b | a + b = 2);
 
 
 
