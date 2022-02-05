@@ -1,9 +1,15 @@
   identifier
-    another
-ident4fi2_34 34   0xFFFd343 喵喵喵🐱
+    another one
+ident4fi2_34 34   0xFFFd343 喵喵喵🐱UTF-8
 
 /* this is comment *\*/ and /** this is another comment */
 
 /**/ this is not a comment /**/
 
+/***/
   gg
+
+"this is a string"
+
+      "this is \"another\" string"
+  "\\" this is not a string \"but this is a string\""

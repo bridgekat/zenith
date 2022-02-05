@@ -33,6 +33,7 @@ namespace Lexer {
 
     // Create initial state
     NFALexer(): table(), initial(0), rest() { table.emplace_back(); }
+    virtual ~NFALexer() = default;
 
     #define node(x) State x = table.size(); table.emplace_back()
     #define trans(s, c, t) table[s].tr.emplace_back(c, t);
@@ -44,12 +45,13 @@ namespace Lexer {
       if (!o.has_value()) o = id;
     }
 
-    // Returns longest match in (length, token)
+    // Returns longest match in the form of (length, token)
     optional<pair<size_t, TokenID>> run(const string& s) const;
 
     // getNextToken from rest
-    void setRest(const string& s) { rest = s; }
-    optional<Token> getNextToken();
+    bool eof() { return rest.empty(); }
+    NFALexer& operator<< (const string& s) { rest += s; return *this; }
+    virtual optional<Token> getNextToken();
 
     // Some useful NFA constructors
     NFA epsilon() {
@@ -66,14 +68,13 @@ namespace Lexer {
       for (unsigned int i = a; i <= b; i++) trans(s, i, t);
       return { s, t };
     }
-    NFA concat(NFA a, NFA b) {
-      /*
+    NFA concat2(NFA a, NFA b) {
       for (auto [c, t]: table[b.first].tr) trans(a.second, c, t);
       return { a.first, b.second };
-      */
-      trans(a.second, 0, b.first);
-      return { a.first, b.second };
     }
+    template <typename... Ts>
+    NFA concat(NFA a, Ts... b) { return concat2(a, concat(b...)); }
+    NFA concat(NFA a) { return a; }
     NFA word(const string& str) {
       node(s); State t = s;
       for (unsigned char c: str) {
@@ -107,6 +108,7 @@ namespace Lexer {
       for (unsigned int i = 0x01; i <= 0xFF; i++) if (f[i]) trans(s, i, t);
       return { s, t };
     }
+    NFA plus(NFA a) { return concat2(a, star(a)); }
 
     #undef node
     #undef trans
