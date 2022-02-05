@@ -1,14 +1,13 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <set>
+#include <map>
+#include <unordered_map>
 #include "lexer.h"
 
 namespace Lexer {
-  typedef NFALexer::State State;
-  typedef NFALexer::NFA NFA;
-  typedef NFALexer::TokenID TokenID;
-  typedef NFALexer::Token Token;
-
+  // Directly run NFA
   optional<pair<size_t, TokenID>> NFALexer::run(const string& str) const {
     optional<pair<size_t, TokenID>> res = nullopt;
     vector<State> s;
@@ -37,7 +36,7 @@ namespace Lexer {
       unsigned char c = str[i];
       // Move one step
       vector<State> t;
-      for (State x: s) for (auto [cc, u]: table[x].tr) if (cc == c) {
+      for (State x: s) for (auto [cc, u]: table[x].tr) if (cc == c && !v[u]) {
         t.push_back(u);
         v[u] = true;
       }
@@ -65,14 +64,120 @@ namespace Lexer {
     rest = rest.substr(len);
     return res;
   }
+
+  using std::set;
+  using std::map;
+
+  // Function object for the DFA construction from NFA
+  class PowersetConstruction {
+  public:
+    const NFALexer& nfa;
+    DFALexer& dfa;
+    map<set<NFALexer::State>, DFALexer::State> mp;
+
+    PowersetConstruction(const NFALexer& nfa, DFALexer& dfa): nfa(nfa), dfa(dfa), mp() {}
+
+    // We must use sets (for comparing states) nevertheless, so v[] is not needed
+    void closure(set<NFALexer::State>& s) const {
+      // Expand to epsilon closure (using DFS)
+      vector<NFALexer::State> stk(s.begin(), s.end());
+      while (!stk.empty()) {
+        NFALexer::State nx = stk.back(); stk.pop_back();
+        for (auto [cc, nu]: nfa.table[nx].tr) if (cc == 0 && !s.contains(nu)) {
+          s.insert(nu);
+          stk.push_back(nu);
+        }
+      }
+    };
+
+    #define node(x_, s_) \
+      x_ = mp[s_] = dfa.table.size(); \
+      dfa.table.emplace_back()
+
+    void dfs(DFALexer::State x, const set<NFALexer::State>& s) {
+      // Check if `s` contains accepting states
+      optional<TokenID> curr;
+      for (auto ns: s) {
+        auto opt = nfa.table[ns].ac;
+        if (opt && (!curr || curr.value() > opt.value())) curr = opt;
+      }
+      dfa.table[x].ac = curr;
+      // Compute transitions
+      for (unsigned int c = 0x01; c <= 0xFF; c++) {
+        // Compute u
+        set<NFALexer::State> t;
+        for (auto nx: s) for (auto [cc, nu]: nfa.table[nx].tr) {
+          if (cc == c && !t.contains(nu)) t.insert(nu);
+        }
+        if (t.empty()) continue;
+        closure(t);
+        // Look at u:
+        auto it = mp.find(t);
+        if (it != mp.end()) {
+          // Already seen
+          dfa.table[x].has[c] = true;
+          dfa.table[x].tr[c] = it->second;
+        } else {
+          // Haven't seen before, create new DFA node and recurse
+          node(DFALexer::State u, t);
+          dfa.table[x].has[c] = true;
+          dfa.table[x].tr[c] = u;
+          dfs(u, t);
+        }
+      }
+    }
+
+    void operator() () {
+      set<NFALexer::State> s = { nfa.initial };
+      closure(s);
+      node(dfa.initial, s);
+      dfs(dfa.initial, s);
+    }
+
+    #undef node
+  };
+
+  DFALexer::DFALexer(const NFALexer& nfa): table(), initial(0), rest() {
+    PowersetConstruction(nfa, *this)();
+  }
+
+  void DFALexer::optimize() {
+    // TODO
+  }
+
+  // Run DFA
+  optional<pair<size_t, TokenID>> DFALexer::run(const string& str) const {
+    optional<pair<size_t, TokenID>> res = nullopt;
+    State s = initial;
+    for (size_t i = 0; i < str.size(); i++) {
+      unsigned char c = str[i];
+      if (!table[s].has[c]) break;
+      s = table[s].tr[c];
+      // Update result if reaches accepting state
+      auto curr = table[s].ac;
+      if (curr) res = { i + 1, curr.value() };
+    }
+    return res;
+  }
+
+  optional<Token> DFALexer::getNextToken() {
+    auto opt = run(rest);
+    if (!opt) return nullopt;
+    auto [len, id] = opt.value();
+    Token res{ id, rest.substr(0, len) };
+    rest = rest.substr(len);
+    return res;
+  }
 }
 
 
 using std::string;
 using std::optional, std::make_optional, std::nullopt;
 using std::cin, std::cout, std::endl;
+using Lexer::Token, Lexer::TokenID;
+using Lexer::NFALexer, Lexer::DFALexer;
 
-class TestLexer: public Lexer::NFALexer {
+class TestLexer: public NFALexer {
 public:
   enum ETokenID: TokenID {
     BLANK = 0, LINE_COMMENT, BLOCK_COMMENT, PREPROCESSOR,
@@ -142,7 +247,8 @@ string readFile(std::ifstream& in) {
 }
 
 int main() {
-  TestLexer test;
+  TestLexer nfa;
+  DFALexer test(nfa);
 
   std::ifstream in("test.txt");
   test << readFile(in);

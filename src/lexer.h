@@ -1,4 +1,5 @@
 #include <initializer_list>
+#include <array>
 #include <vector>
 #include <algorithm>
 #include <optional>
@@ -7,17 +8,18 @@
 
 namespace Lexer {
   using std::initializer_list;
-  using std::vector;
+  using std::array, std::vector;
   using std::pair, std::make_pair;
   using std::optional, std::make_optional, std::nullopt;
   using std::string;
+
+  typedef unsigned int TokenID;
+  typedef pair<TokenID, string> Token;
 
   class NFALexer {
   public:
     typedef unsigned int State;
     typedef pair<State, State> NFA;
-    typedef unsigned int TokenID;
-    typedef pair<TokenID, string> Token;
 
     // The transition & accepting state table
     struct Entry {
@@ -36,7 +38,7 @@ namespace Lexer {
     virtual ~NFALexer() = default;
 
     #define node(x) State x = table.size(); table.emplace_back()
-    #define trans(s, c, t) table[s].tr.emplace_back(c, t);
+    #define trans(s, c, t) table[s].tr.emplace_back(c, t)
 
     // Add pattern (mark accepting state)
     void addPattern(TokenID id, NFA nfa) {
@@ -112,5 +114,39 @@ namespace Lexer {
 
     #undef node
     #undef trans
+  };
+
+  class DFALexer {
+  public:
+    typedef unsigned int State;
+
+    // The transition & accepting state table
+    struct Entry {
+      bool has[0x100];
+      State tr[0x100];
+      optional<TokenID> ac;
+      Entry(): has{}, tr{}, ac() {}
+    };
+    vector<Entry> table;
+
+    // The initial state
+    State initial;
+    string rest;
+
+    // Create initial state
+    DFALexer(): table(), initial(0), rest() { table.emplace_back(); }
+    // Create DFA from NFA
+    DFALexer(const NFALexer& nfa);
+    virtual ~DFALexer() = default;
+
+    // Optimize DFA
+    void optimize();
+    // Returns longest match in the form of (length, token)
+    optional<pair<size_t, TokenID>> run(const string& s) const;
+
+    // getNextToken from rest
+    bool eof() { return rest.empty(); }
+    DFALexer& operator<< (const string& s) { rest += s; return *this; }
+    virtual optional<Token> getNextToken();
   };
 }
