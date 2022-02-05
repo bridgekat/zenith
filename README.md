@@ -9,27 +9,25 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 
 ## To do list
 
-- [ ] Core specification (WIP)
-  - [x] Metavariables
+- [x] Core specification (mostly completed)
+  - [x] Metavariables / second-order variables
   - [x] Extension by definitions
 - [ ] The verifier
-  - [x] Boilerplate code (data structures, console output, etc.)
-  - [ ] Core part (WIP)
-  - [ ] Text & binary file formats for FOL and ND trees (WIP)
+  - [x] Core part (mostly completed)
+  - [ ] Text & binary file formats for FOL and ND trees
   - [ ] Core API
   - [ ] User-defined connectives (requires "implicit arguments"?)
 - [ ] The elaborator
-  - [ ] Boilerplate code & CLI
-  - [ ] Parser & pretty-printer
+  - [ ] Parser & pretty-printer (WIP)
     - [ ] Customizable syntax
-  - [ ] Notation support
+    - [ ] Notation support
   - [ ] Interactive proof-searching
     - [ ] Sequent calculus (analytic tableaux) with optimizations
     - [ ] First- and second-order unification
-    - [ ] Translation between ND and SC (tableaux)
+    - [ ] Translation between ND and SC
     - [ ] Tactics API
-    - [ ] Resolution-based methods
-  - [ ] VSCode extension
+    - [ ] Resolution-based methods (how to translate these to ND?)
+  - [ ] Language server & VSCode extension
 - [ ] Mathematics
   - [x] PA
   - [x] ZFC

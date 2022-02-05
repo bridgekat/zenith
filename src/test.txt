@@ -1,0 +1,9 @@
+  identifier
+    another
+ident4fi2_34 34   0xFFFd343 喵喵喵🐱
+
+/* this is comment *\*/ and /** this is another comment */
+
+/**/ this is not a comment /**/
+
+  gg

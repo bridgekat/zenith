@@ -144,7 +144,7 @@ const bool BOUND = false;
 enum Symbol: unsigned char {
   EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
   VAR, TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
-  FORALL, EXISTS, UNIQUE, FORALLFUNC, LAM
+  FORALL, EXISTS, UNIQUE, FORALL2, LAM
 };
 
 // Formula (schema) tree node, and related syntactic operations
@@ -160,7 +160,7 @@ public:
     struct { bool free; unsigned int id; Expr* c; } var;
     // TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF (`l` is ignored for the first two; `r` is ignored for the first three)
     struct { Expr* l, * r; } conn;
-    // FORALL, EXISTS, UNIQUE, FORALLFUNC, LAM (`arity` and `sort` must be 0 and SVAR for the first three and the last one)
+    // FORALL, EXISTS, UNIQUE, FORALL2, LAM (`arity` and `sort` must be 0 and SVAR for the first three and the last one)
     struct { unsigned short arity; Sort sort; Expr* r; } binder;
   };
 
@@ -173,7 +173,7 @@ public:
         var.c = nullptr; break;
       case TRUE: case FALSE: case NOT: case AND: case OR: case IMPLIES: case IFF:
         conn.l = conn.r = nullptr; break;
-      case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case LAM:
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
         binder.r = nullptr; break;
     }
   }
@@ -211,7 +211,7 @@ public:
         if (conn.l) res->conn.l = (conn.l)->clone(pool);
         if (conn.r) res->conn.r = (conn.r)->clone(pool);
         break;
-      case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case LAM:
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
         if (binder.r) res->binder.r = (binder.r)->clone(pool);
         break;
     }
@@ -254,11 +254,11 @@ public:
         return *(conn.l) == *(rhs.conn.l);
       case AND: case OR: case IMPLIES: case IFF:
         return *(conn.l) == *(rhs.conn.l) &&
-              *(conn.r) == *(rhs.conn.r);
-      case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case LAM:
+               *(conn.r) == *(rhs.conn.r);
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
         return binder.arity == rhs.binder.arity &&
-              binder.sort  == rhs.binder.sort  &&
-              *(binder.r)  == *(rhs.binder.r);
+               binder.sort  == rhs.binder.sort  &&
+               *(binder.r)  == *(rhs.binder.r);
     }
     throw Unreachable();
   }
@@ -284,21 +284,21 @@ public:
       case FALSE:   return "false";
       case NOT:     return "not " + (conn.l ? conn.l->toString(ctx, stk) : "[?]");
       case AND:     return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " and "
-                              + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
+                               + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
       case OR:      return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " or "
-                              + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
+                               + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
       case IMPLIES: return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " implies "
-                              + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
+                               + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
       case IFF:     return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " iff "
-                              + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
-      case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case LAM: {
+                               + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: {
         string ch, name(1, 'a' + stk.size()); // TODO: names for bound variables!
         switch (symbol) {
-          case FORALL:     ch = "forall "; break;
-          case EXISTS:     ch = "exists "; break;
-          case UNIQUE:     ch = "unique "; break;
-          case FORALLFUNC: ch = (binder.sort == SVAR ? "forallfunc " : "forallpred "); break;
-          case LAM:        ch = "\\ "; break;
+          case FORALL:  ch = "forall "; break;
+          case EXISTS:  ch = "exists "; break;
+          case UNIQUE:  ch = "unique "; break;
+          case FORALL2: ch = (binder.sort == SVAR ? "forallfunc " : "forallpred "); break;
+          case LAM:     ch = "\\ "; break;
           default: break;
         }
         string res = "(" + ch + name;
@@ -372,7 +372,7 @@ public:
         if (binder.arity != 0 || binder.sort != SVAR)
           throw InvalidExpr("binder should bind a term variable", ctx, this);
         [[fallthrough]];
-      case FORALLFUNC: {
+      case FORALL2: {
         if (!binder.r)
           throw InvalidExpr("null pointer", ctx, this);
 
@@ -439,7 +439,7 @@ public:
         if (conn.l) res->conn.l = conn.l->updateVars(n, pool, f);
         if (conn.r) res->conn.r = conn.r->updateVars(n, pool, f);
         return res;
-      case FORALL: case EXISTS: case UNIQUE: case FORALLFUNC: case LAM:
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
         if (binder.r) res->binder.r = binder.r->updateVars(n + 1, pool, f);
         return res;
     }
@@ -513,7 +513,7 @@ public:
   // TODO: pretty print (infixl, infixr, precedence, etc.)
 };
 
-template<typename ...Ts>
+template <typename ...Ts>
 inline Expr* newNode(Allocator<Expr>& pool, const Ts&... args) {
   return pool.push_back(Expr(args...));
 }
@@ -589,9 +589,9 @@ bool Context::pop(Allocator<Expr>& pool) {
         const Expr* ei = expr(a[i + 1].info);
         a[i] = {
           a[i + 1].name,
-          (t == TTerm && ei->symbol != FORALLFUNC) ?
+          (t == TTerm && ei->symbol != FORALL2) ?
             nodebinder(FORALL, ei->updateVars(0, pool, modify)) :
-            nodebinderks(FORALLFUNC, t[0].first, t[0].second, ei->updateVars(0, pool, modify))
+            nodebinderks(FORALL2, t[0].first, t[0].second, ei->updateVars(0, pool, modify))
         };
       } else if (istype(a[i + 1].info)) {
         // Add abstraction for definitions
@@ -629,7 +629,7 @@ public:
     EMPTY = 0,
     EXPR, THM,
     AND_I, AND_L, AND_R, OR_L, OR_R, OR_E, IMPLIES_E, NOT_I, NOT_E, IFF_I, IFF_L, IFF_R, TRUE_I, FALSE_E, RAA,
-    EQ_I, EQ_E, FORALL_E, EXISTS_I, EXISTS_E, UNIQUE_I, UNIQUE_L, UNIQUE_R, FORALLFUNC_E
+    EQ_I, EQ_E, FORALL_E, EXISTS_I, EXISTS_E, UNIQUE_I, UNIQUE_L, UNIQUE_R, FORALL2_E
   } rule;
 
   // Since most rules have less or equal than 3 child proofs, I guess I could save writing some boilerplate code
@@ -656,7 +656,7 @@ public:
   Proof& operator=(const Proof&) = default;
   // Some convenient constructors
   // TODO: check rule
-  Proof(Expr* e): rule(EXPR) { expr.p = e; }
+  Proof(const Expr* e): rule(EXPR) { expr.p = e; }
   Proof(unsigned int id): rule(THM) { thm.id = id; }
   Proof(Rule r, Proof* p0): rule(r) { subpfs.p[0] = p0; subpfs.p[1] = subpfs.p[2] = nullptr; }
   Proof(Rule r, Proof* p0, Proof* p1): rule(r) { subpfs.p[0] = p0; subpfs.p[1] = p1; subpfs.p[2] = nullptr; }
@@ -829,10 +829,10 @@ public:
         return nodebinder(FORALL, node2(px, IMPLIES, nodebinder(FORALL, node2(px->clone(pool), IMPLIES,
                           nodevar(FREE, ctx.eq, nodevar(BOUND, 1), nodevar(BOUND, 0))))));
       }
-      case FORALLFUNC_E: {
+      case FORALL2_E: {
         // Check LHS
         Expr* p = proved(0);
-        if (p->symbol != FORALLFUNC) throw InvalidProof("incorrect binder", ctx, this);
+        if (p->symbol != FORALL2) throw InvalidProof("incorrect binder", ctx, this);
         if (!p->binder.r) throw InvalidProof("null pointer", ctx, this);
         unsigned short k = p->binder.arity;
         Sort s = p->binder.sort;
@@ -1054,8 +1054,8 @@ int main() {
   #define forall(a)         N(FORALL, 0, SVAR, a)
   #define exists(a)         N(EXISTS, 0, SVAR, a)
   #define unique(a)         N(UNIQUE, 0, SVAR, a)
-  #define forallpred(k, a)  N(FORALLFUNC, k, SPROP, a)
-  #define forallfunc(k, a)  N(FORALLFUNC, k, SVAR, a)
+  #define forallpred(k, a)  N(FORALL2, k, SPROP, a)
+  #define forallfunc(k, a)  N(FORALL2, k, SVAR, a)
   #define lam(a)            N(LAM, 0, SVAR, a)
 
   {
@@ -1151,7 +1151,7 @@ int main() {
         newDecl(ds, "x", 0, SVAR), // +6
         newDecl(ds, "y", 0, SVAR), // +7
         newDecl(ds, "t7", nullptr /* x = y or not x = y */,
-                    newProof(ps, Proof::FORALLFUNC_E, newProof(ps, i + 5), newProof(ps, fv(eq, fv(i + 6), fv(i + 7))))), // +8
+                    newProof(ps, Proof::FORALL2_E, newProof(ps, i + 5), newProof(ps, fv(eq, fv(i + 6), fv(i + 7))))), // +8
         newDecl(ds, Decl::POP),
         newDecl(ds, Decl::POP),
         // +6: (forall x y, x = y not x = y)
@@ -1165,7 +1165,7 @@ int main() {
         newDecl(ds, "x", 0, SVAR), // +8
         newDecl(ds, "y", 0, SVAR), // +9
         newDecl(ds, "t8", bin(fv(i + 7, fv(i + 8), fv(i + 9)), OR, un(NOT, fv(i + 7, fv(i + 8), fv(i + 9)))),
-                    newProof(ps, Proof::FORALLFUNC_E, newProof(ps, i + 5), newProof(ps, fv(i + 7, fv(i + 8), fv(i + 9))))), // +10
+                    newProof(ps, Proof::FORALL2_E, newProof(ps, i + 5), newProof(ps, fv(i + 7, fv(i + 8), fv(i + 9))))), // +10
         newDecl(ds, Decl::POP),
         newDecl(ds, Decl::POP),
         newDecl(ds, Decl::POP),
