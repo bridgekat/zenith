@@ -1,5 +1,4 @@
 #include <initializer_list>
-#include <array>
 #include <vector>
 #include <algorithm>
 #include <optional>
@@ -8,7 +7,7 @@
 
 namespace Lexer {
   using std::initializer_list;
-  using std::array, std::vector;
+  using std::vector;
   using std::pair, std::make_pair;
   using std::optional, std::make_optional, std::nullopt;
   using std::string;
@@ -54,6 +53,7 @@ namespace Lexer {
     bool eof() { return rest.empty(); }
     NFALexer& operator<< (const string& s) { rest += s; return *this; }
     virtual optional<Token> getNextToken();
+    void ignoreNextCodepoint();
 
     // Some useful NFA constructors
     NFA epsilon() {
@@ -125,7 +125,7 @@ namespace Lexer {
       bool has[0x100];
       State tr[0x100];
       optional<TokenID> ac;
-      Entry(): has{}, tr{}, ac() {}
+      Entry(): has{}, tr{}, ac(nullopt) {}
     };
     vector<Entry> table;
 
@@ -148,5 +148,6 @@ namespace Lexer {
     bool eof() { return rest.empty(); }
     DFALexer& operator<< (const string& s) { rest += s; return *this; }
     virtual optional<Token> getNextToken();
+    void ignoreNextCodepoint();
   };
 }
