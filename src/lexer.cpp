@@ -6,9 +6,11 @@
 #include <map>
 #include <cassert>
 #include "lexer.h"
-#include "common.h"
+#include "core/common.h"
+
 
 namespace Lexer {
+
   string cutFirstCodepoint(const string& s) {
     if (s.empty()) return s;
     size_t pos = 1;

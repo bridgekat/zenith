@@ -1,3 +1,6 @@
+#ifndef LEXER_H_
+#define LEXER_H_
+
 #include <initializer_list>
 #include <vector>
 #include <algorithm>
@@ -6,11 +9,13 @@
 
 
 namespace Lexer {
+
   using std::initializer_list;
   using std::vector;
   using std::pair, std::make_pair;
   using std::optional, std::make_optional, std::nullopt;
   using std::string;
+
 
   typedef unsigned int TokenID;
   typedef pair<TokenID, string> Token;
@@ -151,3 +156,5 @@ namespace Lexer {
     void ignoreNextCodepoint();
   };
 }
+
+#endif // LEXER_H_
