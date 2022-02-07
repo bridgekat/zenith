@@ -1,5 +1,5 @@
-#ifndef LEXER_H_
-#define LEXER_H_
+#ifndef LEXER_HPP_
+#define LEXER_HPP_
 
 #include <initializer_list>
 #include <vector>
@@ -8,7 +8,7 @@
 #include <string>
 
 
-namespace Lexer {
+namespace Parsing {
 
   using std::initializer_list;
   using std::vector;
@@ -155,6 +155,7 @@ namespace Lexer {
     virtual optional<Token> getNextToken();
     void ignoreNextCodepoint();
   };
+
 }
 
-#endif // LEXER_H_
+#endif // LEXER_HPP_
