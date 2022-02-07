@@ -1,3 +1,5 @@
+// Core :: Sort, Type, Context
+
 #ifndef CONTEXT_HPP_
 #define CONTEXT_HPP_
 
@@ -12,10 +14,10 @@
 namespace Core {
 
   using std::vector;
-  using std::pair;
+  using std::pair, std::make_pair;
   using std::string;
-  using std::variant;
-  using std::optional, std::nullopt;
+  using std::variant, std::holds_alternative, std::get, std::monostate;
+  using std::optional, std::make_optional, std::nullopt;
 
 
   // Possible "types" of expressions (ι means Var, * means Prop):
@@ -27,7 +29,8 @@ namespace Core {
   //   {{ k1, s1 }, { k2, s2 }} means ((ι → ... → ι → s1) → ι → ... → ι → s2), etc.
   // (This is similar to Metamath definition checkers, according to Mario Carneiro!)
 
-  enum Sort: unsigned char { SVAR, SPROP };
+  enum class Sort: unsigned char { SVAR, SPROP };
+  using enum Sort;
   typedef vector<pair<unsigned short, Sort>> Type;
 
   const Type TTerm    = {{ 0, SVAR }};

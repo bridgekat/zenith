@@ -1,3 +1,5 @@
+// Core :: Symbol, Expr, InvalidExpr
+
 #ifndef EXPR_HPP_
 #define EXPR_HPP_
 
@@ -7,23 +9,24 @@
 
 namespace Core {
 
-  // Alphabet for a first-order language
-  enum Symbol: unsigned char {
-    EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
-    VAR, TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
-    FORALL, EXISTS, UNIQUE, FORALL2, LAM
-  };
-
   constexpr bool FREE = true;
   constexpr bool BOUND = false;
 
   // Formula (schema) tree node, and related syntactic operations
   // Pre (for all methods): there is no "cycle" throughout the tree
-  // Pre & invariant (for all methods): pointer is nonzero <=> pointer is valid (exception: root nodes have undefined *s pointer)
+  // Pre & invariant (for all methods): all nonzero pointers (in the "active variant") are valid
   // Will just stick to this old-fashioned tagged union approach before C++ admits a better way to represent sum types
   class Expr {
   public:
-    Symbol symbol;
+    // Alphabet for a first-order language
+    enum class Symbol: unsigned char {
+      EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
+      VAR, TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
+      FORALL, EXISTS, UNIQUE, FORALL2, LAM
+    };
+    using enum Symbol;
+
+    Symbol symbol = EMPTY;
     Expr* s = nullptr; // Next sibling (for children of VAR nodes only)
     union {
       // VAR (`id` stands for context index for free variables, de Brujin index for bound variables)
@@ -34,7 +37,7 @@ namespace Core {
       struct { unsigned short arity; Sort sort; Expr* r; } binder;
     };
 
-    // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
+    // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
     Expr(): symbol(EMPTY) {}
     Expr(Symbol sym): symbol(sym) {
       switch (sym) {
@@ -47,19 +50,27 @@ namespace Core {
           binder.r = nullptr; break;
       }
     }
+    Expr(bool free, unsigned int id, const std::initializer_list<Expr*>& c): symbol(VAR) {
+      var.free = free; var.id = id; attachChildren(c);
+    }
+    Expr(Symbol sym, Expr* l): Expr(sym) { if (symbol == NOT) conn.l = l; }
+    Expr(Symbol sym, Expr* l, Expr* r): Expr(sym) {
+      switch (symbol) {
+        case AND: case OR: case IMPLIES: case IFF:
+          conn.l = l; conn.r = r; break;
+        default: break;
+      }
+    }
+    Expr(Symbol sym, unsigned short arity, Sort sort, Expr* r): Expr(sym) {
+      switch (symbol) {
+        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+          binder.arity = arity; binder.sort = sort; binder.r = r; break;
+        default: break;
+      }
+    }
     // Assignment is shallow copy
     Expr(const Expr&) = default;
     Expr& operator=(const Expr&) = default;
-    // Some convenient constructors (using no-copy attach)
-    // TODO: check symbol
-    Expr(Symbol sym, bool free, unsigned int id, const std::initializer_list<Expr*>& c): Expr(sym) {
-      var.free = free; var.id = id; attachChildren(c);
-    }
-    Expr(Symbol sym, Expr* l): Expr(sym) { conn.l = l; }
-    Expr(Symbol sym, Expr* l, Expr* r): Expr(sym) { conn.l = l; conn.r = r; }
-    Expr(Symbol sym, unsigned short arity, Sort sort, Expr* r): Expr(sym) {
-      binder.arity = arity; binder.sort = sort; binder.r = r;
-    }
 
     // Deep copy
     // Pre: all nonzero pointers are valid
@@ -68,24 +79,20 @@ namespace Core {
 
     // Attach children (no-copy)
     // Each node may only be attached to **one** parent node at a time!
-    // Pre: symbol is VAR
     void attachChildren(const std::initializer_list<Expr*>& nodes);
 
     // Syntactical equality
     // Pre: all nonzero pointers are valid
     // O(size)
-    bool operator== (const Expr& rhs) const;
-    bool operator!= (const Expr& rhs) const { return !(*this == rhs); }
+    bool operator==(const Expr& rhs) const;
+    bool operator!=(const Expr& rhs) const { return !(*this == rhs); }
 
     // Print
     // Pre: all nonzero pointers are valid
     // `stk` will be unchanged
     // O(size)
     string toString(const Context& ctx, vector<pair<Type, string>>& stk) const;
-    string toString(const Context& ctx) const {
-      vector<pair<Type, string>> stk;
-      return toString(ctx, stk);
-    }
+    string toString(const Context& ctx) const { vector<pair<Type, string>> stk; return toString(ctx, stk); }
 
     // Check if the subtree is well-formed, and return its type
     // Throws exception on failure
@@ -93,10 +100,7 @@ namespace Core {
     // `stk` will be unchanged
     // O(size)
     Type checkType(const Context& ctx, vector<Type>& stk) const;
-    Type checkType(const Context& ctx) const {
-      vector<Type> stk;
-      return checkType(ctx, stk);
-    }
+    Type checkType(const Context& ctx) const { vector<Type> stk; return checkType(ctx, stk); }
 
     // Modification (deep copying whole expression)
     // Pre: all nonzero pointers are valid
@@ -105,6 +109,7 @@ namespace Core {
     Expr* updateVars(unsigned int n, Allocator<Expr>& pool, const F& f) const {
       // First shallow copy to pool
       Expr* res = pool.pushBack(*this);
+      using enum Symbol;
       switch (symbol) {
         case EMPTY: return res;
         case VAR: {
@@ -185,9 +190,7 @@ namespace Core {
     // predicates must be replaced by predicates (i.e. types must match)
     Expr* makeReplaceLam(const Expr* lam, Allocator<Expr>& pool) const {
       auto [k, body] = lam->getBody();
-      // Workaround for "structured bindings cannot be captured":
-      // https://stackoverflow.com/questions/46114214/lambda-implicit-capture-fails-with-variable-declared-from-structured-binding
-      return updateVars(0, pool, [k = k, body = body, &pool] (unsigned int n, Expr* x) {
+      return updateVars(0, pool, [k, body, &pool] (unsigned int n, Expr* x) {
         if (!x->var.free && x->var.id == n) {
           vector<const Expr*> args;
           for (const Expr* p = x->var.c; p; p = p->s) args.push_back(p);

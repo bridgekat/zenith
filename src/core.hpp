@@ -14,10 +14,10 @@
 // The `core` folder contains everything related to the verifier:
 
 // By class:
-#include "core/base.hpp"    // Allocator
-#include "core/context.hpp" // Type, Context
-#include "core/expr.hpp"    // Expr
-#include "core/proof.hpp"   // Proof, Decl
+#include "core/base.hpp"    // Allocator...
+#include "core/context.hpp" // Type, Context...
+#include "core/expr.hpp"    // Expr...
+#include "core/proof.hpp"   // Proof, Decl...
 
 // By functionality:
 // - Formation/typing rules are in `core/expr.cpp`

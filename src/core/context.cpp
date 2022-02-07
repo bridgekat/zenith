@@ -19,6 +19,8 @@ namespace Core {
 
   // Context-changing rules (implies-intro, forall[func, pred]-intro) here
   bool Context::pop(Allocator<Expr>& pool) {
+    using enum Expr::Symbol;
+
     if (ind.empty()) return false;
     size_t index = ind.back(); ind.pop_back();
     auto entry = a[index];
@@ -33,7 +35,7 @@ namespace Core {
     #define nodebinder(sym_, r_)  newNode(pool, sym_, 0, SVAR, r_) // This binds term variables only
     #define nodebinderks(sym_, k_, s_, r_) \
                                   newNode(pool, sym_, k_, s_, r_)
-    #define nodevar(f_, id_, ...) newNode(pool, VAR, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
+    #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
     #define isexpr(info)          holds_alternative<const Expr*>(info)
     #define istype(info)          holds_alternative<Type>(info)
     #define expr(info)            get<const Expr*>(info)

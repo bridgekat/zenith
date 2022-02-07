@@ -34,9 +34,10 @@ namespace Core {
       (last? last->s : var.c) = node;
       last = node;
     }
+    (last? last->s : var.c) = nullptr;
   }
 
-  bool Expr::operator== (const Expr& rhs) const {
+  bool Expr::operator==(const Expr& rhs) const {
     if (symbol != rhs.symbol) return false;
     // symbol == rhs.symbol
     switch (symbol) {

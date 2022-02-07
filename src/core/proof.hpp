@@ -1,3 +1,5 @@
+// Core :: Proof, Decl, InvalidProof, InvalidDecl
+
 #ifndef PROOF_HPP_
 #define PROOF_HPP_
 
@@ -11,13 +13,15 @@ namespace Core {
   // Derivation trees (aka. proof terms)
   class Proof {
   public:
-    enum Rule: unsigned char {
+    enum class Rule: unsigned char {
       EMPTY = 0,
       EXPR, THM,
       AND_I, AND_L, AND_R, OR_L, OR_R, OR_E, IMPLIES_E, NOT_I, NOT_E, IFF_I, IFF_L, IFF_R, TRUE_I, FALSE_E, RAA,
       EQ_I, EQ_E, FORALL_E, EXISTS_I, EXISTS_E, UNIQUE_I, UNIQUE_L, UNIQUE_R, FORALL2_E
-    } rule;
+    };
+    using enum Rule;
 
+    Rule rule = EMPTY;
     // Since most rules have less or equal than 3 child proofs, I guess I could save writing some boilerplate code
     // for a discriminated union...
     // Unlike expressions, DAGs are allowed for proofs: each node may be attached to multiple parent nodes at a time.
@@ -30,26 +34,22 @@ namespace Core {
 
     // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
     Proof(): rule(EMPTY) {}
-    Proof(Rule rule): rule(rule) {
+    Proof(Rule rule, Proof* p0 = nullptr, Proof* p1 = nullptr, Proof* p2 = nullptr): rule(rule) {
       switch (rule) {
         case EMPTY: break;
         case EXPR: expr.p = nullptr; break;
-        default: subpfs.p[0] = subpfs.p[1] = subpfs.p[2] = nullptr; break;
+        default: subpfs.p[0] = p0; subpfs.p[1] = p1; subpfs.p[2] = p2; break;
       }
     }
+    Proof(const Expr* e): rule(EXPR) { expr.p = e; }
+    Proof(unsigned int id): rule(THM) { thm.id = id; }
     // Assignment is shallow copy
     Proof(const Proof&) = default;
     Proof& operator=(const Proof&) = default;
-    // Some convenient constructors
-    // TODO: check rule
-    Proof(const Expr* e): rule(EXPR) { expr.p = e; }
-    Proof(unsigned int id): rule(THM) { thm.id = id; }
-    Proof(Rule r, Proof* p0): rule(r) { subpfs.p[0] = p0; subpfs.p[1] = subpfs.p[2] = nullptr; }
-    Proof(Rule r, Proof* p0, Proof* p1): rule(r) { subpfs.p[0] = p0; subpfs.p[1] = p1; subpfs.p[2] = nullptr; }
-    Proof(Rule r, Proof* p0, Proof* p1, Proof* p2): rule(r) { subpfs.p[0] = p0; subpfs.p[1] = p1; subpfs.p[2] = p2; }
 
     // TODO: debug output
 
+    // Checks well-formedness (rule must be `EXPR`)
     Type checkExpr(const Context& ctx) const;
 
     // Checks proof (currently no side-effects on `ctx`)
@@ -68,15 +68,19 @@ namespace Core {
   };
 
 
+  // Pre (for all methods): there is no "cycle" throughout the tree
+  // Pre & invariant (for all methods): all nonzero pointers (in the "active variant") are valid
   class Decl {
   public:
-    enum Category: unsigned char {
+    enum class Category: unsigned char {
       EMPTY = 0,
       BLOCK, ASSERTION,
       ASSUME, ANY, POP,
       FDEF, PDEF, DDEF, IDEF, UNDEF
-    } category;
+    };
+    using enum Category;
 
+    Category category = EMPTY;
     Decl* s = nullptr; // Next sibling
     // Non-POD class instance cannot be stored inside unions
     // (or I will have to manually call their constructors & destructors)
@@ -91,7 +95,8 @@ namespace Core {
 
     // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
     Decl(): category(EMPTY) {}
-    Decl(Category cat): category(cat) {
+    Decl(Category cat, const string& name = "", const string& namedef = ""):
+         category(cat), name(name), namedef(namedef) {
       switch (category) {
         case EMPTY: case ANY: case POP: case UNDEF: break;
         case BLOCK: block.c = nullptr; break;
@@ -103,29 +108,21 @@ namespace Core {
         case IDEF: idef.pf = nullptr; break;
       }
     }
+    Decl(const std::initializer_list<Decl*>& c): category(BLOCK) { attachChildren(c); }
+    Decl(const string& name, const Expr* e, const Proof* pf): category(ASSERTION), name(name) { assertion.e = e; assertion.pf = pf; }
+    Decl(const string& name, const Expr* e): category(ASSUME), name(name) { assume.e = e; }
+    Decl(const string& name, unsigned short arity, Sort sort): category(ANY), name(name) { any.arity = arity; any.sort = sort; }
+    Decl(Category cat, const string& name, const string& namedef, const Expr* e): Decl(cat, name, namedef) {
+      if (category == FDEF) fdef.e = e;
+      if (category == PDEF) pdef.e = e;
+    }
+    Decl(Category cat, const string& name, const string& namedef, const Proof* pf): Decl(cat, name, namedef) {
+      if (category == DDEF) ddef.pf = pf;
+      if (category == IDEF) idef.pf = pf;
+    }
     // Assignment is shallow copy
     Decl(const Decl&) = default;
     Decl& operator=(const Decl&) = default;
-    // Some convenient constructors
-    // TODO: check category
-    Decl(const std::initializer_list<Decl*>& c): category(BLOCK) { attachChildren(c); }
-    Decl(string name, const Expr* e, const Proof* pf): category(ASSERTION), name(name) { assertion.e = e; assertion.pf = pf; }
-    Decl(Category cat, string name, string namedef, const Proof* pf): category(cat), name(name), namedef(namedef) {
-      switch (category) {
-        case DDEF: ddef.pf = pf; break;
-        case IDEF: idef.pf = pf; break;
-        default: throw Unreachable();
-      }
-    }
-    Decl(Category cat, string name, string namedef, const Expr* e): category(cat), name(name), namedef(namedef) {
-      switch (category) {
-        case FDEF: fdef.e = e; break;
-        case PDEF: pdef.e = e; break;
-        default: throw Unreachable();
-      }
-    }
-    Decl(string name, const Expr* e): category(ASSUME), name(name) { assume.e = e; }
-    Decl(string name, unsigned short arity, Sort sort): category(ANY), name(name) { any.arity = arity; any.sort = sort; }
 
     // TODO: debug output
 

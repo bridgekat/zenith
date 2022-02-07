@@ -82,7 +82,7 @@ namespace Core {
     #define node1(sym_, l_)       newNode(pool, sym_, l_)
     #define node2(l_, sym_, r_)   newNode(pool, sym_, l_, r_)
     #define nodebinder(sym_, r_)  newNode(pool, sym_, 0, SVAR, r_) // This binds term variables only
-    #define nodevar(f_, id_, ...) newNode(pool, VAR, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
+    #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
     switch (rule) {
       case EMPTY: throw InvalidProof("unexpected empty tag", ctx, this);
@@ -96,6 +96,7 @@ namespace Core {
 
       // Introduction & elimination rules here
       // (Manual pattern matching!)
+      using enum Expr::Symbol;
 
       case AND_I: return node2(proved(0), AND, proved(1));
       case AND_L: { match2(proved(0), p, AND, q); return p; }
@@ -203,6 +204,7 @@ namespace Core {
       (last? last->s : block.c) = node;
       last = node;
     }
+    (last? last->s : block.c) = nullptr;
   }
 
   void Decl::check(Context& ctx, Allocator<Expr>& pool) const {
@@ -230,7 +232,7 @@ namespace Core {
     }
     #define node2(l_, sym_, r_)   newNode(pool, sym_, l_, r_)
     #define nodebinder(sym_, r_)  newNode(pool, sym_, 0, SVAR, r_) // This binds term variables only
-    #define nodevar(f_, id_, ...) newNode(pool, VAR, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
+    #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
     switch (category) {
       case EMPTY: throw InvalidDecl("unexpected empty tag", ctx, this);
@@ -249,6 +251,7 @@ namespace Core {
       case POP:    if (!ctx.pop(pool)) throw InvalidDecl("error popping - assumption stack is empty at this point", ctx, this); return;
 
       // Definition rules here
+      using enum Expr::Symbol;
 
       case FDEF: {
         unsigned int id = ctx.addDef(name, TTerm);

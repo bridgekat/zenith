@@ -11,6 +11,8 @@ using namespace Core;
 // TODO: read text & binary files
 
 int main() {
+  using enum Expr::Symbol;
+
   cout << sizeof(string) << endl;
   cout << sizeof(Expr) << endl;
   cout << sizeof(Proof) << endl;
@@ -18,8 +20,8 @@ int main() {
 
   #define N(...) newNode(pool, __VA_ARGS__)
 
-  #define fv(id, ...) N(VAR, FREE,  id, std::initializer_list<Expr*>{__VA_ARGS__})
-  #define bv(id, ...) N(VAR, BOUND, id, std::initializer_list<Expr*>{__VA_ARGS__})
+  #define fv(id, ...) N(FREE,  id, std::initializer_list<Expr*>{__VA_ARGS__})
+  #define bv(id, ...) N(BOUND, id, std::initializer_list<Expr*>{__VA_ARGS__})
 
   #define T                 N(TRUE)
   #define F                 N(FALSE)

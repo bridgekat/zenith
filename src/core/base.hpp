@@ -1,3 +1,5 @@
+// Core :: Allocator, Unreachable, CheckFailure
+
 #ifndef BASE_HPP_
 #define BASE_HPP_
 
