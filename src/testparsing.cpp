@@ -1,77 +1,80 @@
-#include <iostream>
 #include <utility>
 #include <string>
+#include <vector>
 #include <optional>
-#include <sstream>
+#include <iostream>
 #include <fstream>
+#include <sstream>
 #include "parsing/parser.hpp"
 
-using std::string;
+using std::pair, std::string, std::vector;
 using std::optional, std::make_optional, std::nullopt;
 using std::cin, std::cout, std::endl;
 using Parsing::Token, Parsing::TokenID;
 using Parsing::NFALexer, Parsing::DFALexer;
+using Parsing::EarleyParser;
 
 
 class TestLexer: public NFALexer {
 public:
   enum ETokenID: TokenID {
-    BLANK = 0, LINE_COMMENT, BLOCK_COMMENT, PREPROCESSOR,
-    NATURAL, STRING, DELIMITER, OPERATOR, KEYWORD, IDENTIFIER
+    BLANK = 0, LINE_COMMENT, BLOCK_COMMENT, DIRECTIVE,
+    NATURAL, STRING,
+    KW_ANY, KW_ANYFUNC, KW_ANYPRED, KW_ASSUME, KW_NAME, KW_PROOF,
+    OP_COMMA, OP_SEMICOLON, OP_LBRACE, OP_RBRACE, OP_RRARROW,
+    IDENTIFIER
   };
 
   TestLexer(): NFALexer() {
-    addPattern(ETokenID::BLANK,
+    addPattern(BLANK,
       star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })));
-    addPattern(ETokenID::LINE_COMMENT,
+    addPattern(LINE_COMMENT,
       concat(word("//"), star(except({ '\r', '\n' }))));
-    addPattern(ETokenID::BLOCK_COMMENT,
+    addPattern(BLOCK_COMMENT,
       concat(word("/*"),
         star(concat(star(except({ '*' })), plus(ch({ '*' })), except({ '/' }))),
                     star(except({ '*' })), plus(ch({ '*' })), ch({ '/' })));
-    addPattern(ETokenID::PREPROCESSOR,
+    addPattern(DIRECTIVE,
       concat(ch({ '#' }), star(except({ '\r', '\n' }))));
-    addPattern(ETokenID::NATURAL,
+    addPattern(NATURAL,
       alt({ star(range('0', '9')),
             concat(ch({ '0' }), ch({ 'x', 'X' }), star(alt({ range('0', '9'), range('a', 'f'), range('A', 'F') }))) }));
-    addPattern(ETokenID::STRING,
+    addPattern(STRING,
       concat(ch({ '"' }), star(alt({ except({ '"', '\\' }), concat(ch({ '\\' }), ch({ '"', '\\' })) })), ch({ '"' })));
-    addPattern(ETokenID::DELIMITER,
-      ch({ '{', '}', ';' }));
-    addPattern(ETokenID::OPERATOR,
+    /*
+    addPattern(OPERATOR,
       alt({ ch({ '+', '-', '*', '/', '\\', '%', '&', '(', ')', ',', ':', '?', '[', ']', '^', '|', '<', '>', '=', '`' }),
             word("->"), word("<->"), word("↑"), word("=>"), word(":="), word("::"), word(":<->") }));
-    addPattern(ETokenID::KEYWORD,
+    addPattern(KEYWORD,
       alt({ word("any"), word("anyfunc"), word("anypred"), word("assume"), word("def"), word("idef"), word("undef"),
             word("proof"), word("by"), word("name"), word("namespace"), word("private"), word("public"),
             word("and"), word("or"), word("implies"), word("not"), word("iff"), word("true"), word("false"), word("eq"),
             word("forall"), word("exists"), word("unique"), word("forallfunc"), word("forallpred") }));
-    addPattern(ETokenID::IDENTIFIER,
+    */
+
+    vector<pair<TokenID, string>> kw = {
+      { KW_ANY,     "any"     },
+      { KW_ANYFUNC, "anyfunc" },
+      { KW_ANYPRED, "anypred" },
+      { KW_ASSUME,  "assume"  },
+      { KW_NAME,    "name"    },
+      { KW_PROOF,   "proof"   },
+    };
+    for (const auto& [id, lexeme]: kw) addPattern(id, word(lexeme));
+
+    vector<pair<TokenID, string>> op = {
+      { OP_COMMA,     ","  },
+      { OP_SEMICOLON, ";"  },
+      { OP_LBRACE,    "{"  },
+      { OP_RBRACE,    "}"  },
+      { OP_RRARROW,   "=>" },
+    };
+    for (const auto& [id, lexeme]: op) addPattern(id, word(lexeme));
+
+    addPattern(IDENTIFIER,
       concat(
         alt({ range('a', 'z'), range('A', 'Z'), ch({ '_' }), utf8segment() }),
         star(alt({ range('a', 'z'), range('A', 'Z'), range('0', '9'), ch({ '_', '\'', '.' }), utf8segment() }))));
-  }
-
-  optional<Token> getNextToken() override {
-    auto res = NFALexer::getNextToken();
-    while (res && res.value().first == BLANK) res = NFALexer::getNextToken();
-    return res;
-  }
-
-  static string printToken(const Token& tok) {
-    switch (tok.first) {
-      case BLANK:         return "Blank of length " + std::to_string(tok.second.size());
-      case LINE_COMMENT:  return "Line comment [" + tok.second + "]";
-      case BLOCK_COMMENT: return "Block comment [" + tok.second + "]";
-      case PREPROCESSOR:  return "Preprocessor [" + tok.second + "]";
-      case NATURAL:       return "Natural [" + tok.second + "]";
-      case STRING:        return "String [" + tok.second + "]";
-      case DELIMITER:     return "Delimiter [" + tok.second + "]";
-      case OPERATOR:      return "Operator [" + tok.second + "]";
-      case KEYWORD:       return "Keyword [" + tok.second + "]";
-      case IDENTIFIER:    return "Identifier [" + tok.second + "]";
-      default:            return "Unknown [" + tok.second + "]";
-    }
   }
 };
 
@@ -92,7 +95,7 @@ int main() {
   test.optimize();
   cout << test.table.size() << endl;
 
-  std::ifstream in("test.txt");
+  std::ifstream in("test1.txt");
   test << readFile(in);
   in.close();
 
@@ -105,6 +108,7 @@ int main() {
     return pos;
   };
 
+  vector<Token> str;
   while (!test.eof()) {
     auto next = test.getNextToken();
     if (!next) {
@@ -114,8 +118,30 @@ int main() {
               "(most probably due to unsupported ASCII character combinations. "
               "Is file encoded in UTF-8 and your syntax correct?)" << endl;
       test.ignoreNextCodepoint();
-    } else cout << TestLexer::printToken(next.value()) << endl;
+    } else {
+      Token tok = next.value();
+      using enum TestLexer::ETokenID;
+      switch (tok.id) {
+        case BLANK: case LINE_COMMENT: case BLOCK_COMMENT: case DIRECTIVE: break;
+        default:
+          str.push_back(tok);
+          break;
+      }
+    }
   }
+
+  /*
+  enum Terminal: TokenID { B };
+  enum Nonterminal: TokenID { S };
+  vector<Token> str = { { B, "" }, { B, "" }, { B, "" } };
+
+  EarleyParser parser;
+  parser.rules.push_back({ S, { { true, B } } });
+  parser.rules.push_back({ S, { { false, S }, { false, S } } });
+
+  parser.start = S;
+  vector<vector<EarleyParser::State>> states = parser.run(str);
+  */
 
   /*
   // See: https://en.cppreference.com/w/cpp/locale/wstring_convert/converted

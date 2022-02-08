@@ -1,4 +1,4 @@
-// Core :: Symbol, Expr, InvalidExpr
+// Core :: Expr, InvalidExpr
 
 #ifndef EXPR_HPP_
 #define EXPR_HPP_

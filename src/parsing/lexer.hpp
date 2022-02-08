@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <optional>
+#include <compare>
 #include <string>
 
 
@@ -20,7 +21,11 @@ namespace Parsing {
 
 
   typedef unsigned int TokenID;
-  typedef pair<TokenID, string> Token;
+  struct Token {
+    TokenID id;
+    string lexeme;
+    std::strong_ordering operator<=>(const Token&) const = default;
+  };
 
   class NFALexer {
   public:
@@ -41,7 +46,6 @@ namespace Parsing {
 
     // Create initial state
     NFALexer(): table(), initial(0), rest() { table.emplace_back(); }
-    virtual ~NFALexer() = default;
 
     #define node(x) State x = table.size(); table.emplace_back()
     #define trans(s, c, t) table[s].tr.emplace_back(c, t)
@@ -59,7 +63,7 @@ namespace Parsing {
     // getNextToken from rest
     bool eof() { return rest.empty(); }
     NFALexer& operator<< (const string& s) { rest += s; return *this; }
-    virtual optional<Token> getNextToken();
+    optional<Token> getNextToken();
     void ignoreNextCodepoint();
 
     // Some useful NFA constructors
@@ -144,7 +148,6 @@ namespace Parsing {
     DFALexer(): table(), initial(0), rest() { table.emplace_back(); }
     // Create DFA from NFA
     DFALexer(const NFALexer& nfa);
-    virtual ~DFALexer() = default;
 
     // Optimize DFA
     void optimize();
@@ -154,7 +157,7 @@ namespace Parsing {
     // getNextToken from rest
     bool eof() { return rest.empty(); }
     DFALexer& operator<< (const string& s) { rest += s; return *this; }
-    virtual optional<Token> getNextToken();
+    optional<Token> getNextToken();
     void ignoreNextCodepoint();
   };
 
