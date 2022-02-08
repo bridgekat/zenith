@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include "core/base.hpp"
 #include "parsing/parser.hpp"
 
 using std::pair, std::string, std::vector;
@@ -20,9 +21,16 @@ public:
   enum ETokenID: TokenID {
     BLANK = 0, LINE_COMMENT, BLOCK_COMMENT, DIRECTIVE,
     NATURAL, STRING,
-    KW_ANY, KW_ANYFUNC, KW_ANYPRED, KW_ASSUME, KW_NAME, KW_PROOF,
     OP_COMMA, OP_SEMICOLON, OP_LBRACE, OP_RBRACE, OP_RRARROW,
-    IDENTIFIER
+    KW_ANY, KW_ANYFUNC, KW_ANYPRED, KW_ASSUME, KW_NAME, KW_PROOF,
+    OPERATOR, IDENTIFIER,
+  };
+  inline static const vector<string> tNames = {
+    "blank", "line-comment", "block-comment", "directive",
+    "natural", "string",
+    ",", ";", "{", "}", "=>",
+    "any", "anyfunc", "anypred", "assume", "name", "proof",
+    "operator", "identifier",
   };
 
   TestLexer(): NFALexer() {
@@ -42,15 +50,21 @@ public:
     addPattern(STRING,
       concat(ch({ '"' }), star(alt({ except({ '"', '\\' }), concat(ch({ '\\' }), ch({ '"', '\\' })) })), ch({ '"' })));
     /*
-    addPattern(OPERATOR,
-      alt({ ch({ '+', '-', '*', '/', '\\', '%', '&', '(', ')', ',', ':', '?', '[', ']', '^', '|', '<', '>', '=', '`' }),
-            word("->"), word("<->"), word("↑"), word("=>"), word(":="), word("::"), word(":<->") }));
     addPattern(KEYWORD,
       alt({ word("any"), word("anyfunc"), word("anypred"), word("assume"), word("def"), word("idef"), word("undef"),
             word("proof"), word("by"), word("name"), word("namespace"), word("private"), word("public"),
             word("and"), word("or"), word("implies"), word("not"), word("iff"), word("true"), word("false"), word("eq"),
             word("forall"), word("exists"), word("unique"), word("forallfunc"), word("forallpred") }));
     */
+
+    vector<pair<TokenID, string>> op = {
+      { OP_COMMA,     ","  },
+      { OP_SEMICOLON, ";"  },
+      { OP_LBRACE,    "{"  },
+      { OP_RBRACE,    "}"  },
+      { OP_RRARROW,   "=>" },
+    };
+    for (const auto& [id, lexeme]: op) addPattern(id, word(lexeme));
 
     vector<pair<TokenID, string>> kw = {
       { KW_ANY,     "any"     },
@@ -62,19 +76,13 @@ public:
     };
     for (const auto& [id, lexeme]: kw) addPattern(id, word(lexeme));
 
-    vector<pair<TokenID, string>> op = {
-      { OP_COMMA,     ","  },
-      { OP_SEMICOLON, ";"  },
-      { OP_LBRACE,    "{"  },
-      { OP_RBRACE,    "}"  },
-      { OP_RRARROW,   "=>" },
-    };
-    for (const auto& [id, lexeme]: op) addPattern(id, word(lexeme));
-
+    addPattern(OPERATOR,
+      alt({ ch({ '=', '+', '-', '*', '/', '\\', '%', '&', '(', ')', ':', '?', '[', ']', '^', '|', '<', '>' }),
+            word("->"), word("<->"), word("↑") }));
     addPattern(IDENTIFIER,
       concat(
-        alt({ range('a', 'z'), range('A', 'Z'), ch({ '_' }), utf8segment() }),
-        star(alt({ range('a', 'z'), range('A', 'Z'), range('0', '9'), ch({ '_', '\'', '.' }), utf8segment() }))));
+        alt({ range('a', 'z'), range('A', 'Z'), ch({ '_', '`' }), utf8segment() }),
+        star(alt({ range('a', 'z'), range('A', 'Z'), range('0', '9'), ch({ '_', '`', '\'', '.' }), utf8segment() }))));
   }
 };
 
@@ -94,6 +102,7 @@ int main() {
   cout << test.table.size() << endl;
   test.optimize();
   cout << test.table.size() << endl;
+  cout << endl;
 
   std::ifstream in("test1.txt");
   test << readFile(in);
@@ -122,12 +131,89 @@ int main() {
       Token tok = next.value();
       using enum TestLexer::ETokenID;
       switch (tok.id) {
-        case BLANK: case LINE_COMMENT: case BLOCK_COMMENT: case DIRECTIVE: break;
+        case BLANK: case LINE_COMMENT: case BLOCK_COMMENT: break;
         default:
           str.push_back(tok);
           break;
       }
     }
+  }
+  cout << "Scanning complete" << endl;
+
+  enum Nonterminal: TokenID {
+    DECLS, DECL, BLOCK,
+    ASSERTION, OPT_NAME, OPT_PROOF,
+    ASSUME, ASSUMPTIONS, ASSUMPTION,
+    ANY, VARS, VAR,
+    EXPR, IDENTS, IDENT, // TEMP CODE
+  };
+  vector<string> nNames = {
+    "decl-list", "decl", "block",
+    "assertion", "opt-name", "opt-proof",
+    "assume", "assumption-list", "assumption",
+    "any", "vars", "var",
+    "expr", "ident-list", "ident", // TEMP CODE
+  };
+
+  EarleyParser parser;
+  parser.start = DECLS;
+
+  #define term(id_) { true, TestLexer::ETokenID::id_ }
+  #define n(id_) { false, Nonterminal::id_ }
+  #define rule(sym_, ...) parser.rules.push_back({ sym_, { __VA_ARGS__ } });
+
+  rule(DECLS, n(DECL)); // TODO: support empty rule
+  rule(DECLS, n(DECLS), n(DECL));
+
+  rule(DECL, n(BLOCK));
+  rule(DECL, term(DIRECTIVE));
+  rule(DECL, n(ASSERTION));
+  rule(DECL, n(ASSUME));
+  rule(DECL, n(ANY));
+
+  rule(BLOCK, term(OP_LBRACE), n(DECLS), term(OP_RBRACE));
+
+  rule(ASSERTION, term(OP_RRARROW), n(EXPR), n(OPT_NAME), n(OPT_PROOF), term(OP_SEMICOLON));
+  rule(OPT_NAME);
+  rule(OPT_NAME, term(KW_NAME), term(IDENTIFIER));
+  rule(OPT_PROOF);
+  rule(OPT_PROOF, term(KW_PROOF), n(EXPR));
+
+  rule(ASSUME, term(KW_ASSUME), n(ASSUMPTIONS), n(DECL));
+  rule(ASSUMPTIONS, n(ASSUMPTION));
+  rule(ASSUMPTIONS, n(ASSUMPTIONS), term(OP_COMMA), n(ASSUMPTION));
+  rule(ASSUMPTIONS, n(ASSUMPTIONS), term(OP_COMMA)); // Optional commas anywhere!
+  rule(ASSUMPTION, n(EXPR), n(OPT_NAME));
+
+  rule(ANY, term(KW_ANY), n(VARS), n(DECL));
+  rule(VARS, n(VAR));
+  rule(VARS, n(VARS), term(OP_COMMA), n(VAR));
+  rule(VARS, n(VARS), term(OP_COMMA)); // Optional commas anywhere!
+  rule(VAR, term(IDENTIFIER));
+
+  rule(EXPR, n(IDENTS));
+  rule(IDENTS, n(IDENT));
+  rule(IDENTS, n(IDENTS), n(IDENT));
+  rule(IDENT, term(OPERATOR));
+  rule(IDENT, term(IDENTIFIER));
+
+  #undef term
+  #undef n
+  #undef rule
+
+  typedef EarleyParser::State State;
+  const auto& tNames = TestLexer::tNames;
+
+  vector<vector<State>> states = parser.run(str);
+  if (states.size() != str.size() + 1) throw Core::Unreachable();
+
+  for (size_t pos = 0; pos <= str.size(); pos++) {
+    cout << "States at position " << pos << ":" << endl;
+    for (const State& s: states[pos]) {
+      cout << parser.showState(s, tNames, nNames) << endl;
+    }
+    cout << endl;
+    if (pos < str.size()) cout << "Next token: <" << tNames[str[pos].id] << ">" << endl;
   }
 
   /*

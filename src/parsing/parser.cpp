@@ -63,19 +63,21 @@ namespace Parsing {
       // "Completion" stage
       // (This loop will insert new elements in `states[pos]`; don't use range-based for)
       for (size_t i = 0; i < states[pos].size(); i++) {
-        const State& s = states[pos][i];
+        State s = states[pos][i]; // TODO: support empty rule
         const auto& derived = rules[s.ruleIndex].rhs;
         if (s.rulePos < derived.size()) continue;
 
         TokenID sym = rules[s.ruleIndex].lhs;
-        for (const State& t: states[s.leftPos]) {
+        for (size_t j = 0; j < states[s.leftPos].size(); j++) { // TODO: support empty rule
+          State t = states[s.leftPos][j];
           const auto& tderived = rules[t.ruleIndex].rhs;
+
           if (t.rulePos < tderived.size() && tderived[t.rulePos] == Symbol{ false, sym }) {
             State tt{ t.leftPos, t.ruleIndex, t.rulePos + 1 };
             if (!mp.contains(tt)) {
               mp[tt] = states.size();
               states[pos].push_back(tt);
-            }
+            } else std::cout << "Ambiguity detected" << std::endl; // TEMP CODE
           }
         }
       }
@@ -83,7 +85,7 @@ namespace Parsing {
       // "Prediction" stage
       // (This loop will insert new elements in `states[pos]`; don't use range-based for)
       for (size_t i = 0; i < states[pos].size(); i++) {
-        const State& s = states[pos][i];
+        State s = states[pos][i];
         const auto& derived = rules[s.ruleIndex].rhs;
         if (s.rulePos >= derived.size()) continue;
 
