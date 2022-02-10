@@ -49,14 +49,6 @@ public:
             concat(ch({ '0' }), ch({ 'x', 'X' }), star(alt({ range('0', '9'), range('a', 'f'), range('A', 'F') }))) }));
     addPattern(STRING,
       concat(ch({ '"' }), star(alt({ except({ '"', '\\' }), concat(ch({ '\\' }), ch({ '"', '\\' })) })), ch({ '"' })));
-    /*
-    addPattern(KEYWORD,
-      alt({ word("any"), word("anyfunc"), word("anypred"), word("assume"), word("def"), word("idef"), word("undef"),
-            word("proof"), word("by"), word("name"), word("namespace"), word("private"), word("public"),
-            word("and"), word("or"), word("implies"), word("not"), word("iff"), word("true"), word("false"), word("eq"),
-            word("forall"), word("exists"), word("unique"), word("forallfunc"), word("forallpred") }));
-    */
-
     vector<pair<TokenID, string>> op = {
       { OP_COMMA,     ","  },
       { OP_SEMICOLON, ";"  },
@@ -65,7 +57,6 @@ public:
       { OP_RRARROW,   "=>" },
     };
     for (const auto& [id, lexeme]: op) addPattern(id, word(lexeme));
-
     vector<pair<TokenID, string>> kw = {
       { KW_ANY,     "any"     },
       { KW_ANYFUNC, "anyfunc" },
@@ -75,7 +66,6 @@ public:
       { KW_PROOF,   "proof"   },
     };
     for (const auto& [id, lexeme]: kw) addPattern(id, word(lexeme));
-
     addPattern(OPERATOR,
       alt({ ch({ '=', '+', '-', '*', '/', '\\', '%', '&', '(', ')', ':', '?', '[', ']', '^', '|', '<', '>' }),
             word("->"), word("<->"), word("↑") }));

@@ -1,6 +1,5 @@
-#include <array>
-#include <set>
-#include <map>
+#include <vector>
+#include <unordered_map>
 #include <core/base.hpp>
 #include "lexer.hpp"
 
@@ -27,7 +26,8 @@ namespace Parsing {
     vector<bool> v(table.size(), false);
 
     // A helper function
-    auto closure = [&v, this] (vector<State>& s) {
+    // Pre: the indices where v[] is true must match the elements of s
+    auto closure = [this] (vector<bool>& v, vector<State>& s) {
       // Expand to epsilon closure (using DFS)
       vector<State> stk = s;
       while (!stk.empty()) {
@@ -38,22 +38,22 @@ namespace Parsing {
           v[u] = true;
         }
       }
-      // Reset v[] to false
-      for (State x: s) v[x] = false;
     };
 
     s.push_back(initial);
     v[initial] = true;
-    closure(s);
+    closure(v, s);
     for (size_t i = 0; i < str.size(); i++) {
       unsigned char c = str[i];
+      // Reset v[] to false
+      for (State x: s) v[x] = false;
       // Move one step
       vector<State> t;
       for (State x: s) for (auto [cc, u]: table[x].tr) if (cc == c && !v[u]) {
         t.push_back(u);
         v[u] = true;
       }
-      closure(t);
+      closure(v, t);
       s.swap(t);
       // Update result if reaches accepting state
       // Patterns with smaller IDs have higher priority
@@ -78,30 +78,29 @@ namespace Parsing {
     return res;
   }
 
-  using std::array;
-  using std::set;
-  using std::map;
+  using std::unordered_map;
 
   // Function object for the DFA construction from NFA
   class PowersetConstruction {
   public:
     const NFALexer& nfa;
     DFALexer* dfa;
-    map<set<NFALexer::State>, DFALexer::State> mp;
+    vector<bool> v;
+    unordered_map<vector<bool>, DFALexer::State> mp;
 
-    PowersetConstruction(const NFALexer& nfa, DFALexer* dfa): nfa(nfa), dfa(dfa), mp() {}
+    PowersetConstruction(const NFALexer& nfa, DFALexer* dfa): nfa(nfa), dfa(dfa), v(), mp() {}
     PowersetConstruction(const PowersetConstruction&) = delete;
     PowersetConstruction& operator= (const PowersetConstruction&) = delete;
 
-    // We must use sets (for comparing states) nevertheless, so v[] is not needed
-    void closure(set<NFALexer::State>& s) const {
+    void closure(vector<bool>& v, vector<NFALexer::State>& s) const {
       // Expand to epsilon closure (using DFS)
-      vector<NFALexer::State> stk(s.begin(), s.end());
+      vector<NFALexer::State> stk = s;
       while (!stk.empty()) {
         NFALexer::State nx = stk.back(); stk.pop_back();
-        for (auto [cc, nu]: nfa.table[nx].tr) if (cc == 0 && !s.contains(nu)) {
-          s.insert(nu);
+        for (auto [cc, nu]: nfa.table[nx].tr) if (cc == 0 && !v[nu]) {
+          s.push_back(nu);
           stk.push_back(nu);
+          v[nu] = true;
         }
       }
     };
@@ -112,8 +111,11 @@ namespace Parsing {
     #define trans(s_, c_, t_) \
       dfa->table[s_].has[c_] = true; \
       dfa->table[s_].tr[c_] = t_
+    #define clearv(s_) \
+      for (NFALexer::State i: s_) v[i] = false;
 
-    void dfs(DFALexer::State x, const set<NFALexer::State>& s) {
+    // Invariant: all elements of v[] are false
+    void dfs(DFALexer::State x, const vector<NFALexer::State>& s) {
       // Check if `s` contains accepting states
       optional<TokenID> curr;
       for (auto ns: s) {
@@ -122,37 +124,48 @@ namespace Parsing {
       }
       dfa->table[x].ac = curr;
       // Compute transitions
+      // Invariant: all elements of v[] are false at the end of the loop
       for (unsigned int c = 0x01; c <= 0xFF; c++) {
         // Compute u
-        set<NFALexer::State> t;
+        vector<NFALexer::State> t;
         for (auto nx: s) for (auto [cc, nu]: nfa.table[nx].tr) {
-          if (cc == c && !t.contains(nu)) t.insert(nu);
+          if (cc == c && !v[nu]) {
+            t.push_back(nu);
+            v[nu] = true;
+          }
         }
-        if (t.empty()) continue;
-        closure(t);
+        if (t.empty()) continue; // No need to clear v: t is empty
+        closure(v, t);
         // Look at u:
-        auto it = mp.find(t);
+        auto it = mp.find(v);
         if (it != mp.end()) {
           // Already seen
           trans(x, c, it->second);
+          clearv(t);
         } else {
           // Haven't seen before, create new DFA node and recurse
-          node(DFALexer::State u, t);
+          node(DFALexer::State u, v);
           trans(x, c, u);
+          clearv(t);
           dfs(u, t);
         }
       }
     }
 
     void operator() () {
-      set<NFALexer::State> s = { nfa.initial };
-      closure(s);
-      node(dfa->initial, s);
+      v.clear(); v.resize(nfa.table.size());
+      mp.clear();
+      vector<NFALexer::State> s = { nfa.initial };
+      v[nfa.initial] = true;
+      closure(v, s);
+      node(dfa->initial, v);
+      clearv(s);
       dfs(dfa->initial, s);
     }
 
     #undef node
     #undef trans
+    #undef clearv
   };
 
   DFALexer::DFALexer(const NFALexer& nfa): table(), initial(0), rest() {
