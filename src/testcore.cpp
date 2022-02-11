@@ -11,7 +11,7 @@ using namespace Core;
 // TODO: read text & binary files
 
 int main() {
-  using enum Expr::Symbol;
+  using enum Expr::Tag;
 
   cout << sizeof(string) << endl;
   cout << sizeof(Expr) << endl;
@@ -25,8 +25,8 @@ int main() {
 
   #define T                 N(TRUE)
   #define F                 N(FALSE)
-  #define un(sym, a)        N(sym, a)
-  #define bin(a, sym, b)    N(sym, a, b)
+  #define un(tag, a)        N(tag, a)
+  #define bin(a, tag, b)    N(tag, a, b)
   #define forall(a)         N(FORALL, 0, SVAR, a)
   #define exists(a)         N(EXISTS, 0, SVAR, a)
   #define unique(a)         N(UNIQUE, 0, SVAR, a)

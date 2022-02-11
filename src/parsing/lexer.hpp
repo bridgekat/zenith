@@ -61,8 +61,8 @@ namespace Parsing {
     optional<pair<size_t, TokenID>> run(const string& s) const;
 
     // getNextToken from rest
-    bool eof() { return rest.empty(); }
-    NFALexer& operator<< (const string& s) { rest += s; return *this; }
+    bool eof() const { return rest.empty(); }
+    NFALexer& operator<<(const string& s) { rest += s; return *this; }
     optional<Token> getNextToken();
     void ignoreNextCodepoint();
 
@@ -147,7 +147,7 @@ namespace Parsing {
     // Create initial state
     DFALexer(): table(), initial(0), rest() { table.emplace_back(); }
     // Create DFA from NFA
-    DFALexer(const NFALexer& nfa);
+    explicit DFALexer(const NFALexer& nfa);
 
     // Optimize DFA
     void optimize();
@@ -155,8 +155,8 @@ namespace Parsing {
     optional<pair<size_t, TokenID>> run(const string& s) const;
 
     // getNextToken from rest
-    bool eof() { return rest.empty(); }
-    DFALexer& operator<< (const string& s) { rest += s; return *this; }
+    bool eof() const { return rest.empty(); }
+    DFALexer& operator<<(const string& s) { rest += s; return *this; }
     optional<Token> getNextToken();
     void ignoreNextCodepoint();
   };

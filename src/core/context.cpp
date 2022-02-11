@@ -19,7 +19,7 @@ namespace Core {
 
   // Context-changing rules (implies-intro, forall[func, pred]-intro) here
   bool Context::pop(Allocator<Expr>& pool) {
-    using enum Expr::Symbol;
+    using enum Expr::Tag;
 
     if (ind.empty()) return false;
     size_t index = ind.back(); ind.pop_back();
@@ -31,10 +31,10 @@ namespace Core {
       return a;
     };
 
-    #define node2(l_, sym_, r_)   newNode(pool, sym_, l_, r_)
-    #define nodebinder(sym_, r_)  newNode(pool, sym_, 0, SVAR, r_) // This binds term variables only
-    #define nodebinderks(sym_, k_, s_, r_) \
-                                  newNode(pool, sym_, k_, s_, r_)
+    #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
+    #define nodebinder(tag_, r_)  newNode(pool, tag_, 0, SVAR, r_) // This binds term variables only
+    #define nodebinderks(tag_, k_, s_, r_) \
+                                  newNode(pool, tag_, k_, s_, r_)
     #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
     #define isexpr(info)          holds_alternative<const Expr*>(info)
     #define istype(info)          holds_alternative<Type>(info)
@@ -90,7 +90,7 @@ namespace Core {
           const Expr* ei = expr(a[i + 1].info);
           a[i] = {
             a[i + 1].name,
-            (t == TTerm && ei->symbol != FORALL2) ?
+            (t == TTerm && ei->tag != FORALL2) ?
               nodebinder(FORALL, ei->updateVars(0, pool, modify)) :
               nodebinderks(FORALL2, t[0].first, t[0].second, ei->updateVars(0, pool, modify))
           };

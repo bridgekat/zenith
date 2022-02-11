@@ -40,7 +40,7 @@ namespace Core {
 
   // Some exception classes...
   struct Unreachable: public std::logic_error { Unreachable(): std::logic_error("\"Unreachable\" code was reached") {} };
-  struct CheckFailure: public std::logic_error { CheckFailure(const std::string& s): std::logic_error(s) {} };
+  struct CheckFailure: public std::logic_error { explicit CheckFailure(const std::string& s): std::logic_error(s) {} };
 
 }
 

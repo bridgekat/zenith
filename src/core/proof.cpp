@@ -4,7 +4,7 @@
 namespace Core {
 
   Type Proof::checkExpr(const Context& ctx) const {
-    switch (rule) {
+    switch (tag) {
       case EMPTY: throw InvalidProof("unexpected empty tag", ctx, this);
       case EXPR:
         if (!expr.p) throw InvalidProof("null pointer", ctx, this);
@@ -44,47 +44,47 @@ namespace Core {
 
     // Some helper macros that try "pattern matching on" a given node (infix for binary connectives)
     //   *a_ must be a valid & well-formed formula
-    //   sym_ must be a constant
+    //   tag_ must be a constant
     //   l_, r_ must be identifiers
     // Local variable x is used to prevent evaluating a_ multiple times
     // Throws exception on failure
-    #define match0(a_, sym_) { \
+    #define match0(a_, tag_) { \
       Expr* x = a_; \
-      if (x->symbol != sym_) throw InvalidProof("incorrect main connective", ctx, this); \
+      if (x->tag != tag_) throw InvalidProof("incorrect main connective", ctx, this); \
     }
-    #define match1(a_, sym_, l_) [[maybe_unused]] Expr* l_; { \
+    #define match1(a_, tag_, l_) [[maybe_unused]] Expr* l_; { \
       Expr* x = a_; \
-      if (x->symbol != sym_) throw InvalidProof("incorrect main connective", ctx, this); \
-      if (!x->conn.l)        throw Unreachable(); \
+      if (x->tag != tag_) throw InvalidProof("incorrect main connective", ctx, this); \
+      if (!x->conn.l)     throw Unreachable(); \
       l_ = x->conn.l; \
     }
-    #define match2(a_, l_, sym_, r_) [[maybe_unused]] Expr* l_, * r_; { \
+    #define match2(a_, l_, tag_, r_) [[maybe_unused]] Expr* l_, * r_; { \
       Expr* x = a_; \
-      if (x->symbol != sym_)        throw InvalidProof("incorrect main connective", ctx, this); \
+      if (x->tag != tag_)           throw InvalidProof("incorrect main connective", ctx, this); \
       if (!x->conn.l || !x->conn.r) throw Unreachable(); \
       l_ = x->conn.l, r_ = x->conn.r; \
     }
     #define matcheq(a_, l_, r_) Expr* l_, * r_; { \
       Expr* x = a_; \
-      if (x->symbol != VAR || !x->var.free || x->var.id != ctx.eq) \
+      if (x->tag != VAR || !x->var.free || x->var.id != ctx.eq) \
         throw InvalidProof("expected proof of equality", ctx, this); \
       l_ = x->var.c; r_ = l_->s; /* x is well-formed so we can expect exactly two child nodes here*/ \
     }
-    #define matchbinder(a_, sym_, r_) [[maybe_unused]] Expr* r_; { \
+    #define matchbinder(a_, tag_, r_) [[maybe_unused]] Expr* r_; { \
       Expr* x = a_; \
-      if (x->symbol != sym_) throw InvalidProof("incorrect binder", ctx, this); \
-      if (!x->binder.r)      throw Unreachable(); \
+      if (x->tag != tag_) throw InvalidProof("incorrect binder", ctx, this); \
+      if (!x->binder.r)   throw Unreachable(); \
       r_ = x->binder.r; \
     }
     #define asserteq(l_, r_) \
       if (*(l_) != *(r_)) throw InvalidProof("subexpressions should be equal", ctx, this)
-    #define node0(sym_)           newNode(pool, sym_)
-    #define node1(sym_, l_)       newNode(pool, sym_, l_)
-    #define node2(l_, sym_, r_)   newNode(pool, sym_, l_, r_)
-    #define nodebinder(sym_, r_)  newNode(pool, sym_, 0, SVAR, r_) // This binds term variables only
+    #define node0(tag_)           newNode(pool, tag_)
+    #define node1(tag_, l_)       newNode(pool, tag_, l_)
+    #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
+    #define nodebinder(tag_, r_)  newNode(pool, tag_, 0, SVAR, r_) // This binds term variables only
     #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
-    switch (rule) {
+    switch (tag) {
       case EMPTY: throw InvalidProof("unexpected empty tag", ctx, this);
       case EXPR:  throw InvalidProof("type mismatch, expected proof", ctx, this);
       case THM: {
@@ -96,7 +96,7 @@ namespace Core {
 
       // Introduction & elimination rules here
       // (Manual pattern matching!)
-      using enum Expr::Symbol;
+      using enum Expr::Tag;
 
       case AND_I: return node2(proved(0), AND, proved(1));
       case AND_L: { match2(proved(0), p, AND, q); return p; }
@@ -123,7 +123,7 @@ namespace Core {
       }
       case EQ_E: {
         auto [p, type] = exprtype(0);
-        if (!(p->symbol == LAM && type == Type{{ 1, SPROP }}))
+        if (!(p->tag == LAM && type == Type{{ 1, SPROP }}))
           throw InvalidProof("type mismatch, expected unary predicate", ctx, this);
         Expr* px = p->binder.r, * pa = proved(2);
         matcheq(proved(1), a, b);
@@ -152,8 +152,8 @@ namespace Core {
         matchbinder(proved(1), FORALL, a); match2(a, px1, IMPLIES, b);
         matchbinder(b, FORALL, c);         match2(c, px2, IMPLIES, d);
         matcheq(d, l, r);
-        if (!(l->symbol == VAR && !l->var.free && l->var.id == 1 &&
-              r->symbol == VAR && !r->var.free && r->var.id == 0))
+        if (!(l->tag == VAR && !l->var.free && l->var.id == 1 &&
+              r->tag == VAR && !r->var.free && r->var.id == 0))
           throw InvalidProof("expected proof of uniqueness", ctx, this);
         asserteq(px0, px1); asserteq(px0, px2);
         return nodebinder(UNIQUE, px0);
@@ -170,7 +170,7 @@ namespace Core {
       case FORALL2_E: {
         // Check LHS
         Expr* p = proved(0);
-        if (p->symbol != FORALL2) throw InvalidProof("incorrect binder", ctx, this);
+        if (p->tag != FORALL2) throw InvalidProof("incorrect binder", ctx, this);
         if (!p->binder.r) throw InvalidProof("null pointer", ctx, this);
         unsigned short k = p->binder.arity;
         Sort s = p->binder.sort;
@@ -198,7 +198,7 @@ namespace Core {
   }
 
   void Decl::attachChildren(const std::initializer_list<Decl*>& nodes) {
-    if (category != BLOCK) return;
+    if (tag != BLOCK) return;
     Decl* last = nullptr;
     for (Decl* node: nodes) {
       (last? last->s : block.c) = node;
@@ -224,17 +224,17 @@ namespace Core {
       return p;
     };
 
-    #define matchbinder(a_, sym_, r_) [[maybe_unused]] Expr* r_; { \
+    #define matchbinder(a_, tag_, r_) [[maybe_unused]] Expr* r_; { \
       Expr* x = a_; \
-      if (x->symbol != sym_) throw InvalidDecl("incorrect binder", ctx, this); \
-      if (!x->binder.r)      throw Unreachable(); \
+      if (x->tag != tag_) throw InvalidDecl("incorrect binder", ctx, this); \
+      if (!x->binder.r)   throw Unreachable(); \
       r_ = x->binder.r; \
     }
-    #define node2(l_, sym_, r_)   newNode(pool, sym_, l_, r_)
-    #define nodebinder(sym_, r_)  newNode(pool, sym_, 0, SVAR, r_) // This binds term variables only
+    #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
+    #define nodebinder(tag_, r_)  newNode(pool, tag_, 0, SVAR, r_) // This binds term variables only
     #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
-    switch (category) {
+    switch (tag) {
       case EMPTY: throw InvalidDecl("unexpected empty tag", ctx, this);
       case BLOCK:
         for (const Decl* p = block.c; p; p = p->s) p->check(ctx, pool);
@@ -251,7 +251,7 @@ namespace Core {
       case POP:    if (!ctx.pop(pool)) throw InvalidDecl("error popping - assumption stack is empty at this point", ctx, this); return;
 
       // Definition rules here
-      using enum Expr::Symbol;
+      using enum Expr::Tag;
 
       case FDEF: {
         unsigned int id = ctx.addDef(name, TTerm);

@@ -90,7 +90,7 @@ namespace Parsing {
 
     PowersetConstruction(const NFALexer& nfa, DFALexer* dfa): nfa(nfa), dfa(dfa), v(), mp() {}
     PowersetConstruction(const PowersetConstruction&) = delete;
-    PowersetConstruction& operator= (const PowersetConstruction&) = delete;
+    PowersetConstruction& operator=(const PowersetConstruction&) = delete;
 
     void closure(vector<bool>& v, vector<NFALexer::State>& s) const {
       // Expand to epsilon closure (using DFS)
@@ -197,10 +197,10 @@ namespace Parsing {
     vector<State> dom[0x100];           // Character -> domain
     vector<vector<State>> interStates;  // Class index -> list of intersecting states
 
-    PartitionRefinement(DFALexer* dfa):
+    explicit PartitionRefinement(DFALexer* dfa):
       pool(), dfa(dfa), rev(), cl(), id(), dist(), dom(), interStates() {}
     PartitionRefinement(const PartitionRefinement&) = delete;
-    PartitionRefinement& operator= (const PartitionRefinement&) = delete;
+    PartitionRefinement& operator=(const PartitionRefinement&) = delete;
 
     // Add DFA node `x` to class `i`, overwriting `id[x]`
     void add(State x, size_t i) {

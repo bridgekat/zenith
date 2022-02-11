@@ -19,14 +19,14 @@ namespace Core {
   class Expr {
   public:
     // Alphabet for a first-order language
-    enum class Symbol: unsigned char {
+    enum class Tag: unsigned char {
       EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
       VAR, TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
       FORALL, EXISTS, UNIQUE, FORALL2, LAM
     };
-    using enum Symbol;
+    using enum Tag;
 
-    Symbol symbol = EMPTY;
+    Tag tag = EMPTY;
     Expr* s = nullptr; // Next sibling (for children of VAR nodes only)
     union {
       // VAR (`id` stands for context index for free variables, de Brujin index for bound variables)
@@ -38,9 +38,9 @@ namespace Core {
     };
 
     // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
-    Expr(): symbol(EMPTY) {}
-    Expr(Symbol sym): symbol(sym) {
-      switch (sym) {
+    Expr(): tag(EMPTY) {}
+    Expr(Tag tag): tag(tag) {
+      switch (tag) {
         case EMPTY: break;
         case VAR:
           var.c = nullptr; break;
@@ -50,19 +50,19 @@ namespace Core {
           binder.r = nullptr; break;
       }
     }
-    Expr(bool free, unsigned int id, const std::initializer_list<Expr*>& c): symbol(VAR) {
+    Expr(bool free, unsigned int id, const std::initializer_list<Expr*>& c): tag(VAR) {
       var.free = free; var.id = id; attachChildren(c);
     }
-    Expr(Symbol sym, Expr* l): Expr(sym) { if (symbol == NOT) conn.l = l; }
-    Expr(Symbol sym, Expr* l, Expr* r): Expr(sym) {
-      switch (symbol) {
+    Expr(Tag tag, Expr* l): Expr(tag) { if (tag == NOT) conn.l = l; }
+    Expr(Tag tag, Expr* l, Expr* r): Expr(tag) {
+      switch (tag) {
         case AND: case OR: case IMPLIES: case IFF:
           conn.l = l; conn.r = r; break;
         default: break;
       }
     }
-    Expr(Symbol sym, unsigned short arity, Sort sort, Expr* r): Expr(sym) {
-      switch (symbol) {
+    Expr(Tag tag, unsigned short arity, Sort sort, Expr* r): Expr(tag) {
+      switch (tag) {
         case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
           binder.arity = arity; binder.sort = sort; binder.r = r; break;
         default: break;
@@ -109,8 +109,8 @@ namespace Core {
     Expr* updateVars(unsigned int n, Allocator<Expr>& pool, const F& f) const {
       // First shallow copy to pool
       Expr* res = pool.pushBack(*this);
-      using enum Symbol;
-      switch (symbol) {
+      using enum Tag;
+      switch (tag) {
         case EMPTY: return res;
         case VAR: {
           // Modify subexpressions
@@ -168,7 +168,7 @@ namespace Core {
     pair<unsigned int, const Expr*> getBody() const {
       unsigned int res = 0;
       const Expr* p = this;
-      while (p->symbol == LAM) p = p->binder.r, res++;
+      while (p->tag == LAM) p = p->binder.r, res++;
       return { res, p };
     }
 

@@ -5,7 +5,7 @@ namespace Core {
 
   Expr* Expr::clone(Allocator<Expr>& pool) const {
     Expr* res = pool.pushBack(*this);
-    switch (symbol) {
+    switch (tag) {
       case EMPTY: break;
       case VAR: {
         Expr* last = nullptr;
@@ -28,7 +28,7 @@ namespace Core {
   }
 
   void Expr::attachChildren(const std::initializer_list<Expr*>& nodes) {
-    if (symbol != VAR) return;
+    if (tag != VAR) return;
     Expr* last = nullptr;
     for (Expr* node: nodes) {
       (last? last->s : var.c) = node;
@@ -38,9 +38,9 @@ namespace Core {
   }
 
   bool Expr::operator==(const Expr& rhs) const {
-    if (symbol != rhs.symbol) return false;
-    // symbol == rhs.symbol
-    switch (symbol) {
+    if (tag != rhs.tag) return false;
+    // tag == rhs.tag
+    switch (tag) {
       case EMPTY: return true;
       case VAR: {
         if (var.free != rhs.var.free || var.id != rhs.var.id) return false;
@@ -68,7 +68,7 @@ namespace Core {
   }
 
   string Expr::toString(const Context& ctx, vector<pair<Type, string>>& stk) const {
-    switch (symbol) {
+    switch (tag) {
       case EMPTY: return "[?]";
       case VAR: {
         string res = var.free ?
@@ -92,7 +92,7 @@ namespace Core {
                                + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
       case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: {
         string ch, name(1, 'a' + stk.size()); // TODO: names for bound variables!
-        switch (symbol) {
+        switch (tag) {
           case FORALL:  ch = "forall "; break;
           case EXISTS:  ch = "exists "; break;
           case UNIQUE:  ch = "unique "; break;
@@ -119,7 +119,7 @@ namespace Core {
   Type Expr::checkType(const Context& ctx, vector<Type>& stk) const {
 
     // Formation rules here
-    switch (symbol) {
+    switch (tag) {
       case EMPTY:
         throw InvalidExpr("unexpected empty tag", ctx, this);
 
