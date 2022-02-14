@@ -1,4 +1,4 @@
 # Disable autocrlf
 * text=false
 
-*.mu linguist-language=Text
+# *.mu linguist-language=Text

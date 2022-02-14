@@ -1,0 +1,25 @@
+{
+  "name": "apimu",
+  "displayName": "ApiMu",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.64.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "apimu",
+      "aliases": ["ApiMu", "apimu"],
+      "extensions": [".mu"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "apimu",
+      "scopeName": "source.apimu",
+      "path": "./syntaxes/apimu.tmLanguage.json"
+    }]
+  }
+}

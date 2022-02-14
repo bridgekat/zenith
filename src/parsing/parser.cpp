@@ -9,7 +9,8 @@
 namespace Parsing {
 
   // See: https://en.wikipedia.org/wiki/Earley_parser#The_algorithm (for an overview)
-  // See: https://loup-vaillant.fr/tutorials/earley-parsing/ (for a simple way to deal with ε rules - TODO)
+  // See: https://loup-vaillant.fr/tutorials/earley-parsing/ (for a simple way to deal with ε rules)
+  // See: 
   // Other related information:
   //   https://github.com/jeffreykegler/kollos/blob/master/notes/misc/leo2.md
   //   https://jeffreykegler.github.io/Marpa-web-site/
@@ -37,11 +38,11 @@ namespace Parsing {
       if (firstRule[lhs] == m) firstRule[lhs] = i;
       if (i + 1 < m) totalLength[i + 1] = totalLength[i] + rhs.size() + 1;
     }
+
     // A hash function for DP states
     auto hash = [&totalLength] (const State& x) {
       return x.leftPos * 524287u + (totalLength[x.ruleIndex] + x.rulePos);
     };
-
     // The main DP array
     vector<vector<State>> states(n + 1);
     unordered_map<State, size_t, decltype(hash)> mp(0, hash);
