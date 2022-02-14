@@ -42,6 +42,7 @@ namespace Parsing {
 
     // The initial state
     State initial;
+    // The string that is being scanned
     string rest;
 
     // Create initial state
@@ -125,6 +126,10 @@ namespace Parsing {
 
     #undef node
     #undef trans
+
+    // Convert lexer NFA to TextMate grammar JSON (based on regular expressions)
+    // Following: https://macromates.com/manual/en/regular_expressions (only a simple subset is used)
+    string toTextMateGrammar() const;
   };
 
   class DFALexer {
@@ -142,6 +147,7 @@ namespace Parsing {
 
     // The initial state
     State initial;
+    // The string that is being scanned
     string rest;
 
     // Create initial state

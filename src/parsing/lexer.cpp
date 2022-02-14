@@ -78,6 +78,19 @@ namespace Parsing {
     return res;
   }
 
+  // It is so confusing that different "regular expression" implementations actually provide different
+  // non-regular extensions and even different behaviors on basic constructs like alternation ("or")!
+  // The `grep` in POSIX follows the "leftmost longest match" rule, and the same can be said for this NFA.
+  // For example, if you match string `ab` with the pattern `a|ab`, you will get `ab`.
+  // However, "modern" regex engines like the ones used in TextMate and VSCode use "non-greedy alternation"
+  // and this behavior cannot be changed. The above pattern will match `a` only!
+  //
+  // The following algorithm will convert our NFA representation into regexes that do not make use of alternation.
+  // See: https://courses.engr.illinois.edu/cs374/fa2017/extra_notes/01_nfa_to_reg.pdf
+  string NFALexer::toTextMateGrammar() const {
+    return "";
+  }
+
   using std::unordered_map;
 
   // Function object for the DFA construction from NFA
@@ -232,29 +245,26 @@ namespace Parsing {
       auto& table = dfa->table;
       auto& initial = dfa->initial;
 
-      // This implementation does not explicitly add the dead state; instead it assumes that
-      // all nonexistent transititions point to an "imaginary" or "canonical" dead state.
-      // (It magically works! And this looks somewhat less verbose than my original implementation
-      //  with an explicit dead state, so I kept this...)
+      // Add the dead state
+      size_t dead = table.size();
+      table.emplace_back();
       size_t n = table.size();
       TokenID numTokens = 0;
-      for (size_t i = 0; i < n; i++) if (table[i].ac) {
-        numTokens = std::max(numTokens, table[i].ac.value() + 1);
+      for (size_t i = 0; i < n; i++) {
+        if (table[i].ac) numTokens = std::max(numTokens, table[i].ac.value() + 1);
+        // Other states now have transitions to the dead state
+        // The dead state has all its transitions pointing to itself
+        for (unsigned int c = 0x01; c <= 0xFF; c++) if (!table[i].has[c]) table[i].tr[c] = dead;
       }
+      // `has[]` can be ignored below
 
       // Process reverse edges (arcs)
       rev.clear(); rev.resize(n);
       for (size_t i = 0; i < n; i++) {
-        for (unsigned int c = 0x01; c <= 0xFF; c++) if (table[i].has[c]) {
-          rev[table[i].tr[c]].emplace_back(c, i);
-        }
+        for (unsigned int c = 0x01; c <= 0xFF; c++) rev[table[i].tr[c]].emplace_back(c, i);
       }
 
       // Initial partition (numTokens + 1 classes)
-      // The last class should be seen as "containing the imaginary dead state"
-      // (When it splits, the "imaginary dead state" goes with the non-distinguisher part...
-      //  But if both splits are used as distinguishers, the i.d.s. is then seen as distinguished...
-      //  And it will become possible for some "concrete dead state" to coexist with i.d.s. then...)
       cl.clear();
       for (size_t i = 0; i <= numTokens; i++) newClass();
       id.clear(); id.resize(n);
@@ -326,25 +336,33 @@ namespace Parsing {
 
       // Rebuild `table` and `initial`
       vector<Entry> newTable(cl.size());
-      State newInitial = id[initial].cl;
-
+      State newInitial = id[initial].cl, newDead = id[dead].cl;
       for (size_t i = 0; i < table.size(); i++) {
         State srci = id[i].cl;
-        for (unsigned int c = 0x01; c <= 0xFF; c++) if (table[i].has[c]) {
+        for (unsigned int c = 0x01; c <= 0xFF; c++) {
           State dsti = id[table[i].tr[c]].cl;
-          newTable[srci].has[c] = true;
-          newTable[srci].tr[c] = dsti;
+          if (dsti != newDead) {
+            newTable[srci].has[c] = true;
+            newTable[srci].tr[c] = dsti;
+          }
         }
         if (table[i].ac) newTable[srci].ac = table[i].ac;
       }
-
       table.swap(newTable);
       initial = newInitial;
 
+      // Remove the dead state
+      for (size_t i = 0; i + 1 < table.size(); i++) {
+        if (i >= newDead) table[i] = table[i + 1];
+        for (unsigned int c = 0x01; c <= 0xFF; c++) {
+          if (table[i].has[c] && table[i].tr[c] > newDead) table[i].tr[c]--;
+        }
+      }
+      table.pop_back();
+      if (initial > newDead) initial--;
+
       /*
       * ===== A hand-wavey argument for correctness =====
-      * (This assumes that an explicit dead state is constructed; justification for the i.d.s. is omitted here)
-      *
       * Different classes -> different behaviors: by induction.
       * Different behaviors -> different classes:
       *   (Lemma: for any two disjoint classes, a "distinguisher of them" must have existed.)
