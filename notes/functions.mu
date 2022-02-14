@@ -1,4 +1,4 @@
-import set
+import "set.mu"
 
 // (TODO: move definitions)
 
@@ -14,7 +14,7 @@ private {
       => ({{a}, {a, b}} = {{c}, {c, d}});
       => (forall, x in {{a}, {a, b}} <-> x in {{c}, {c, d}});
       => (forall x, x = {a} or x = {a, b} <-> x = {c} or x = {c, d});
-      
+
       => ({a} = {c} or {a} = {c, d});
       assume ({a} = {c}) {
         => (a = c);
@@ -24,7 +24,7 @@ private {
         => (c = a);
       }
       => (a = c);
-      
+
       => ({a, b} = {c} or {a, b} = {c, d});
       assume ({a, b} = {c}) {
         => (forall x' in {a, b}, x' in {c});
@@ -44,8 +44,8 @@ private {
     public => (forall a b c d, x = pair_mk a b -> x = pair_mk c d -> a = c and b = d);
   }
   // Eliminator ("recursor")
-  
-  public anyfunc φ/2 any x assume (pair x) def pair_rec :: 
+
+  public anyfunc φ/2 any x assume (pair x) def pair_rec ::
 }
 
 namespace pair private {
@@ -60,7 +60,7 @@ private namespace tree {
   // Constructors
   public any x                                    def leaf := ([leaf_tag, x])       private name leaf_def;
   public any l x r assume (is_tree l) (is_tree r) def node := ([node_tag, l, x, r]) private name node_def;
-  
+
 }
 */
 
@@ -75,17 +75,17 @@ any f def function :<-> (forall p ∈ f, is_pair p and (forall y, [pair.fst p, y
 any f assume (function f) {
   => (forall p ∈ f, is_pair p);
   => (forall p ∈ f, forall y, [pair.fst p, y] ∈ f -> y = pair.snd p);
-  
+
   // Definition for domain and range...
   def domain := imageset (f p | pair.fst p) f;
   def range  := imageset (f p | pair.snd p) f;
-  
+
   any x assume (x ∈ domain f) {
     // Claim: there is a unique y such that [x, y] ∈ f!
     // Expand definitions...
     => (x ∈ (imageset (f p | pair.fst p) f)) by domain_def;
     => (exists p ∈ f, x = pair.fst p) by imageset_def;
-    
+
     // First part, existence...
     any p assume (p ∈ f) (x = pair.fst p) {
       => ([x, pair.snd p] = p);
@@ -93,14 +93,14 @@ any f assume (function f) {
       => (exists y, [x, y] ∈ f);
     }
     => (exists y, [x, y] ∈ f) by exists.e;
-    
+
     // Second part, uniqueness...
     any y1 assume ([x, y1] ∈ f) {
       => (forall y, [pair.fst [x, y1], y] ∈ f -> y = pair.snd [x, y1]);
       => (forall y, [x, y] ∈ f -> y = y1) by definition;
     }
     => (unique y, [x, y] ∈ f) by unique.i;
-    
+
     // Now we can define "function application" as a language-level function!
     def funapp :: ([x, funapp] ∈ f) name funapp_def;
   }
@@ -138,15 +138,15 @@ private {
 any f assume (function f) {
   def  injective :<-> (forall a ∈ domain f, forall b ∈ domain f, ↑f a = ↑f b -> a = b)
   name injective_def;
-  
+
   any codomain assume (range f ⊆ codomain) {
     def  surjective :<-> (forall y ∈ codomain, exists x, ↑f x = y);
     name surjective_def;
-    
+
     def  bijective :<-> (injective and surjective);
     name bijective_def;
   }
-  
+
   // (TODO: complete)
 }
 

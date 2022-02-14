@@ -15,15 +15,15 @@ Though written in a formal syntax, this file is informal (i.e. NOT verified by a
 #include "set.mu"
 
 namespace natc private {
-  
+
   public def zero       := (∅)        public name zero_def;
   public any a def succ := ({a, {a}}) public name succ_def;
-  
+
   any x def inductive :<-> (zero ∈ x and forall a ∈ x, (succ a) ∈ x) name inductive_def;
   => (exists x, inductive x) by inductiveset_primitive;
-  
-  
-  
-  
-  
+
+
+
+
+
 }

@@ -126,10 +126,6 @@ namespace Parsing {
 
     #undef node
     #undef trans
-
-    // Convert lexer NFA to TextMate grammar JSON (based on regular expressions)
-    // Following: https://macromates.com/manual/en/regular_expressions (only a simple subset is used)
-    string toTextMateGrammar() const;
   };
 
   class DFALexer {
@@ -165,6 +161,11 @@ namespace Parsing {
     DFALexer& operator<<(const string& s) { rest += s; return *this; }
     optional<Token> getNextToken();
     void ignoreNextCodepoint();
+
+    // Convert lexer DFA to TextMate grammar JSON (based on regular expressions)
+    // Following: https://macromates.com/manual/en/regular_expressions (only a simple subset is used)
+    // (Not implemented)
+    string toTextMateGrammar() const;
   };
 
 }

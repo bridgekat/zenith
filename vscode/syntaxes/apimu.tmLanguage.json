@@ -4,18 +4,18 @@
   "patterns": [
     {
       "name": "keyword.control.apimu",
-      "match": "\\b(any|anypred|anyfunc|assume|def|idef|undef|import)\\b"
+      "match": "\\b(any|anypred|anyfunc|assume|def|idef|undef|import|任取|任取谓词|任取函数|假设|定义|选取|删除定义|导入)\\b"
     },
     {
       "name": "keyword.control.apimu",
-      "match": "=>"
+      "match": "=>|:=|::|:<->"
     },
     {
       "name": "keyword.other.apimu",
-      "match": "\\b(name|by|since|proof|namespace|private|public|notation|prefix|suffix|infix|transitive)\\b"
+      "match": "\\b(name|by|since|proof|namespace|private|public|notation|prefix|suffix|infix|transitive|记为|根据|命名空间|不公开|公开|记号|前缀记号|后缀记号|中缀记号)\\b"
     },
     {
-      "name": "constant.language.apimu",
+      "name": "constant.numeric.apimu",
       "match": "\\b(and.i|and.l|and.r|or.l|or.r|or.e|implies.i|implies.e|not.i|not.e|iff.i|iff.e|iff.l|iff.r|eq.i|eq.e|eq.symm|eq.trans|forall.i|forall.e|exists.i|exists.e|unique.i|unique.l|unique.r|forallpred.i|forallpred.e|forallfunc.i|forallfunc.e|true.i|false.e|raa|element)\\b"
     },
     {
@@ -25,15 +25,15 @@
     },
     {
       "name": "entity.name.type.apimu",
-      "match": "\\b(and|or|implies|not|iff|eq|true|false|forall|exists|unique|forallpred|forallfunc)\\b"
+      "match": "\\b(and|or|implies|not|iff|eq|true|false|forall|exists|unique|forallpred|forallfunc|且|或|意味着|并非|当且仅当|等于|真|假|对所有|存在着|唯一存在着|对所有谓词|对所有函数)\\b"
     },
     {
       "name": "entity.name.type.apimu",
-      "match": "(∧|∨|→|¬|↔|∀|∃|∃!|∀$|∀#|⊤|⊥|=|->|<->|↑)"
+      "match": "∧|∨|→|¬|↔|∃!|∀#|∀\\$|∀|∃|⊤|⊥|=|≠|∈|∉|⊆|->|<->|↑|\\b(in|notin|subsetof)\\b|\\|"
     },
     {
       "name": "variable.parameter.apimu",
-      "match": "\\b_\\w*\\b"
+      "match": "\\b_.*?\\b"
     },
     {
       "name": "string.quoted.double.apimu",
@@ -48,8 +48,7 @@
     },
     {
       "name": "comment.line.double-slash.apimu",
-      "begin": "//",
-      "end": "\n"
+      "match": "//[^\\r\\n]*"
     },
     {
       "name": "comment.block.apimu",
@@ -58,8 +57,7 @@
     },
     {
       "name": "meta.preprocessor.apimu",
-      "begin": "#",
-      "end": " "
+      "match": "#[^ /]*"
     }
   ],
   "scopeName": "source.apimu"

@@ -20,7 +20,7 @@ anypred p/0 q/0 {
 // Uniqueness intro
 anypred φ/1 private {
   => (exists x, φ x);
-  
+
   // Plan A: (exists x, ... and forall y, ... -> y = x)
   any x assume (φ x) {
     any y assume (φ y) {
@@ -33,7 +33,7 @@ anypred φ/1 private {
   }
   => (exists x, φ x and forall y, φ y -> y = x) by exists.e;
   => (Conclusion);
-  
+
   // Plan B: ((exists x, ...) and (forall x, ... -> forall y, ... -> x = y))
   any x assume (φ x) any y assume (φ y) {
     => ...
@@ -41,7 +41,7 @@ anypred φ/1 private {
   }
   => (forall x, φ x -> forall y, φ y -> x = y);
   => (Conclusion);
-  
+
   // From A to B
   => ()
 }

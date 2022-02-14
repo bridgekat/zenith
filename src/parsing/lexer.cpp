@@ -78,19 +78,6 @@ namespace Parsing {
     return res;
   }
 
-  // It is so confusing that different "regular expression" implementations actually provide different
-  // non-regular extensions and even different behaviors on basic constructs like alternation ("or")!
-  // The `grep` in POSIX follows the "leftmost longest match" rule, and the same can be said for this NFA.
-  // For example, if you match string `ab` with the pattern `a|ab`, you will get `ab`.
-  // However, "modern" regex engines like the ones used in TextMate and VSCode use "non-greedy alternation"
-  // and this behavior cannot be changed. The above pattern will match `a` only!
-  //
-  // The following algorithm will convert our NFA representation into regexes that do not make use of alternation.
-  // See: https://courses.engr.illinois.edu/cs374/fa2017/extra_notes/01_nfa_to_reg.pdf
-  string NFALexer::toTextMateGrammar() const {
-    return "";
-  }
-
   using std::unordered_map;
 
   // Function object for the DFA construction from NFA
@@ -418,6 +405,27 @@ namespace Parsing {
     Token res{ id, rest.substr(0, len) };
     rest = rest.substr(len);
     return res;
+  }
+
+  /*
+  * It is so confusing that different "regular expression" implementations actually provide different
+  * non-regular extensions and even different behaviors on basic constructs like alternation!
+  * The `grep` in POSIX follows the "leftmost longest match" rule, and the same can be said for this lexer.
+  * For example, if you match string `ab` with the pattern `a|ab`, you will get `ab`.
+  * However, "modern" regex engines like the ones used in TextMate and VSCode use "non-greedy alternation"
+  * and this behavior cannot be changed. The above pattern will match `a` only!
+  * This creates a problem if we want to use a single, unified representation for lexical rules, as our
+  * automata-based lexers cannot "mix" greedy and non-greedy constructs (we must use either the longest
+  * match or the shortest one...)
+  *
+  * The following algorithm will convert our DFA representation into regexes that uses "negative lookahead"
+  * to simulate "greedy alternation" -- the regex accepts only if no further matches are available.
+  * See: https://macromates.com/manual/en/regular_expressions
+  * See: https://courses.engr.illinois.edu/cs374/fa2017/extra_notes/01_nfa_to_reg.pdf
+  */
+  string DFALexer::toTextMateGrammar() const {
+    // TODO (this is probably too costly and not worth the trouble...)
+    throw Core::NotImplemented();
   }
 
 }
