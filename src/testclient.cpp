@@ -1,4 +1,6 @@
-#include <jsonrpccxx/common.hpp>
+#include <iostream>
+#include <iomanip>
+#include <string>
 #include <jsonrpccxx/client.hpp>
 #include <cpp-httplib/httplib.h>
 
@@ -23,7 +25,19 @@ private:
 };
 
 
+using std::cin, std::cout, std::cerr, std::endl;
+using std::string;
+using nlohmann::json;
+
 int main() {
-  
+  HttpClientConnector connector("localhost", 8484);
+  jsonrpccxx::JsonRpcClient rpcClient(connector, jsonrpccxx::version::v2);
+
+  try {
+    cout << "String: " << rpcClient.CallMethod<string>(1, "test", { "gg" }) << endl;
+  } catch (jsonrpccxx::JsonRpcException &e) {
+    cerr << "JSON-RPC error: " << e.what() << endl;
+  }
+
   return 0;
 }

@@ -1,7 +1,6 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
-#include <jsonrpccxx/common.hpp>
 #include <jsonrpccxx/server.hpp>
 #include <cpp-httplib/httplib.h>
 
@@ -34,7 +33,7 @@ private:
   std::thread thread;
   httplib::Server httpServer;
   jsonrpccxx::JsonRpcServer& rpcServer;
-  
+
   std::string host;
   int port;
 
@@ -50,10 +49,9 @@ using std::cin, std::cout, std::endl;
 using std::string;
 
 int main() {
-
   jsonrpccxx::JsonRpc2Server rpcServer;
   std::function<string(const string&)> func = [] (const string& s) { return s; };
-  rpcServer.Add("test", func, { "param_name" });
+  rpcServer.Add("test", jsonrpccxx::GetHandle(func), { "param_name" });
 
   HttpServerConnector httpServer(rpcServer, "localhost", 8484);
   cout << "Starting HTTP server: " << std::boolalpha << httpServer.startListening() << endl;
@@ -64,6 +62,5 @@ int main() {
     cin >> in;
     if (in == 0) break;
   }
-
   return 0;
 }
