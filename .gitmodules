@@ -1,0 +1,3 @@
+[submodule "deps/json-rpc-cxx"]
+	path = deps/json-rpc-cxx
+	url = https://github.com/jsonrpcx/json-rpc-cxx

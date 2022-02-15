@@ -31,49 +31,56 @@ endif (ENABLE_CODE_ANALYSIS)
 # See: https://cliutils.gitlab.io/modern-cmake/chapters/features/small.html
 include (CheckIPOSupported)
 check_ipo_supported (RESULT ipo_supported)
+if (ipo_supported)
+  message (STATUS "IPO/LTO ENABLED")
+endif ()
 
+# Set default compile options
+macro (target_default_compile_options TARGET)
+  target_compile_features   (${TARGET} PRIVATE cxx_std_20)
+  set_target_properties     (${TARGET} PROPERTIES CXX_EXTENSIONS OFF)
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wall>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wextra>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wdeprecated>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Weffc++>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_CONCEPT_CHECKS>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
+  endif ()
+  if (ipo_supported)
+    set_target_properties   (${TARGET} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+  endif ()
+endmacro ()
 
+# Add targets
 add_executable (testcore
   src/core/context.cpp
   src/core/expr.cpp
   src/core/proof.cpp
   src/testcore.cpp)
-target_compile_features     (testcore PRIVATE cxx_std_20)
-set_target_properties       (testcore PROPERTIES CXX_EXTENSIONS OFF)
-target_include_directories  (testcore PRIVATE src)
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  target_compile_options    (testcore PRIVATE "$<$<CONFIG:Debug>:-Wall>")
-  target_compile_options    (testcore PRIVATE "$<$<CONFIG:Debug>:-Wextra>")
-  target_compile_options    (testcore PRIVATE "$<$<CONFIG:Debug>:-Wdeprecated>")
-  target_compile_options    (testcore PRIVATE "$<$<CONFIG:Debug>:-Weffc++>")
-  target_compile_options    (testcore PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_CONCEPT_CHECKS>")
-  target_compile_options    (testcore PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
-  target_compile_options    (testcore PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
-endif ()
-if (ipo_supported)
-  message (STATUS "IPO / LTO enabled")
-  set_target_properties     (testcore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-endif()
-
+target_default_compile_options  (testcore)
+target_include_directories      (testcore PRIVATE src include)
 
 add_executable (testparsing
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/testparsing.cpp)
-target_compile_features     (testparsing PRIVATE cxx_std_20)
-set_target_properties       (testparsing PROPERTIES CXX_EXTENSIONS OFF)
-target_include_directories  (testparsing PRIVATE src)
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  target_compile_options    (testparsing PRIVATE "$<$<CONFIG:Debug>:-Wall>")
-  target_compile_options    (testparsing PRIVATE "$<$<CONFIG:Debug>:-Wextra>")
-  target_compile_options    (testparsing PRIVATE "$<$<CONFIG:Debug>:-Wdeprecated>")
-  target_compile_options    (testparsing PRIVATE "$<$<CONFIG:Debug>:-Weffc++>")
-  target_compile_options    (testparsing PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_CONCEPT_CHECKS>")
-  target_compile_options    (testparsing PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
-  target_compile_options    (testparsing PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
-endif ()
-if (ipo_supported)
-  message (STATUS "IPO / LTO enabled")
-  set_target_properties     (testparsing PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-endif()
+target_default_compile_options  (testparsing)
+target_include_directories      (testparsing PRIVATE src include)
 
+add_executable (testserver
+  src/testserver.cpp)
+target_default_compile_options  (testserver)
+target_include_directories      (testserver PRIVATE src deps/json-rpc-cxx/include deps/json-rpc-cxx/vendor)
+if (WIN32)
+  target_link_libraries         (testserver wsock32 ws2_32)
+endif ()
+
+add_executable (testclient
+  src/testclient.cpp)
+target_default_compile_options  (testclient)
+target_include_directories      (testclient PRIVATE src deps/json-rpc-cxx/include deps/json-rpc-cxx/vendor)
+if (WIN32)
+  target_link_libraries         (testclient wsock32 ws2_32)
+endif ()

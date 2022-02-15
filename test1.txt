@@ -1,9 +1,0 @@
-#ai none // Proof terms only
-any x, y, z,,,,, {
-  assume x = y name h1,, y = z name h2, {
-    => x = z name h proof eq.trans h1 h2; // Use `proof` to provide proof terms
-    #ls // h : x = z
-  }
-  #ls // h : x = y -> y = z -> x = z
-}
-#ls // h : forall x y z, x = y -> y = z -> x = z
