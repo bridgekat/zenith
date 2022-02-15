@@ -1,5 +1,6 @@
 #include <iostream>
 #include <iomanip>
+#include <string>
 #include <jsonrpccxx/common.hpp>
 #include <jsonrpccxx/server.hpp>
 #include <cpp-httplib/httplib.h>
@@ -46,10 +47,14 @@ private:
 
 
 using std::cin, std::cout, std::endl;
+using std::string;
 
 int main() {
 
   jsonrpccxx::JsonRpc2Server rpcServer;
+  std::function<string(const string&)> func = [] (const string& s) { return s; };
+  rpcServer.Add("test", func, { "param_name" });
+
   HttpServerConnector httpServer(rpcServer, "localhost", 8484);
   cout << "Starting HTTP server: " << std::boolalpha << httpServer.startListening() << endl;
   cout << "Enter 0 to exit" << endl;

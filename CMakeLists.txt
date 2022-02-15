@@ -48,9 +48,6 @@ macro (target_default_compile_options TARGET)
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
   endif ()
-  if (ipo_supported)
-    set_target_properties   (${TARGET} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-  endif ()
 endmacro ()
 
 # Add targets
@@ -61,6 +58,9 @@ add_executable (testcore
   src/testcore.cpp)
 target_default_compile_options  (testcore)
 target_include_directories      (testcore PRIVATE src include)
+if (ipo_supprted)
+  set_target_oproperties        (testcore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif ()
 
 add_executable (testparsing
   src/parsing/lexer.cpp
@@ -68,13 +68,16 @@ add_executable (testparsing
   src/testparsing.cpp)
 target_default_compile_options  (testparsing)
 target_include_directories      (testparsing PRIVATE src include)
+if (ipo_supprted)
+  set_target_oproperties        (testparsing PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif ()
 
 add_executable (testserver
   src/testserver.cpp)
 target_default_compile_options  (testserver)
 target_include_directories      (testserver PRIVATE src deps/json-rpc-cxx/include deps/json-rpc-cxx/vendor)
 if (WIN32)
-  target_link_libraries         (testserver wsock32 ws2_32)
+  target_link_libraries         (testserver PRIVATE wsock32 ws2_32)
 endif ()
 
 add_executable (testclient
@@ -82,5 +85,5 @@ add_executable (testclient
 target_default_compile_options  (testclient)
 target_include_directories      (testclient PRIVATE src deps/json-rpc-cxx/include deps/json-rpc-cxx/vendor)
 if (WIN32)
-  target_link_libraries         (testclient wsock32 ws2_32)
+  target_link_libraries         (testclient PRIVATE wsock32 ws2_32)
 endif ()
