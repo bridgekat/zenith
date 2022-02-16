@@ -76,17 +76,8 @@ add_executable (testserver
   src/testserver.cpp)
 target_default_compile_options  (testserver)
 target_include_directories      (testserver PRIVATE src include deps/json-rpc-cxx/include deps/json-rpc-cxx/vendor)
-target_precompile_headers       (testserver PRIVATE deps/json-rpc-cxx/vendor/nlohmann/json.hpp deps/json-rpc-cxx/vendor/cpp-httplib/httplib.h)
-if (WIN32)
-  target_link_libraries         (testserver PRIVATE wsock32 ws2_32)
-endif ()
-
-add_executable (testclient
-  src/testclient.cpp)
-target_default_compile_options  (testclient)
-target_include_directories      (testclient PRIVATE src include deps/json-rpc-cxx/include deps/json-rpc-cxx/vendor)
-target_precompile_headers       (testclient PRIVATE deps/json-rpc-cxx/vendor/nlohmann/json.hpp deps/json-rpc-cxx/vendor/cpp-httplib/httplib.h)
-if (WIN32)
-  target_link_libraries         (testclient PRIVATE wsock32 ws2_32)
+target_precompile_headers       (testserver PRIVATE deps/json-rpc-cxx/vendor/nlohmann/json.hpp)
+if (ipo_supprted)
+  set_target_oproperties        (testserver PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()
 
