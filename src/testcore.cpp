@@ -80,7 +80,7 @@ int main() {
     #define block std::initializer_list<Decl*>
 
     unsigned int eq = ctx.eq;
-    unsigned int i = ctx.nextIndex();
+    unsigned int i = ctx.size();
 
     Decl* d =
       newDecl(ds, block{
@@ -150,7 +150,7 @@ int main() {
     
     d2->check(ctx, pool);
 
-    for (size_t i = 0; i < ctx.nextIndex(); i++) {
+    for (size_t i = 0; i < ctx.size(); i++) {
       cout << ctx.nameOf(i) << ": ";
       if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
       if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
@@ -164,7 +164,7 @@ int main() {
     Allocator<Decl> ds;
 
     unsigned int eq = ctx.eq;
-    unsigned int i = ctx.nextIndex();
+    unsigned int i = ctx.size();
 
     Decl* d =
       newDecl(ds, block{
@@ -198,7 +198,7 @@ int main() {
 
     d1->check(ctx, pool);
 
-    for (size_t i = 0; i < ctx.nextIndex(); i++) {
+    for (size_t i = 0; i < ctx.size(); i++) {
       cout << ctx.nameOf(i) << ": ";
       if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
       if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;

@@ -10,7 +10,7 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onCommand:apimu.helloWorld"
+    "onLanguage:apimu"
   ],
   "main": "./out/extension.js",
   "contributes": {

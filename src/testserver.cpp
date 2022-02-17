@@ -11,11 +11,11 @@
 #include <jsonrpccxx/server.hpp>
 #include "core/base.hpp"
 
-using std::cin, std::cout, /* std::cerr, */ std::endl;
+using std::cin, std::cout, std::cerr, std::endl;
 using std::pair, std::string, nlohmann::json;
 using jsonrpccxx::MethodHandle, jsonrpccxx::NotificationHandle;
 
-std::ofstream cerr("D:/log.txt");
+std::ofstream out("D:/log.txt");
 
 
 json initialize(const json&) {
@@ -32,10 +32,8 @@ json initialize(const json&) {
   return res;
 }
 
-void initialized(const json&) {}
-
 json test(const json& j) {
-  json res = { { "echo", j.value("str", "") } };
+  json res = { { "echo", "Client said: " + j.value("str", "") + " Server replied: 喵喵喵🐱" } };
   return res;
 }
 
@@ -51,27 +49,14 @@ void exit_(const json&) {
 
 string getline() {
   string res = "";
-///*
   std::getline(cin, res);
   if (!res.empty() && res.back() == '\r') res.pop_back();
-  cerr << "Got [" << res << "] " << std::boolalpha << cin.eof() << endl;
   return res;
-//*/
-/*
-  char c = static_cast<char>(cin.get());
-  while (c != std::ios::traits_type::eof() && c != '\r' && c != '\n') {
-    res += c;
-    c = static_cast<char>(cin.get());
-  }
-  if (c == '\r') cin.ignore(); // Ignore "\n" after "\r"
-  cerr << "Got [" << res << "] " << std::boolalpha << cin.eof() << endl;
-  return res;
-*/
 }
 
 pair<string, string> split(const string& s) {
   size_t p = s.find(": ");
-  if (p == string::npos) throw std::logic_error("No \": \" found in [" + s + "]"); // ???
+  if (p == string::npos) throw std::invalid_argument("No \": \" found in [" + s + "]");
   return { s.substr(0, p), s.substr(p + 2) };
 }
 
@@ -79,12 +64,15 @@ int main() {
   jsonrpccxx::JsonRpc2Server rpcServer;
 
   rpcServer.Add("initialize", static_cast<MethodHandle>(initialize));
-  rpcServer.Add("initialized", static_cast<NotificationHandle>(initialized));
   rpcServer.Add("test", static_cast<MethodHandle>(test));
   rpcServer.Add("shutdown", static_cast<MethodHandle>(shutdown));
   rpcServer.Add("exit", static_cast<NotificationHandle>(exit_));
 
-  // ???
+  // Windows automatically converts between "\r\n" and "\n" if cin/cout is in "text mode".
+  // Change to "binary mode" disables this conversion. There is no standard (platform-independent) way of doing it [1].
+  // On Unix systems there is no difference between "text mode" and "binary mode" [2].
+  //   [1]: https://stackoverflow.com/questions/7587595/read-binary-data-from-stdcin
+  //   [2]: https://stackoverflow.com/questions/25823310/is-there-any-difference-between-text-and-binary-mode-in-file-access
 #ifdef _WIN32
 	_setmode(_fileno(stdin), _O_BINARY);
 	_setmode(_fileno(stdout), _O_BINARY);
@@ -93,31 +81,38 @@ int main() {
   // Main loop
   while (true) {
     string s;
+
     // Read header part
-    // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
+    // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
     size_t n = 0;
     s = getline();
     while (s != "") {
       // We just disregard all header fields... except `Content-Length`!
       auto [key, value] = split(s);
-      cerr << "[" << key << "] = [" << value << "]" << endl;
+      out << "[" << key << "] = [" << value << "]" << endl;
       if (key == "Content-Length") {
         std::stringstream ss(value);
         ss >> n;
       } else if (key == "Content-Type") {
-        if (value != "application/vscode-jsonrpc; charset=utf-8" &&
-            value != "application/vscode-jsonrpc; charset=utf8")
-          throw std::logic_error("Content-Type = " + value);
-      } else throw std::logic_error("Key = " + key);
+        if (value != "application/vscode-jsonrpc; charset=utf-8")
+          throw std::invalid_argument("Content-Type = " + value);
+      } else throw std::invalid_argument("Key = " + key);
       // Get next line
       s = getline();
     }
+
     // End of header, get content
     s.resize(n);
     cin.read(s.data(), n);
-    if (cin.eof()) std::exit(0); // ???
+
+    // Though LSP 3.16 says [1] that an Exit Notification after a Shutdown Request actually stops the server,
+    // VSCode simply closes the input stream without giving an Exit Notification.
+    // This line is used to stop the server in that case.
+    //   [1]: https://microsoft.github.io/language-server-protocol/specifications/specification-3-17/#shutdown
+    if (cin.eof()) std::exit(0);
+
     // Handle request
-    cerr << "Request = [" << s << "]" << endl;
+    out << "Request = [" << s << "]" << endl;
     s = rpcServer.HandleRequest(s);
     if (!s.empty()) {
       cout << "Content-Length: " << s.size() << "\r\n";
@@ -126,11 +121,9 @@ int main() {
       cout.write(s.data(), s.size());
       cout.flush();
       // Debug output
-      cerr << "Content-Length: " << s.size() << endl;
-      cerr << "Content-Type: application/vscode-jsonrpc; charset=utf-8" << endl;
-      cerr << endl;
-      cerr << s << endl << endl;
+      out << s << endl;
     }
+    out << endl;
   }
 
   return 0;

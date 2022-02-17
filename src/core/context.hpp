@@ -69,7 +69,7 @@ namespace Core {
 
     // Look up by index.
     // Use `valid(i)` to perform bound checks before accessing, and throw appropriate exception if index is too large.
-    size_t nextIndex() const { return a.size(); }
+    size_t size() const { return a.size(); }
     bool valid(size_t index) const { return index < a.size(); }
     const variant<Type, const Expr*>& operator[](size_t index) const { return a.at(index).info; }
     const string& nameOf(size_t index) const { return a.at(index).name; }

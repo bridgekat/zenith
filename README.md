@@ -1,4 +1,4 @@
-# ApiMu/FOL+
+# ApiMu (FOL+)
 
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
@@ -22,12 +22,14 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [ ] Customizable syntax
     - [ ] Notation support
   - [ ] Interactive proof-searching
-    - [ ] Sequent calculus (analytic tableaux) with optimizations
-    - [ ] First- and second-order unification
+    - [ ] Sequent calculus (analytic tableaux) with optimizations (WIP)
     - [ ] Translation between ND and SC
+    - [ ] First-order unification
+    - [ ] Equational reasoning
+    - [ ] Second-order unification
     - [ ] Tactics API
     - [ ] Resolution-based methods (how to translate these to ND?)
-  - [ ] Language server & VSCode extension
+  - [ ] Language server & VSCode extension (WIP)
 - [ ] Mathematics
   - [x] PA
   - [x] ZFC

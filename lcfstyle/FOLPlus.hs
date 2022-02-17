@@ -1,4 +1,4 @@
--- ApiMu/FOL verifier v0.1 (Haskell version)
+-- ApiMu verifier v0.1 (Haskell version)
 -- Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
 
 -- This variant of FOL & ND is largely based on Dirk van Dalen's *Logic and Structure*...

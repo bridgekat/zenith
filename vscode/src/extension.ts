@@ -33,12 +33,11 @@ export function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand('apimu.helloWorld', () => {
     // The code you place here will be executed every time your command is executed
     // Display a message box to the user
-    vscode.window.showInformationMessage('喵喵喵🐱');
     if (client) {
-      client.sendRequest('test', { 'str': 'gg' }).then((val: unknown) => {
+      client.sendRequest('test', { 'str': '吱吱吱🐀' }).then((val: unknown) => {
         if (typeof val === 'object' && val) {
           let key = 'echo' as keyof typeof val;
-          vscode.window.showInformationMessage('Got message: ' + val[key]);
+          vscode.window.showInformationMessage(val[key]);
         }
       }, () => {});
     }
