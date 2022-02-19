@@ -83,12 +83,16 @@ if (NOT nlohmann_json_POPULATED)
   add_subdirectory (${nlohmann_json_SOURCE_DIR} ${nlohmann_json_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif ()
 
+# See: https://stackoverflow.com/questions/49768454/whats-the-differences-between-pthread-and-pthread-options-in-cmake
+set (THREADS_PREFER_PTHREAD_FLAG ON)
+find_package (Threads)
+
 add_executable (testserver
   src/server/jsonrpc.cpp
   src/testserver.cpp)
 target_default_compile_options  (testserver)
 target_include_directories      (testserver PRIVATE src)
-target_link_libraries           (testserver PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries           (testserver PRIVATE nlohmann_json::nlohmann_json Threads::Threads)
 #target_precompile_headers       (testserver PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann/json.hpp)
 if (ipo_supprted)
   set_target_oproperties        (testserver PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
