@@ -14,44 +14,92 @@
 #include "server/jsonrpc.hpp"
 
 using std::cin, std::cout, std::cerr, std::endl;
-using std::pair, std::string, nlohmann::json;
-using Server::JSONRPC2Connection;
+using std::pair, std::string, std::stringstream, nlohmann::json;
+using Server::JSONRPC2Server;
+using Coroutine = JSONRPC2Server::Coroutine;
 
 
-void initialize(JSONRPC2Connection* srv, int id, const json&) {
-  json res = {
-    { "capabilities", {
+Coroutine initialize(JSONRPC2Server* srv, int id, const json&) {
+  // This is a method (with `id`)
+  // We must send a response to it.
+  srv->sendResult(id, {
+    {"capabilities", {
       // TODO: add server capabilities here
-      { "hoverProvider", false },
-    } },
-    { "serverInfo", {
-      { "name", "ApiMu Test Server" },
-      { "version", "0.0.1" },
-    } },
-  };
-  srv->sendResult(id, res);
+      {"hoverProvider", false},
+    }},
+    {"serverInfo", {
+      {"name", "ApiMu Test Server"},
+      {"version", "0.0.1"},
+    }},
+  });
+  co_return;
 }
 
-void test(JSONRPC2Connection* srv, int id, const json& j) {
-  json res = { { "echo", "Client said: " + j.value("str", "") + " Server replied: 喵喵喵🐱" } };
-  srv->sendResult(id, res);
+Coroutine test(JSONRPC2Server* srv, int id, const json& params) {
+  // This is a method (with `id`)
+  // It also has parameters (`params`)
+  // We must send a response to it.
+  srv->sendResult(id, { {"echo", "Client said: " + params.value("str", "") + " Server replied: 喵喵喵🐱"} });
+  co_return;
 }
 
-void test1(JSONRPC2Connection* srv, const json&) {
-  json showmsg = {
-    { "type", 2 },
-    { "message", "This is a warning!" }
-  };
-  srv->callNotification("window/showMessage", showmsg);
+Coroutine test1(JSONRPC2Server* srv, const json&) {
+  // This is a notification (without `id`)
+  // We don't need to respond with `srv->sendResult`, but we can send other requests:
+  srv->callNotification("window/showMessage", {
+    {"type", 2},
+    {"message", string("Number of active coroutines: ") + std::to_string(srv->numActiveCoroutines())}
+  });
+  co_return;
 }
 
-void shutdown(JSONRPC2Connection* srv, int id, const json&) {
-  json res = {};
-  srv->sendResult(id, res);
+Coroutine test2(JSONRPC2Server* srv, const json&) {
+  // This is a notification (without `id`)
+  // We don't need to respond with `srv->sendResult`, but we can do other things:
+  // Send request for user selection
+  auto awaiter = srv->callMethod("window/showMessageRequest", {
+    {"type", 3},
+    {"message", "Select a severity level:"},
+    {"actions", {
+      { {"title", "Log"} },
+      { {"title", "Info"} },
+      { {"title", "Warning"} },
+      { {"title", "Error"} }
+    }}
+  });
+  // Suspend until a result arrives (this is where coroutines become useful!
+  //   We can easily do asynchronous IO in a single thread.)
+  json res = srv->getResult(co_await awaiter);
+  // Find out which option is selected...
+  int sel = 0;
+  if (res.contains("title") && res["title"].is_string()) {
+    string s = res["title"];
+    if (s == "Log") sel = 4;
+    if (s == "Info") sel = 3;
+    if (s == "Warning") sel = 2;
+    if (s == "Error") sel = 1;
+  }
+  // Invalid response, discard
+  if (sel == 0) co_return;
+  // Valid response, put a message
+  srv->callNotification("window/showMessage", {
+    {"type", sel},
+    {"message", "Hello world!"}
+  });
+  co_return;
 }
 
-void exit_(JSONRPC2Connection*, const json&) {
-  std::exit(0);
+Coroutine shutdown(JSONRPC2Server* srv, int id, const json&) {
+  // This is a method (with `id`)
+  // According to spec, we must return a null `result` to it.
+  srv->sendResult(id, {});
+  co_return;
+}
+
+Coroutine exit_(JSONRPC2Server* srv, const json&) {
+  // This is a notification (without `id`)
+  srv->requestStop();
+  co_return;
 }
 
 
@@ -62,25 +110,31 @@ int main() {
   //   [1]: https://stackoverflow.com/questions/7587595/read-binary-data-from-stdcin
   //   [2]: https://stackoverflow.com/questions/25823310/is-there-any-difference-between-text-and-binary-mode-in-file-access
 #ifdef _WIN32
-	_setmode(_fileno(stdin), _O_BINARY);
-	_setmode(_fileno(stdout), _O_BINARY);
+  _setmode(_fileno(stdin), _O_BINARY);
+  _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
-  std::stringstream ss;
+  // Set up logging
+  stringstream ss;
   ss << "log_" << std::chrono::system_clock::now().time_since_epoch().count() << ".txt";
   std::ofstream log(ss.str());
-  Server::JSONRPC2Connection conn(std::cin, std::cout, log);
 
-  // The registered functions will be executed in the listener thread! So don't do any blocking...
-  conn.methods.emplace("initialize", initialize);
-  conn.methods.emplace("test", test);
-  conn.notifications.emplace("test1", test1);
-  conn.methods.emplace("shutdown", shutdown);
-  conn.notifications.emplace("exit", exit_);
+  // Create server
+  Server::JSONRPC2Server srv(std::cin, std::cout, log);
 
-  // Start the listener thread...
-  conn.startListen();
-  conn.waitForComplete();
+  // The registered functions will be executed in one single thread!
+  // So don't do any blocking (e.g. wait, sleep, cin >> s)...
+  // Expensive computations (we don't have any yet) should be in separate threads too
+  srv.addMethod       ("initialize", initialize);
+  srv.addMethod       ("test",       test);
+  srv.addNotification ("test1",      test1);
+  srv.addNotification ("test2",      test2);
+  srv.addMethod       ("shutdown",   shutdown);
+  srv.addNotification ("exit",       exit_);
+
+  // Start the server thread and wait until it was shut down...
+  srv.startListen();
+  srv.waitForComplete();
   log << "Server stopped." << std::endl;
 
   return 0;

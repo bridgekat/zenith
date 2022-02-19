@@ -1,17 +1,19 @@
 #include "jsonrpc.hpp"
-#include <core/base.hpp>
 
 
 namespace Server {
 
-  // This implementation is written against LSP 3.16 and JSON-RPC 2.0
-  // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
-  // See: https://www.jsonrpc.org/specification
+  JSONRPC2Server::RequestAwaiter JSONRPC2Server::callMethod(const string& method, const json& params) {
+    RequestAwaiter res{ this, nextid };
+    send({{ "jsonrpc", "2.0" }, { "id", nextid }, { "method", method }, { "params", params }});
+    nextid++;
+    return res;
+  }
 
   // The only supported value for Content-Type
   const string CONTENT_TYPE_VALUE = "application/vscode-jsonrpc; charset=utf-8";
 
-  void JSONRPC2Connection::startListen() {
+  void JSONRPC2Server::startListen() {
     // Start the listener thread (`inThread`)
     inThread = std::jthread([this] (std::stop_token stopToken) {
       // For an example of using `std::jthread`, see: https://en.cppreference.com/w/cpp/thread/stop_token
@@ -39,8 +41,7 @@ namespace Server {
           if (p == string::npos)
             throw Core::NotImplemented("unexpected line in JSON-RPC header, no \": \" found in \"" + s + "\"");
           string key = s.substr(0, p), value = s.substr(p + 2);
-          {
-            std::scoped_lock<std::mutex> lock(logLock);
+          { std::scoped_lock<std::mutex> lock(logLock);
             log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
           }
 
@@ -61,8 +62,7 @@ namespace Server {
         // End of header, get content
         s.resize(n);
         in.read(s.data(), n);
-        {
-          std::scoped_lock<std::mutex> lock(logLock);
+        { std::scoped_lock<std::mutex> lock(logLock);
           log << "<< " << s << std::endl << std::endl;
         }
 
@@ -74,12 +74,8 @@ namespace Server {
 
         // Parse JSON-RPC 2.0 requests/notifications
         json j;
-        try {
-          j = json::parse(s);
-        } catch (json::parse_error &e) {
-          sendError<PARSE_ERROR>(e.what());
-          continue;
-        }
+        try { j = json::parse(s); }
+        catch (json::parse_error &e) { sendError<PARSE_ERROR>(e.what()); continue; }
 
         // Handle JSON request
         if (j.is_object()) handleRequest(j);
@@ -89,21 +85,22 @@ namespace Server {
     });
   }
 
-  void JSONRPC2Connection::handleRequest(const json& j) {
+  void JSONRPC2Server::handleRequest(const json& j) {
     // Check if the the version number is present and correct
     if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0")
       throw Core::NotImplemented("only JSON-RPC 2.0 is supported");
 
     // Determine the type of the message
     bool hasid = false;
-    int id;
+    int64_t id;
     if (j.contains("id") && !j["id"].is_null()) {
       if (j["id"].is_string()) throw Core::NotImplemented("string-typed `id` in JSON-RPC is not supported yet");
       if (j["id"].is_number()) {
         hasid = true;
-        id = j["id"].get<int>();
+        id = j["id"].get<int64_t>();
       }
     }
+
     if (j.contains("method") && j["method"].is_string()) {
       json params;
       if (j.contains("params") && !j["params"].is_null()) {
@@ -127,49 +124,52 @@ namespace Server {
           it->second(this, params);
         }
       }
+
     } else if (j.contains("result")) {
       if (!hasid) return;
       // Response: result
-      auto it = promises.find(id);
-      if (it != promises.end()) {
-        it->second.set_value(j["result"]);
+      auto it = ks.find(id);
+      if (it != ks.end()) {
+        it->second.second = j["result"];
+        it->second.first.resume();
       }
+      // Erase using `id` instead of `it`, as `ks` could have been modified by the coroutine
+      ks.erase(id);
+
     } else if (j.contains("error")) {
       if (!hasid) return;
       // Response: error
-      auto it = promises.find(id);
-      if (it != promises.end()) {
+      auto it = ks.find(id);
+      if (it != ks.end()) {
         // TODO: use exceptions for error?
         // it->second.set_exception();
-        it->second.set_value(nullptr);
+        it->second.second = {};
+        it->second.first.resume();
       }
+      // Erase using `id` instead of `it`, as `ks` could have been modified by the coroutine
+      ks.erase(id);
+
     } else {
       throw Core::NotImplemented("unknown JSON-RPC message type");
     }
   }
 
-  void JSONRPC2Connection::send(const json& j) {
+  void JSONRPC2Server::send(const json& j) {
     string s = j.dump();
     // Ensure that calling from different threads will not result in broken packets
-    std::scoped_lock<std::mutex> lock(outLock);
-    // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
-    out << "Content-Length: " << s.size() << "\r\n";
-    out << "Content-Type: " << CONTENT_TYPE_VALUE << "\r\n";
-    out << "\r\n";
-    out.write(s.data(), s.size());
-    out.flush();
-    {
-      std::scoped_lock<std::mutex> lock(logLock);
+    { std::scoped_lock<std::mutex> lock(outLock);
+      // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
+      out << "Content-Length: " << s.size() << "\r\n";
+      out << "Content-Type: " << CONTENT_TYPE_VALUE << "\r\n";
+      out << "\r\n";
+      out.write(s.data(), s.size());
+      out.flush();
+    }
+    { std::scoped_lock<std::mutex> lock(logLock);
       log << ">> " << "Content-Length: " << s.size() << std::endl;
       log << ">> " << "Content-Type: " << CONTENT_TYPE_VALUE << std::endl;
       log << ">> " << s << std::endl << std::endl;
     }
   }
 
-  std::future<json> JSONRPC2Connection::callMethod(const string& method, const json& params) {
-    auto res = promises.emplace(nextid, std::promise<json>()).first->second.get_future();
-    send({{ "jsonrpc", "2.0" }, { "id", nextid }, { "method", method }, { "params", params }});
-    nextid++;
-    return res;
-  }
 }

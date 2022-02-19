@@ -43,9 +43,10 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
   let test1 = vscode.commands.registerCommand('apimu.test1', () => {
-    if (client) {
-      client.sendNotification('test1', {});
-    }
+    if (client) { client.sendNotification('test1', {}); }
+  });
+  let test2 = vscode.commands.registerCommand('apimu.test2', () => {
+    if (client) { client.sendNotification('test2', {}); }
   });
 
   let restartServer = vscode.commands.registerCommand('apimu.restartServer', () => {

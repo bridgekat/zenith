@@ -57,6 +57,11 @@
         "title": "Hello World: Test 1"
       },
       {
+        "command": "apimu.test2",
+        "category": "ApiMu",
+        "title": "Hello World: Test 2"
+      },
+      {
         "command": "apimu.restartServer",
         "category": "ApiMu",
         "title": "Restart",
