@@ -57,7 +57,7 @@ add_executable (testcore
   src/core/proof.cpp
   src/testcore.cpp)
 target_default_compile_options  (testcore)
-target_include_directories      (testcore PRIVATE src include)
+target_include_directories      (testcore PRIVATE src)
 if (ipo_supprted)
   set_target_oproperties        (testcore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()
@@ -67,16 +67,29 @@ add_executable (testparsing
   src/parsing/parser.cpp
   src/testparsing.cpp)
 target_default_compile_options  (testparsing)
-target_include_directories      (testparsing PRIVATE src include)
+target_include_directories      (testparsing PRIVATE src)
 if (ipo_supprted)
   set_target_oproperties        (testparsing PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()
 
+# See: https://json.nlohmann.me/integration/cmake/#fetchcontent
+set (JSON_Install OFF CACHE INTERNAL "")
+set (JSON_MultipleHeaders OFF)
+include (FetchContent)
+FetchContent_Declare (nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.10.5/json.tar.xz)
+FetchContent_GetProperties (nlohmann_json)
+if (NOT nlohmann_json_POPULATED)
+  FetchContent_Populate (nlohmann_json)
+  add_subdirectory (${nlohmann_json_SOURCE_DIR} ${nlohmann_json_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif ()
+
 add_executable (testserver
+  src/server/jsonrpc.cpp
   src/testserver.cpp)
 target_default_compile_options  (testserver)
-target_include_directories      (testserver PRIVATE src include deps/json-rpc-cxx/include deps/json-rpc-cxx/vendor)
-target_precompile_headers       (testserver PRIVATE deps/json-rpc-cxx/vendor/nlohmann/json.hpp)
+target_include_directories      (testserver PRIVATE src)
+target_link_libraries           (testserver PRIVATE nlohmann_json::nlohmann_json)
+#target_precompile_headers       (testserver PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann/json.hpp)
 if (ipo_supprted)
   set_target_oproperties        (testserver PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()

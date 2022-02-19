@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
   // The command has been defined in the package.json file
   // Now provide the implementation of the command with registerCommand
   // The commandId parameter must match the command field in package.json
-  let disposable = vscode.commands.registerCommand('apimu.helloWorld', () => {
+  let test = vscode.commands.registerCommand('apimu.test', () => {
     // The code you place here will be executed every time your command is executed
     // Display a message box to the user
     if (client) {
@@ -40,6 +40,11 @@ export function activate(context: vscode.ExtensionContext) {
           vscode.window.showInformationMessage(val[key]);
         }
       }, () => {});
+    }
+  });
+  let test1 = vscode.commands.registerCommand('apimu.test1', () => {
+    if (client) {
+      client.sendNotification('test1', {});
     }
   });
 
@@ -57,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(disposable, restartServer, shutdownServer);
+  context.subscriptions.push(test, test1, restartServer, shutdownServer);
 }
 
 function startServer() {

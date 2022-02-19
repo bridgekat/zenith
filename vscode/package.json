@@ -47,9 +47,14 @@
     },
     "commands": [
       {
-        "command": "apimu.helloWorld",
+        "command": "apimu.test",
         "category": "ApiMu",
-        "title": "Hello World"
+        "title": "Hello World: Test"
+      },
+      {
+        "command": "apimu.test1",
+        "category": "ApiMu",
+        "title": "Hello World: Test 1"
       },
       {
         "command": "apimu.restartServer",

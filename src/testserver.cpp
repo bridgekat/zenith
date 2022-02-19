@@ -4,21 +4,21 @@
 #include <string>
 #include <sstream>
 #include <fstream>
+#include <chrono>
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
 #endif
-#include <jsonrpccxx/server.hpp>
+#include <nlohmann/json.hpp>
 #include "core/base.hpp"
+#include "server/jsonrpc.hpp"
 
 using std::cin, std::cout, std::cerr, std::endl;
 using std::pair, std::string, nlohmann::json;
-using jsonrpccxx::MethodHandle, jsonrpccxx::NotificationHandle;
-
-std::ofstream out("D:/log.txt");
+using Server::JSONRPC2Connection;
 
 
-json initialize(const json&) {
+void initialize(JSONRPC2Connection* srv, int id, const json&) {
   json res = {
     { "capabilities", {
       // TODO: add server capabilities here
@@ -29,45 +29,33 @@ json initialize(const json&) {
       { "version", "0.0.1" },
     } },
   };
-  return res;
+  srv->sendResult(id, res);
 }
 
-json test(const json& j) {
+void test(JSONRPC2Connection* srv, int id, const json& j) {
   json res = { { "echo", "Client said: " + j.value("str", "") + " Server replied: 喵喵喵🐱" } };
-  return res;
+  srv->sendResult(id, res);
 }
 
-json shutdown(const json&) {
+void test1(JSONRPC2Connection* srv, const json&) {
+  json showmsg = {
+    { "type", 2 },
+    { "message", "This is a warning!" }
+  };
+  srv->callNotification("window/showMessage", showmsg);
+}
+
+void shutdown(JSONRPC2Connection* srv, int id, const json&) {
   json res = {};
-  return res;
+  srv->sendResult(id, res);
 }
 
-void exit_(const json&) {
+void exit_(JSONRPC2Connection*, const json&) {
   std::exit(0);
 }
 
 
-string getline() {
-  string res = "";
-  std::getline(cin, res);
-  if (!res.empty() && res.back() == '\r') res.pop_back();
-  return res;
-}
-
-pair<string, string> split(const string& s) {
-  size_t p = s.find(": ");
-  if (p == string::npos) throw std::invalid_argument("No \": \" found in [" + s + "]");
-  return { s.substr(0, p), s.substr(p + 2) };
-}
-
 int main() {
-  jsonrpccxx::JsonRpc2Server rpcServer;
-
-  rpcServer.Add("initialize", static_cast<MethodHandle>(initialize));
-  rpcServer.Add("test", static_cast<MethodHandle>(test));
-  rpcServer.Add("shutdown", static_cast<MethodHandle>(shutdown));
-  rpcServer.Add("exit", static_cast<NotificationHandle>(exit_));
-
   // Windows automatically converts between "\r\n" and "\n" if cin/cout is in "text mode".
   // Change to "binary mode" disables this conversion. There is no standard (platform-independent) way of doing it [1].
   // On Unix systems there is no difference between "text mode" and "binary mode" [2].
@@ -78,53 +66,22 @@ int main() {
 	_setmode(_fileno(stdout), _O_BINARY);
 #endif
 
-  // Main loop
-  while (true) {
-    string s;
+  std::stringstream ss;
+  ss << "log_" << std::chrono::system_clock::now().time_since_epoch().count() << ".txt";
+  std::ofstream log(ss.str());
+  Server::JSONRPC2Connection conn(std::cin, std::cout, log);
 
-    // Read header part
-    // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
-    size_t n = 0;
-    s = getline();
-    while (s != "") {
-      // We just disregard all header fields... except `Content-Length`!
-      auto [key, value] = split(s);
-      out << "[" << key << "] = [" << value << "]" << endl;
-      if (key == "Content-Length") {
-        std::stringstream ss(value);
-        ss >> n;
-      } else if (key == "Content-Type") {
-        if (value != "application/vscode-jsonrpc; charset=utf-8")
-          throw std::invalid_argument("Content-Type = " + value);
-      } else throw std::invalid_argument("Key = " + key);
-      // Get next line
-      s = getline();
-    }
+  // The registered functions will be executed in the listener thread! So don't do any blocking...
+  conn.methods.emplace("initialize", initialize);
+  conn.methods.emplace("test", test);
+  conn.notifications.emplace("test1", test1);
+  conn.methods.emplace("shutdown", shutdown);
+  conn.notifications.emplace("exit", exit_);
 
-    // End of header, get content
-    s.resize(n);
-    cin.read(s.data(), n);
-
-    // Though LSP 3.16 says [1] that an Exit Notification after a Shutdown Request actually stops the server,
-    // VSCode simply closes the input stream without giving an Exit Notification.
-    // This line is used to stop the server in that case.
-    //   [1]: https://microsoft.github.io/language-server-protocol/specifications/specification-3-17/#shutdown
-    if (cin.eof()) std::exit(0);
-
-    // Handle request
-    out << "Request = [" << s << "]" << endl;
-    s = rpcServer.HandleRequest(s);
-    if (!s.empty()) {
-      cout << "Content-Length: " << s.size() << "\r\n";
-      cout << "Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n";
-      cout << "\r\n";
-      cout.write(s.data(), s.size());
-      cout.flush();
-      // Debug output
-      out << s << endl;
-    }
-    out << endl;
-  }
+  // Start the listener thread...
+  conn.startListen();
+  conn.waitForComplete();
+  log << "Server stopped." << std::endl;
 
   return 0;
 }

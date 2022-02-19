@@ -39,9 +39,18 @@ namespace Core {
   };
 
   // Some exception classes...
-  struct Unreachable: public std::logic_error { Unreachable(): std::logic_error("\"Unreachable\" code was reached") {} };
-  struct NotImplemented: public std::logic_error { NotImplemented(): std::logic_error("\"Not implemented\" code was called") {} };
-  struct CheckFailure: public std::logic_error { explicit CheckFailure(const std::string& s): std::logic_error(s) {} };
+  struct Unreachable: public std::logic_error {
+    explicit Unreachable(const std::string& s = ""):
+      std::logic_error("\"Unreachable\" code was reached" + (s.empty() ? "" : ": " + s)) {}
+  };
+  struct NotImplemented: public std::logic_error {
+    explicit NotImplemented(const std::string& s = ""):
+      std::logic_error("\"Not implemented\" code was called" + (s.empty() ? "" : ": " + s)) {}
+  };
+  struct CheckFailure: public std::logic_error {
+    explicit CheckFailure(const std::string& s):
+      std::logic_error(s) {}
+  };
 
 }
 
