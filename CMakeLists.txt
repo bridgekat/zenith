@@ -43,6 +43,7 @@ macro (target_default_compile_options TARGET)
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wall>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wextra>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wdeprecated>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Weffc++>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_CONCEPT_CHECKS>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
@@ -56,7 +57,6 @@ add_executable (testcore
   src/core/proof.cpp
   src/testcore.cpp)
 target_default_compile_options  (testcore)
-target_compile_options          (testcore PRIVATE "$<$<CONFIG:Debug>:-Weffc++>")
 target_include_directories      (testcore PRIVATE src)
 if (ipo_supprted)
   set_target_oproperties        (testcore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
@@ -67,7 +67,6 @@ add_executable (testparsing
   src/parsing/parser.cpp
   src/testparsing.cpp)
 target_default_compile_options  (testparsing)
-target_compile_options          (testparsing PRIVATE "$<$<CONFIG:Debug>:-Weffc++>")
 target_include_directories      (testparsing PRIVATE src)
 if (ipo_supprted)
   set_target_oproperties        (testparsing PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
@@ -89,6 +88,7 @@ set (THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads)
 
 add_executable (testserver
+  src/server/coroutine.cpp
   src/server/jsonrpc2.cpp
   src/testserver.cpp)
 target_default_compile_options  (testserver)

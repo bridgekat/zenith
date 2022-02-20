@@ -63,7 +63,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(test, test1, restartServer, shutdownServer);
+  context.subscriptions.push(test, test1, test2, restartServer, shutdownServer);
 }
 
 function startServer() {

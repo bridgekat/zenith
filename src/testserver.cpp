@@ -18,10 +18,10 @@ using std::pair, std::string, std::stringstream, nlohmann::json;
 using Server::Coroutine, Server::JSONRPC2Server;
 
 
-Coroutine<json> initialize(JSONRPC2Server* srv, const json&) {
+Coroutine<json> initialize(JSONRPC2Server*, const json&) {
   // This is a method.
-  // We must send a response to it.
-  co_return json{
+  // We must send a response to it (`co_return` a json).
+  co_return {
     {"capabilities", {
       // TODO: add server capabilities here
       {"hoverProvider", false},
@@ -33,25 +33,25 @@ Coroutine<json> initialize(JSONRPC2Server* srv, const json&) {
   };
 }
 
-Coroutine<json> test(JSONRPC2Server* srv, const json& params) {
+Coroutine<json> test(JSONRPC2Server*, const json& params) {
   // This is a method with parameters (`params`).
   // We must send a response to it.
-  co_return json{ {"echo", "Client said: " + params.value("str", "") + " Server replied: 喵喵喵🐱"} };
+  co_return { {"echo", "Client said: " + params.value("str", "") + " Server replied: 喵喵喵🐱"} };
 }
 
 Coroutine<void> test1(JSONRPC2Server* srv, const json&) {
   // This is a notification.
-  // We don't need to respond with `srv->sendResult`, but we can send other requests:
+  // We don't need to respond (we just `co_return` nothing), but we can send other requests:
   srv->callNotification("window/showMessage", {
     {"type", 2},
-    {"message", string("Number of active coroutines: ") + std::to_string(Server::debugCounter)}
+    {"message", string("Number of active coroutines: ") + std::to_string(Server::DebugCounter)}
   });
   co_return;
 }
 
 Coroutine<void> test2(JSONRPC2Server* srv, const json&) {
   // This is a notification.
-  // We don't need to respond with `srv->sendResult`, but we can do other things:
+  // We don't need to respond, but we can do other things:
   // Send request for user selection
   auto awaiter = srv->callMethod("window/showMessageRequest", {
     {"type", 3},
@@ -65,7 +65,7 @@ Coroutine<void> test2(JSONRPC2Server* srv, const json&) {
   });
   // Suspend until a result arrives (this is where coroutines become useful!
   //   We can easily do asynchronous IO in a single thread.)
-  json res = srv->getResult(co_await awaiter);
+  json res = co_await awaiter;
   // Find out which option is selected...
   int sel = 0;
   if (res.contains("title") && res["title"].is_string()) {
@@ -85,14 +85,15 @@ Coroutine<void> test2(JSONRPC2Server* srv, const json&) {
   co_return;
 }
 
-Coroutine<json> shutdown(JSONRPC2Server* srv, const json&) {
+Coroutine<json> shutdown(JSONRPC2Server*, const json&) {
   // This is a method.
-  // According to spec, we must return a null `result` to it.
-  co_return json{};
+  // According to spec, we must return a `null` result to it
+  // (nlohmann::json uses `nullptr` or just `{}` to represent `null`.)
+  co_return nullptr;
 }
 
 Coroutine<void> exit_(JSONRPC2Server* srv, const json&) {
-  // This is a notification (without `id`)
+  // This is a notification.
   srv->requestStop();
   co_return;
 }
@@ -114,10 +115,8 @@ int main() {
   ss << "log_" << std::chrono::system_clock::now().time_since_epoch().count() << ".txt";
   std::ofstream log(ss.str());
 
-  std::ifstream fin("test_input.txt", std::ios::binary);
-
   // Create server
-  Server::JSONRPC2Server srv(fin, std::cout, log);
+  Server::JSONRPC2Server srv(std::cin, std::cout, log);
 
   // The registered functions will be executed in one single thread!
   // So don't do any blocking (e.g. wait, sleep, cin >> s)...

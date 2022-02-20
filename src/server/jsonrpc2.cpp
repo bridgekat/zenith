@@ -1,9 +1,10 @@
 #include "jsonrpc2.hpp"
+#include <optional>
 
 
 namespace Server {
 
-  int64_t debugCounter = 0;
+  using std::optional, std::nullopt;
 
   JSONRPC2Server::RequestAwaiter JSONRPC2Server::callMethod(const string& method, const json& params) {
     RequestAwaiter res{ this, nextid };
@@ -15,68 +16,74 @@ namespace Server {
   // The only supported value for Content-Type
   const string CONTENT_TYPE_VALUE = "application/vscode-jsonrpc; charset=utf-8";
 
+  // Returns `nullopt` if read past EOF.
+  // For discussions on non-blocking `cin`, see: https://stackoverflow.com/questions/16592357/non-blocking-stdgetline-exit-if-no-input
+  // The following code uses blocking input, which is enough for the current purpose.
+  optional<string> JSONRPC2Server::readNextPacket() {
+    // `std::getline()` and then trim trailing "\r\n"
+    // ("\r\n" is used as EOL in LSP 3.16 header part)
+    auto getline = [this] () {
+      string res = "";
+      std::getline(in, res);
+      if (!res.empty() && res.back() == '\r') res.pop_back();
+      return res;
+    };
+
+    // Read header part
+    size_t n = 0;
+    string s = getline();
+
+    while (s != "") {
+      size_t p = s.find(": ");
+      if (p == string::npos)
+        throw Core::NotImplemented("unexpected line in JSON-RPC header, no \": \" found in \"" + s + "\"");
+      string key = s.substr(0, p), value = s.substr(p + 2);
+      { std::scoped_lock<std::mutex> lock(logLock);
+        log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
+      }
+
+      if (key == "Content-Length") {
+        std::stringstream ss(value);
+        ss >> n;
+      } else if (key == "Content-Type") {
+        if (value != CONTENT_TYPE_VALUE)
+          throw Core::NotImplemented("unexpected \"Content-Type\" value in JSON-RPC header: \"" + value + "\"");
+      } else {
+        throw Core::NotImplemented("unexpected key in JSON-RPC header: \"" + key + "\"");
+      }
+
+      // Get next line
+      s = getline();
+    }
+
+    // End of header, get content
+    s.resize(n);
+    in.read(s.data(), n);
+    { std::scoped_lock<std::mutex> lock(logLock);
+      log << "<< " << s << std::endl << std::endl;
+    }
+
+    if (in.eof()) return nullopt;
+    return s;
+  }
+
   void JSONRPC2Server::startListen() {
     // Start the listener thread (`inThread`)
+    // For an example of using `std::jthread`, see: https://en.cppreference.com/w/cpp/thread/stop_token
     inThread = std::jthread([this] (std::stop_token stopToken) {
-      // For an example of using `std::jthread`, see: https://en.cppreference.com/w/cpp/thread/stop_token
-      // For discussions on non-blocking `cin`, see: https://stackoverflow.com/questions/16592357/non-blocking-stdgetline-exit-if-no-input
-      // The following code uses blocking input, which is enough for the current purpose.
-
-      // `std::getline()` and then trim trailing "\r\n" ("\r\n" is used as EOL in LSP 3.16 header part)
-      auto getline = [this] () {
-        string res = "";
-        std::getline(in, res);
-        if (!res.empty() && res.back() == '\r') res.pop_back();
-        return res;
-      };
-
       // Main loop
       while (!stopToken.stop_requested()) {
-        string s;
-
-        // Read header part
-        size_t n = 0;
-        s = getline();
-
-        while (s != "") {
-          size_t p = s.find(": ");
-          if (p == string::npos)
-            throw Core::NotImplemented("unexpected line in JSON-RPC header, no \": \" found in \"" + s + "\"");
-          string key = s.substr(0, p), value = s.substr(p + 2);
-          { std::scoped_lock<std::mutex> lock(logLock);
-            log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
-          }
-
-          if (key == "Content-Length") {
-            std::stringstream ss(value);
-            ss >> n;
-          } else if (key == "Content-Type") {
-            if (value != CONTENT_TYPE_VALUE)
-              throw Core::NotImplemented("unexpected \"Content-Type\" value in JSON-RPC header: \"" + value + "\"");
-          } else {
-            throw Core::NotImplemented("unexpected key in JSON-RPC header: \"" + key + "\"");
-          }
-
-          // Get next line
-          s = getline();
-        }
-
-        // End of header, get content
-        s.resize(n);
-        in.read(s.data(), n);
-        { std::scoped_lock<std::mutex> lock(logLock);
-          log << "<< " << s << std::endl << std::endl;
-        }
+        optional<string> o = readNextPacket();
 
         // Though LSP 3.16 says [1] that an Exit Notification after a Shutdown Request actually stops the server,
         // VSCode simply closes the input stream without giving an Exit Notification.
         // This line is used to stop the input listener thread in that case.
         //   [1]: https://microsoft.github.io/language-server-protocol/specifications/specification-3-16/#shutdown
-        if (in.eof()) break;
+        if (!o.has_value()) break;
 
         // Parse JSON-RPC 2.0 requests/notifications
         json j;
-        try { j = json::parse(s); }
+        try { j = json::parse(*o); }
         catch (json::parse_error &e) { sendError<PARSE_ERROR>(e.what()); continue; }
 
         // Handle JSON request
@@ -115,13 +122,7 @@ namespace Server {
         if (it != methods.end()) {
           auto handler = [] (JSONRPC2Server* srv, int id, std::function<Coroutine<json>(JSONRPC2Server*, json)> func, const json& params) -> Coroutine<void> {
             // TODO: use exceptions for error?
-            std::cerr << "gg" << std::endl;
-            Coroutine<json> retobj = func(srv, params);
-            std::cerr << bool(retobj.handle) << std::endl;
-            std::cerr << retobj.handle.address() << std::endl;
-            std::cerr << bool(retobj.handle.promise().result) << std::endl;
-            json res = co_await retobj;
-            std::cerr << "gg!" << std::endl;
+            json res = co_await func(srv, params);
             srv->sendResult(id, res);
           };
           handler(this, id, it->second, params);
