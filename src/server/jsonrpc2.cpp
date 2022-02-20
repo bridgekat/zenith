@@ -1,11 +1,13 @@
-#include "jsonrpc.hpp"
+#include "jsonrpc2.hpp"
 
 
 namespace Server {
 
+  int64_t debugCounter = 0;
+
   JSONRPC2Server::RequestAwaiter JSONRPC2Server::callMethod(const string& method, const json& params) {
     RequestAwaiter res{ this, nextid };
-    send({{ "jsonrpc", "2.0" }, { "id", nextid }, { "method", method }, { "params", params }});
+    send({{"jsonrpc", "2.0"}, {"id", nextid}, {"method", method}, {"params", params}});
     nextid++;
     return res;
   }
@@ -111,8 +113,18 @@ namespace Server {
         // Request: method call
         auto it = methods.find(j["method"]);
         if (it != methods.end()) {
-          // TODO: use exceptions for error?
-          it->second(this, id, params);
+          auto handler = [] (JSONRPC2Server* srv, int id, std::function<Coroutine<json>(JSONRPC2Server*, json)> func, const json& params) -> Coroutine<void> {
+            // TODO: use exceptions for error?
+            std::cerr << "gg" << std::endl;
+            Coroutine<json> retobj = func(srv, params);
+            std::cerr << bool(retobj.handle) << std::endl;
+            std::cerr << retobj.handle.address() << std::endl;
+            std::cerr << bool(retobj.handle.promise().result) << std::endl;
+            json res = co_await retobj;
+            std::cerr << "gg!" << std::endl;
+            srv->sendResult(id, res);
+          };
+          handler(this, id, it->second, params);
         } else {
           sendError<METHOD_NOT_FOUND>(id, "method \"" + string(j["method"]) + "\"not found");
         }
@@ -120,7 +132,7 @@ namespace Server {
         // Request: notification call
         auto it = notifications.find(j["method"]);
         if (it != notifications.end()) {
-          // TODO: use exceptions for error?
+          // TODO: silent exceptions?
           it->second(this, params);
         }
       }
@@ -130,6 +142,7 @@ namespace Server {
       // Response: result
       auto it = ks.find(id);
       if (it != ks.end()) {
+        // TODO: use `co_return` for result?
         it->second.second = j["result"];
         it->second.first.resume();
       }
@@ -142,7 +155,6 @@ namespace Server {
       auto it = ks.find(id);
       if (it != ks.end()) {
         // TODO: use exceptions for error?
-        // it->second.set_exception();
         it->second.second = {};
         it->second.first.resume();
       }
