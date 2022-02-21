@@ -15,7 +15,7 @@
 
 using std::cin, std::cout, std::cerr, std::endl;
 using std::pair, std::string, std::stringstream, nlohmann::json;
-using Server::Coroutine, Server::JSONRPC2Server;
+using Server::Coroutine, Server::JSONRPC2Exception, Server::JSONRPC2Server;
 
 
 Coroutine<json> initialize(JSONRPC2Server*, const json&) {
@@ -89,7 +89,7 @@ Coroutine<json> shutdown(JSONRPC2Server*, const json&) {
   // This is a method.
   // According to spec, we must return a `null` result to it
   // (nlohmann::json uses `nullptr` or just `{}` to represent `null`.)
-  co_return nullptr;
+  co_return {};
 }
 
 Coroutine<void> exit_(JSONRPC2Server* srv, const json&) {
@@ -97,6 +97,12 @@ Coroutine<void> exit_(JSONRPC2Server* srv, const json&) {
   srv->requestStop();
   co_return;
 }
+
+// You may also throw certain exceptions (namely, of type `JSONRPC2Exception`) in methods:
+//   throw JSONRPC2Exception(JSONRPC2Exception::SERVER_ERROR, "send out");
+// This error information will get sent to the client.
+// But if you throw other kinds of exceptions, or throw exceptions in notifications,
+//   std::terminate() will be called (i.e. the program will crash).
 
 
 int main() {

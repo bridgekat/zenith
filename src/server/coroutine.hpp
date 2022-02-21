@@ -6,7 +6,7 @@
 #include <optional>
 #include <memory>
 #include <coroutine>
-#include <type_traits>
+#include <exception>
 
 
 namespace Server {
@@ -38,12 +38,14 @@ namespace Server {
       // (since B is started immediately on creation, this could happen before A tries to suspend),
       // so we cannot simply use `optional<T>` here.
       shared_ptr<optional<T>> result;
+      // Shared location for storing any exceptions thrown.
+      shared_ptr<std::exception_ptr> exptr;
       // If this is not null, it is resumed on `return_value(...)`.
       std::coroutine_handle<> then;
 
+      promise_type(): result(new optional<T>()), exptr(new std::exception_ptr()), then() { DebugCounter++; }
       // DEBUG CODE
-      promise_type(): result(new optional<T>()), then() { DebugCounter++; }
-      promise_type(const promise_type& r): result(r.result), then(r.then) { DebugCounter++; }
+      promise_type(const promise_type& r): result(r.result), exptr(r.exptr), then(r.then) { DebugCounter++; }
       promise_type& operator=(const promise_type&) = default;
       ~promise_type() { DebugCounter--; }
       // DEBUG CODE END
@@ -52,7 +54,7 @@ namespace Server {
       Coroutine get_return_object() {
         // Obtaining an object (of type `std::coroutine_handle`) from one of its members (of type `promise_type`) is compiler magic!
         // See: https://stackoverflow.com/questions/58632651/how-coroutine-handlepromisefrom-promise-works-in-c
-        return Coroutine(result, std::coroutine_handle<promise_type>::from_promise(*this));
+        return Coroutine(result, exptr, std::coroutine_handle<promise_type>::from_promise(*this));
       }
 
       // B is not suspended upon creation/completion
@@ -65,8 +67,12 @@ namespace Server {
         if (then) then.resume();
       }
 
-      // B throws unhandled exception (TODO)
-      void unhandled_exception() {}
+      // B throws unhandled exception (B.exptr := exception, resume B.then (= continuation of A) if present)
+      void unhandled_exception() {
+        *exptr = std::current_exception();
+        if (then) then.resume();
+        else std::terminate();
+      }
     };
 
     // `Coroutine` objects are not copyable but movable
@@ -78,18 +84,24 @@ namespace Server {
     bool await_ready() const noexcept { return bool(*result); }
     // B didn't complete, store the continuation of A (B.then := continuation of A)
     void await_suspend(std::coroutine_handle<> ka) { handle.promise().then = ka; }
-    // B completed or A was resumed, retrieve result (gives B.result to the continuation of A)
-    // *(B.result) must be available at this time, as A must be resumed from `b.return_value()`.
-    T&& await_resume() { return std::move(result->value()); }
+    // B completed or A was resumed, retrieve result (gives B.result to the continuation of A).
+    // Either *(B.result) or *(B.exptr) must be available at this time,
+    // as A must be resumed from either `B.return_value()` or `B.unhandled_exception()`.
+    T&& await_resume() {
+      if (*exptr) std::rethrow_exception(*exptr);
+      return std::move(result->value());
+    }
 
   private:
-    // Invariant: `result` pointer must be valid.
+    // Invariant: pointers `result` and `exptr` must be valid.
     shared_ptr<optional<T>> result;
+    shared_ptr<std::exception_ptr> exptr;
     std::coroutine_handle<promise_type> handle;
 
     // `Coroutine` objects must be constructed from `get_return_object()`!
-    Coroutine(const shared_ptr<optional<T>>& result, std::coroutine_handle<promise_type>&& handle):
-      result(result), handle(handle) {}
+    Coroutine(shared_ptr<optional<T>> result, shared_ptr<std::exception_ptr> exptr,
+              std::coroutine_handle<promise_type>&& handle):
+      result(result), exptr(exptr), handle(handle) {}
   };
 
   // We have to write these all over again, as using templates to select between
@@ -102,17 +114,18 @@ namespace Server {
     class promise_type {
     public:
       shared_ptr<bool> completed;
+      shared_ptr<std::exception_ptr> exptr;
       std::coroutine_handle<> then;
 
+      promise_type(): completed(new bool(false)), exptr(new std::exception_ptr()), then() { DebugCounter++; }
       // DEBUG CODE
-      promise_type(): completed(new bool), then() { DebugCounter++; }
-      promise_type(const promise_type& r): completed(r.completed), then(r.then) { DebugCounter++; }
+      promise_type(const promise_type& r): completed(r.completed), exptr(r.exptr), then(r.then) { DebugCounter++; }
       promise_type& operator=(const promise_type&) = default;
       ~promise_type() { DebugCounter--; }
       // DEBUG CODE END
 
       Coroutine get_return_object() {
-        return Coroutine(completed, std::coroutine_handle<promise_type>::from_promise(*this));
+        return Coroutine(completed, exptr, std::coroutine_handle<promise_type>::from_promise(*this));
       }
 
       std::suspend_never initial_suspend() noexcept { return {}; }
@@ -123,7 +136,11 @@ namespace Server {
         if (then) then.resume();
       }
 
-      void unhandled_exception() {}
+      void unhandled_exception() {
+        *exptr = std::current_exception();
+        if (then) then.resume();
+        else std::terminate();
+      }
     };
 
     Coroutine(Coroutine&& r) = default;
@@ -132,14 +149,16 @@ namespace Server {
 
     bool await_ready() const noexcept { return *completed; }
     void await_suspend(std::coroutine_handle<> ka) { handle.promise().then = ka; }
-    constexpr void await_resume() const noexcept {}
+    void await_resume() const { if (*exptr) std::rethrow_exception(*exptr); }
 
   private:
     shared_ptr<bool> completed;
+    shared_ptr<std::exception_ptr> exptr;
     std::coroutine_handle<promise_type> handle;
 
-    Coroutine(const shared_ptr<bool>& completed, std::coroutine_handle<promise_type>&& handle):
-      completed(completed), handle(handle) {}
+    Coroutine(shared_ptr<bool> completed, shared_ptr<std::exception_ptr> exptr,
+              std::coroutine_handle<promise_type>&& handle):
+      completed(completed), exptr(exptr), handle(handle) {}
   };
 
 }

@@ -84,12 +84,12 @@ namespace Server {
         // Parse JSON-RPC 2.0 requests/notifications
         json j;
         try { j = json::parse(*o); }
-        catch (json::parse_error &e) { sendError<PARSE_ERROR>(e.what()); continue; }
+        catch (json::parse_error &e) { sendError(PARSE_ERROR, e.what()); continue; }
 
         // Handle JSON request
         if (j.is_object()) handleRequest(j);
         else if (j.is_array()) throw Core::NotImplemented("batch requests in JSON-RPC is not supported yet");
-        else { sendError<INVALID_REQUEST>("ill-formed JSON request, expected array or object"); continue; }
+        else { sendError(INVALID_REQUEST, "ill-formed JSON request, expected array or object"); continue; }
       }
     });
   }
@@ -120,47 +120,51 @@ namespace Server {
         // Request: method call
         auto it = methods.find(j["method"]);
         if (it != methods.end()) {
+          // Don't use captures, since they will be destroyed after lambda is destroyed...
+          // See: https://en.cppreference.com/w/cpp/language/coroutines
           auto handler = [] (JSONRPC2Server* srv, int id, std::function<Coroutine<json>(JSONRPC2Server*, json)> func, const json& params) -> Coroutine<void> {
-            // TODO: use exceptions for error?
-            json res = co_await func(srv, params);
-            srv->sendResult(id, res);
+            try {
+              json res = co_await func(srv, params);
+              srv->sendResult(id, res);
+            } catch (const JSONRPC2Exception& e) {
+              srv->sendError(id, e.code, e.what());
+            }
           };
           handler(this, id, it->second, params);
         } else {
-          sendError<METHOD_NOT_FOUND>(id, "method \"" + string(j["method"]) + "\"not found");
+          sendError(id, METHOD_NOT_FOUND, "method \"" + string(j["method"]) + "\"not found");
         }
       } else {
         // Request: notification call
         auto it = notifications.find(j["method"]);
         if (it != notifications.end()) {
-          // TODO: silent exceptions?
           it->second(this, params);
         }
       }
 
-    } else if (j.contains("result")) {
-      if (!hasid) return;
+    } else if (hasid && j.contains("result")) {
       // Response: result
-      auto it = ks.find(id);
-      if (it != ks.end()) {
-        // TODO: use `co_return` for result?
-        it->second.second = j["result"];
-        it->second.first.resume();
+      auto it = requests.find(id);
+      if (it != requests.end()) {
+        it->second.result = j["result"];
+        it->second.k.resume();
       }
-      // Erase using `id` instead of `it`, as `ks` could have been modified by the coroutine
-      ks.erase(id);
+      // Erase using `id` instead of `it`, as `requests` could have been modified by the coroutine
+      requests.erase(id);
 
-    } else if (j.contains("error")) {
-      if (!hasid) return;
+    } else if (j.contains("error") && j["error"].is_object() &&
+               j["error"].contains("code") && j["error"]["code"].is_number_integer()) {
+      if (!hasid) return; // Discard errors without ID, although they are allowed
       // Response: error
-      auto it = ks.find(id);
-      if (it != ks.end()) {
-        // TODO: use exceptions for error?
-        it->second.second = {};
-        it->second.first.resume();
+      auto it = requests.find(id);
+      if (it != requests.end()) {
+        ErrorCode code = static_cast<ErrorCode>(j["error"]["code"].get<short>());
+        string msg = j["error"].value("message", "");
+        it->second.exptr = std::make_exception_ptr(JSONRPC2Exception(code, msg));
+        it->second.k.resume();
       }
-      // Erase using `id` instead of `it`, as `ks` could have been modified by the coroutine
-      ks.erase(id);
+      // Erase using `id` instead of `it`, as `requests` could have been modified by the coroutine
+      requests.erase(id);
 
     } else {
       throw Core::NotImplemented("unknown JSON-RPC message type");
@@ -183,6 +187,36 @@ namespace Server {
       log << ">> " << "Content-Type: " << CONTENT_TYPE_VALUE << std::endl;
       log << ">> " << s << std::endl << std::endl;
     }
+  }
+
+  void JSONRPC2Server::sendResult(int64_t id, const json& result) {
+    send({
+      {"jsonrpc", "2.0"},
+      {"id", id},
+      {"result", result}
+    });
+  }
+
+  void JSONRPC2Server::sendError(ErrorCode code, const string& msg) {
+    send({
+      {"jsonrpc", "2.0"},
+      {"id", nullptr},
+      {"error", {
+        {"code", code},
+        {"message", msg}
+      }}
+    });
+  }
+
+  void JSONRPC2Server::sendError(int64_t id, ErrorCode code, const string& msg) {
+    send({
+      {"jsonrpc", "2.0"},
+      {"id", id},
+      {"error", {
+        {"code", code},
+        {"message", msg}
+      }}
+    });
   }
 
 }
