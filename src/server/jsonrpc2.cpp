@@ -6,9 +6,22 @@ namespace Server {
 
   using std::optional, std::nullopt;
 
+  void JSONRPC2Server::callNotification(const string& method, const json& params) {
+    send({
+      {"jsonrpc", "2.0"},
+      {"method", method},
+      {"params", params}
+    });
+  }
+
   JSONRPC2Server::RequestAwaiter JSONRPC2Server::callMethod(const string& method, const json& params) {
     RequestAwaiter res{ this, nextid };
-    send({{"jsonrpc", "2.0"}, {"id", nextid}, {"method", method}, {"params", params}});
+    send({
+      {"jsonrpc", "2.0"},
+      {"id", nextid},
+      {"method", method},
+      {"params", params}
+    });
     nextid++;
     return res;
   }
@@ -38,9 +51,7 @@ namespace Server {
       if (p == string::npos)
         throw Core::NotImplemented("unexpected line in JSON-RPC header, no \": \" found in \"" + s + "\"");
       string key = s.substr(0, p), value = s.substr(p + 2);
-      { std::scoped_lock<std::mutex> lock(logLock);
-        log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
-      }
+      log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
 
       if (key == "Content-Length") {
         std::stringstream ss(value);
@@ -59,9 +70,7 @@ namespace Server {
     // End of header, get content
     s.resize(n);
     in.read(s.data(), n);
-    { std::scoped_lock<std::mutex> lock(logLock);
-      log << "<< " << s << std::endl << std::endl;
-    }
+    log << "<< " << s << std::endl << std::endl;
 
     if (in.eof()) return nullopt;
     return s;
@@ -104,7 +113,7 @@ namespace Server {
     int64_t id;
     if (j.contains("id") && !j["id"].is_null()) {
       if (j["id"].is_string()) throw Core::NotImplemented("string-typed `id` in JSON-RPC is not supported yet");
-      if (j["id"].is_number()) {
+      if (j["id"].is_number_integer()) {
         hasid = true;
         id = j["id"].get<int64_t>();
       }
@@ -154,7 +163,8 @@ namespace Server {
 
     } else if (j.contains("error") && j["error"].is_object() &&
                j["error"].contains("code") && j["error"]["code"].is_number_integer()) {
-      if (!hasid) return; // Discard errors without ID, although they are allowed
+      // Discard errors without ID, although they are allowed
+      if (!hasid) return;
       // Response: error
       auto it = requests.find(id);
       if (it != requests.end()) {
@@ -173,20 +183,17 @@ namespace Server {
 
   void JSONRPC2Server::send(const json& j) {
     string s = j.dump();
-    // Ensure that calling from different threads will not result in broken packets
-    { std::scoped_lock<std::mutex> lock(outLock);
-      // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
-      out << "Content-Length: " << s.size() << "\r\n";
-      out << "Content-Type: " << CONTENT_TYPE_VALUE << "\r\n";
-      out << "\r\n";
-      out.write(s.data(), s.size());
-      out.flush();
-    }
-    { std::scoped_lock<std::mutex> lock(logLock);
-      log << ">> " << "Content-Length: " << s.size() << std::endl;
-      log << ">> " << "Content-Type: " << CONTENT_TYPE_VALUE << std::endl;
-      log << ">> " << s << std::endl << std::endl;
-    }
+
+    // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
+    out << "Content-Length: " << s.size() << "\r\n";
+    out << "Content-Type: " << CONTENT_TYPE_VALUE << "\r\n";
+    out << "\r\n";
+    out.write(s.data(), s.size());
+    out.flush();
+
+    log << ">> " << "Content-Length: " << s.size() << std::endl;
+    log << ">> " << "Content-Type: " << CONTENT_TYPE_VALUE << std::endl;
+    log << ">> " << s << std::endl << std::endl;
   }
 
   void JSONRPC2Server::sendResult(int64_t id, const json& result) {
