@@ -231,11 +231,9 @@ int main() {
     cout << e->conn.l->conn.l->hash() << endl;
     cout << e->conn.l->conn.r->conn.l->hash() << endl;
     */
-    tableau.succ.push_back(e);
-    tableau.succSet.insert(e);
-    cout << "Is " << e->toString(ctx) << " provable? " << tableau.dfs(0, 0) << endl;
-    tableau.succ.clear();
-    tableau.succSet.clear();
+    tableau.addSuccedent(e);
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.dfs(0, 0) << endl;
+    tableau.clear();
 
     e = bin(fv(p), OR, un(NOT, fv(p)));
     /*
@@ -243,11 +241,15 @@ int main() {
     cout << e->conn.l->hash() << endl;
     cout << e->conn.r->conn.l->hash() << endl;
     */
-    tableau.succ.push_back(e);
-    tableau.succSet.insert(e);
-    cout << "Is " << e->toString(ctx) << " provable? " << tableau.dfs(0, 0) << endl;
-    tableau.succ.clear();
-    tableau.succSet.clear();
+    tableau.addSuccedent(e);
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.dfs(0, 0) << endl;
+    tableau.clear();
+
+    // ¬(p ↔ ¬p)
+    e = un(NOT, bin(fv(p), IFF, un(NOT, fv(p))));
+    tableau.addSuccedent(e);
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.dfs(0, 0) << endl;
+    tableau.clear();
   }
 
   return 0;
