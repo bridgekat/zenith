@@ -18,7 +18,7 @@ namespace Server {
   // DEBUG CODE
   extern int64_t DebugCounter;
 
-  // Awaitable (chained) coroutines
+  // Awaitable (chained) coroutines, for single-thread use only
   // See: https://en.cppreference.com/w/cpp/language/coroutines
   // See: https://www.scs.stanford.edu/~dm/blog/c++-coroutines.html
   // See: https://stackoverflow.com/questions/67930087/how-to-do-chained-coroutines-in-c-20

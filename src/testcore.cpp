@@ -2,6 +2,7 @@
 #include <string>
 #include <initializer_list>
 #include "core.hpp"
+#include "elab/tableau.hpp"
 
 using std::string;
 using std::cin, std::cout, std::endl;
@@ -96,7 +97,7 @@ int main() {
         // +1: (not (p or not p))
         // +2: (p -> (p or not p))
         // +3: (p -> false)
-        newDecl(ds, "t3", un(NOT, fv(i + 0)), 
+        newDecl(ds, "t3", un(NOT, fv(i + 0)),
                     newProof(ps, Proof::NOT_I, newProof(ps, i + 3))), // +4
         newDecl(ds, "t4", nullptr /* p or not p */,
                     newProof(ps, Proof::OR_R, newProof(ps, fv(i + 0)), newProof(ps, i + 4))), // +5
@@ -119,7 +120,7 @@ int main() {
         // +4: (forallpred p/0, not (p or not p) -> false)
         // +5: (forallpred p/0, p or not p)
       });
-    
+
     d->check(ctx, pool);
 
     Decl* d1 =
@@ -132,7 +133,7 @@ int main() {
         newDecl(ds, Decl::POP),
         // +6: (forall x y, x = y not x = y)
       });
-    
+
     d1->check(ctx, pool);
 
     Decl* d2 =
@@ -147,7 +148,7 @@ int main() {
         newDecl(ds, Decl::POP),
         // +7: (forallpred q/2, forall x y, q x y or not q x y)
       });
-    
+
     d2->check(ctx, pool);
 
     for (size_t i = 0; i < ctx.size(); i++) {
@@ -177,7 +178,7 @@ int main() {
         // +0: phi: SVAR -> SVAR -> SPROP
         // +1: phi_def : (forall x y, phi x y <-> (x = y and y = x))
       });
-    
+
     d->check(ctx, pool);
 
     Decl* d1 =
@@ -203,6 +204,50 @@ int main() {
       if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
       if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
     }
+  }
+
+  {
+    using namespace Elab;
+    Allocator<Expr> pool;
+    Context ctx;
+    Tableau tableau;
+
+    // unsigned int eq = ctx.eq;
+    unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
+    unsigned int p = ctx.pushVar("p", {{ 0, SPROP }});
+
+    Expr* e = forallpred(2, forall(exists(forall(bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
+    /*
+    cout << e->hash() << endl;
+    cout << e->binder.r->hash() << endl;
+    cout << e->binder.r->binder.r->hash() << endl;
+    cout << e->binder.r->binder.r->binder.r->binder.r->hash() << endl;
+    cout << e->binder.r->binder.r->binder.r->binder.r->conn.l->hash() << endl;
+    */
+    e = un(NOT, bin(fv(p), OR, un(NOT, fv(p))));
+    /*
+    cout << e->hash() << endl;
+    cout << e->conn.l->hash() << endl;
+    cout << e->conn.l->conn.l->hash() << endl;
+    cout << e->conn.l->conn.r->conn.l->hash() << endl;
+    */
+    tableau.succ.push_back(e);
+    tableau.succSet.insert(e);
+    cout << "Is " << e->toString(ctx) << " provable? " << tableau.dfs(0, 0) << endl;
+    tableau.succ.clear();
+    tableau.succSet.clear();
+
+    e = bin(fv(p), OR, un(NOT, fv(p)));
+    /*
+    cout << e->hash() << endl;
+    cout << e->conn.l->hash() << endl;
+    cout << e->conn.r->conn.l->hash() << endl;
+    */
+    tableau.succ.push_back(e);
+    tableau.succSet.insert(e);
+    cout << "Is " << e->toString(ctx) << " provable? " << tableau.dfs(0, 0) << endl;
+    tableau.succ.clear();
+    tableau.succSet.clear();
   }
 
   return 0;

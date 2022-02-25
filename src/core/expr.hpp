@@ -86,6 +86,7 @@ namespace Core {
     // O(size)
     bool operator==(const Expr& rhs) const;
     bool operator!=(const Expr& rhs) const { return !(*this == rhs); }
+    size_t hash() const;
 
     // Print
     // Pre: all nonzero pointers are valid

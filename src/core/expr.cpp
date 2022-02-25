@@ -67,6 +67,43 @@ namespace Core {
     throw Unreachable();
   }
 
+  // Using: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
+  template <class T>
+  inline void hash_combine(size_t& seed, const T& v) {
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+  }
+
+  size_t Expr::hash() const {
+    size_t res = static_cast<size_t>(tag);
+    switch (tag) {
+      case EMPTY: return res;
+      case VAR: {
+        hash_combine(res, var.free);
+        hash_combine(res, var.id);
+        for (const Expr* p = var.c; p; p = p->s) {
+          hash_combine(res, p->hash());
+        }
+        return res;
+      }
+      case TRUE: case FALSE:
+        return res;
+      case NOT:
+        hash_combine(res, conn.l->hash());
+        return res;
+      case AND: case OR: case IMPLIES: case IFF:
+        hash_combine(res, conn.l->hash());
+        hash_combine(res, conn.r->hash());
+        return res;
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+        hash_combine(res, binder.arity);
+        hash_combine(res, binder.sort);
+        hash_combine(res, binder.r->hash());
+        return res;
+    }
+    throw Unreachable();
+  }
+
   string Expr::toString(const Context& ctx, vector<pair<Type, string>>& stk) const {
     switch (tag) {
       case EMPTY: return "[?]";
