@@ -32,9 +32,10 @@ namespace Core {
     };
 
     #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
-    #define nodebinder(tag_, r_)  newNode(pool, tag_, 0, SVAR, r_) // This binds term variables only
-    #define nodebinderks(tag_, k_, s_, r_) \
-                                  newNode(pool, tag_, k_, s_, r_)
+    #define nodebinder(tag_, name_, r_) \
+                                  newNode(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
+    #define nodebinderks(tag_, name_, k_, s_, r_) \
+                                  newNode(pool, tag_, name_, k_, s_, r_)
     #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
     #define isexpr(info)          holds_alternative<const Expr*>(info)
     #define istype(info)          holds_alternative<Type>(info)
@@ -73,7 +74,7 @@ namespace Core {
       for (size_t i = index; i + 1 < a.size(); i++) {
         // Copy a[i + 1] to a[i], with necessary modifications...
         if (isexpr(a[i + 1].info)) {
-          // Forall[func, pred]-intro for theorems
+          // Forallfunc/pred-intro for theorems
           auto modify = [index, &pool] (unsigned int n, Expr* x) {
             // If it is the assumed variable...
             if (x->var.free && x->var.id == index) {
@@ -91,8 +92,8 @@ namespace Core {
           a[i] = {
             a[i + 1].name,
             (t == TTerm && ei->tag != FORALL2) ?
-              nodebinder(FORALL, ei->updateVars(0, pool, modify)) :
-              nodebinderks(FORALL2, t[0].first, t[0].second, ei->updateVars(0, pool, modify))
+              nodebinder(FORALL, entry.name, ei->updateVars(0, pool, modify)) :
+              nodebinderks(FORALL2, entry.name, t[0].first, t[0].second, ei->updateVars(0, pool, modify))
           };
         } else if (istype(a[i + 1].info)) {
           // Add abstraction for definitions

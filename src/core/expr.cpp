@@ -104,13 +104,24 @@ namespace Core {
     throw Unreachable();
   }
 
+  // Give unnamed bound variables a name
+  inline string newName(size_t i) {
+    string res = "";
+    do {
+      res.push_back('a' + i % 26);
+      i /= 26;
+    } while (i > 0);
+    return res;
+  }
+
+  // Undefined variables and null pointers should be OK, as long as non-null pointers are valid.
   string Expr::toString(const Context& ctx, vector<pair<Type, string>>& stk) const {
     switch (tag) {
       case EMPTY: return "[?]";
       case VAR: {
         string res = var.free ?
-          (ctx.valid(var.id)   ? ctx.nameOf(var.id)                  : "[?]") :
-          (var.id < stk.size() ? stk[stk.size() - 1 - var.id].second : "[?]");
+          (ctx.valid(var.id)   ? ctx.nameOf(var.id)                  : "[" + std::to_string(var.id) + "]") :
+          (var.id < stk.size() ? stk[stk.size() - 1 - var.id].second : "{" + std::to_string(var.id) + "}");
         for (const Expr* p = var.c; p; p = p->s) {
           res += " " + p->toString(ctx, stk);
         }
@@ -128,7 +139,7 @@ namespace Core {
       case IFF:     return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " iff "
                                + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
       case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: {
-        string ch, name(1, 'a' + stk.size()); // TODO: names for bound variables!
+        string ch, name = bv.empty() ? newName(stk.size()) : bv;
         switch (tag) {
           case FORALL:  ch = "forall "; break;
           case EXISTS:  ch = "exists "; break;

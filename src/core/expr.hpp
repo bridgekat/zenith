@@ -28,6 +28,7 @@ namespace Core {
 
     Tag tag = EMPTY;
     Expr* s = nullptr; // Next sibling (for children of VAR nodes only)
+    string bv = "";    // Bound variable name (for binder nodes only)
     union {
       // VAR (`id` stands for context index for free variables, de Brujin index for bound variables)
       struct { bool free; unsigned int id; Expr* c; } var;
@@ -61,10 +62,10 @@ namespace Core {
         default: break;
       }
     }
-    Expr(Tag tag, unsigned short arity, Sort sort, Expr* r): Expr(tag) {
+    Expr(Tag tag, const string& bv, unsigned short arity, Sort sort, Expr* r): Expr(tag) {
       switch (tag) {
         case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
-          binder.arity = arity; binder.sort = sort; binder.r = r; break;
+          this->bv = bv; binder.arity = arity; binder.sort = sort; binder.r = r; break;
         default: break;
       }
     }
@@ -81,7 +82,7 @@ namespace Core {
     // Each node may only be attached to **one** parent node at a time!
     void attachChildren(const std::initializer_list<Expr*>& nodes);
 
-    // Syntactical equality
+    // Syntactical equality and hash code (up to alpha-renaming!)
     // Pre: all nonzero pointers are valid
     // O(size)
     bool operator==(const Expr& rhs) const;

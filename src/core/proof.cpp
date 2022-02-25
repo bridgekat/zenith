@@ -45,43 +45,49 @@ namespace Core {
     // Some helper macros that try "pattern matching on" a given node (infix for binary connectives)
     //   *a_ must be a valid & well-formed formula
     //   tag_ must be a constant
-    //   l_, r_ must be identifiers
-    // Local variable x is used to prevent evaluating a_ multiple times
+    //   l_, r_ and name_ must be new identifiers
+    // Local variable x_ is used to prevent evaluating a_ multiple times
     // Throws exception on failure
     #define match0(a_, tag_) { \
-      Expr* x = a_; \
-      if (x->tag != tag_) throw InvalidProof("incorrect main connective", ctx, this); \
+      Expr* x_ = a_; \
+      if (x_->tag != tag_) throw InvalidProof("incorrect main connective", ctx, this); \
     }
-    #define match1(a_, tag_, l_) [[maybe_unused]] Expr* l_; { \
-      Expr* x = a_; \
-      if (x->tag != tag_) throw InvalidProof("incorrect main connective", ctx, this); \
-      if (!x->conn.l)     throw Unreachable(); \
-      l_ = x->conn.l; \
+    #define match1(a_, tag_, l_) \
+    [[maybe_unused]] Expr* l_; { \
+      Expr* x_ = a_; \
+      if (x_->tag != tag_) throw InvalidProof("incorrect main connective", ctx, this); \
+      if (!x_->conn.l)     throw Unreachable(); \
+      l_ = x_->conn.l; \
     }
-    #define match2(a_, l_, tag_, r_) [[maybe_unused]] Expr* l_, * r_; { \
-      Expr* x = a_; \
-      if (x->tag != tag_)           throw InvalidProof("incorrect main connective", ctx, this); \
-      if (!x->conn.l || !x->conn.r) throw Unreachable(); \
-      l_ = x->conn.l, r_ = x->conn.r; \
+    #define match2(a_, l_, tag_, r_) \
+    [[maybe_unused]] Expr* l_, * r_; { \
+      Expr* x_ = a_; \
+      if (x_->tag != tag_)           throw InvalidProof("incorrect main connective", ctx, this); \
+      if (!x_->conn.l || !x_->conn.r) throw Unreachable(); \
+      l_ = x_->conn.l, r_ = x_->conn.r; \
     }
     #define matcheq(a_, l_, r_) Expr* l_, * r_; { \
-      Expr* x = a_; \
-      if (x->tag != VAR || !x->var.free || x->var.id != ctx.eq) \
+      Expr* x_ = a_; \
+      if (x_->tag != VAR || !x_->var.free || x_->var.id != ctx.eq) \
         throw InvalidProof("expected proof of equality", ctx, this); \
-      l_ = x->var.c; r_ = l_->s; /* x is well-formed so we can expect exactly two child nodes here*/ \
+      l_ = x_->var.c; r_ = l_->s; /* x_ is well-formed so we can expect exactly two child nodes here*/ \
     }
-    #define matchbinder(a_, tag_, r_) [[maybe_unused]] Expr* r_; { \
-      Expr* x = a_; \
-      if (x->tag != tag_) throw InvalidProof("incorrect binder", ctx, this); \
-      if (!x->binder.r)   throw Unreachable(); \
-      r_ = x->binder.r; \
+    #define matchbinder(a_, tag_, name_, r_) \
+    [[maybe_unused]] string name_; \
+    [[maybe_unused]] Expr* r_; { \
+      Expr* x_ = a_; \
+      if (x_->tag != tag_) throw InvalidProof("incorrect binder", ctx, this); \
+      if (!x_->binder.r)   throw Unreachable(); \
+      name_ = x_->bv; \
+      r_ = x_->binder.r; \
     }
     #define asserteq(l_, r_) \
       if (*(l_) != *(r_)) throw InvalidProof("subexpressions should be equal", ctx, this)
     #define node0(tag_)           newNode(pool, tag_)
     #define node1(tag_, l_)       newNode(pool, tag_, l_)
     #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
-    #define nodebinder(tag_, r_)  newNode(pool, tag_, 0, SVAR, r_) // This binds term variables only
+    #define nodebinder(tag_, name_, r_) \
+                                  newNode(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
     #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
     switch (tag) {
@@ -131,40 +137,41 @@ namespace Core {
         return px->makeReplace(b, pool);
       }
       case FORALL_E: {
-        matchbinder(proved(0), FORALL, px);
+        matchbinder(proved(0), FORALL, x, px);
         return px->makeReplace(wft(1), pool);
       }
       case EXISTS_I: {
         Expr* conc = wff(0)->clone(pool);
-        matchbinder(conc, EXISTS, px);
+        matchbinder(conc, EXISTS, x, px);
         asserteq(px->makeReplace(wft(1), pool), proved(2));
         return conc;
       }
       case EXISTS_E: {
-        matchbinder(proved(0), EXISTS, px0);
-        matchbinder(proved(1), FORALL, px1q);
+        matchbinder(proved(0), EXISTS, x0, px0);
+        matchbinder(proved(1), FORALL, x1, px1q);
         match2(px1q, px1, IMPLIES, q);
         asserteq(px0, px1); asserteq(q, wff(2));
         return q;
       }
       case UNIQUE_I: {
-        matchbinder(proved(0), EXISTS, px0);
-        matchbinder(proved(1), FORALL, a); match2(a, px1, IMPLIES, b);
-        matchbinder(b, FORALL, c);         match2(c, px2, IMPLIES, d);
+        matchbinder(proved(0), EXISTS, x0, px0);
+        matchbinder(proved(1), FORALL, x1, a); match2(a, px1, IMPLIES, b);
+        matchbinder(b,         FORALL, x2, c); match2(c, px2, IMPLIES, d);
         matcheq(d, l, r);
         if (!(l->tag == VAR && !l->var.free && l->var.id == 1 &&
               r->tag == VAR && !r->var.free && r->var.id == 0))
           throw InvalidProof("expected proof of uniqueness", ctx, this);
         asserteq(px0, px1); asserteq(px0, px2);
-        return nodebinder(UNIQUE, px0);
+        return nodebinder(UNIQUE, x0, px0);
       }
       case UNIQUE_L: {
-        matchbinder(proved(0), UNIQUE, px);
-        return nodebinder(EXISTS, px);
+        matchbinder(proved(0), UNIQUE, x, px);
+        return nodebinder(EXISTS, x, px);
       }
       case UNIQUE_R: {
-        matchbinder(proved(0), UNIQUE, px);
-        return nodebinder(FORALL, node2(px, IMPLIES, nodebinder(FORALL, node2(px->clone(pool), IMPLIES,
+        matchbinder(proved(0), UNIQUE, x, px);
+        return nodebinder(FORALL, x,       node2(px, IMPLIES,
+               nodebinder(FORALL, x + "'", node2(px->clone(pool), IMPLIES,
                           nodevar(FREE, ctx.eq, nodevar(BOUND, 1), nodevar(BOUND, 0))))));
       }
       case FORALL2_E: {
@@ -224,14 +231,18 @@ namespace Core {
       return p;
     };
 
-    #define matchbinder(a_, tag_, r_) [[maybe_unused]] Expr* r_; { \
-      Expr* x = a_; \
-      if (x->tag != tag_) throw InvalidDecl("incorrect binder", ctx, this); \
-      if (!x->binder.r)   throw Unreachable(); \
-      r_ = x->binder.r; \
+    #define matchbinder(a_, tag_, name_, r_) \
+    [[maybe_unused]] string name_; \
+    [[maybe_unused]] Expr* r_; { \
+      Expr* x_ = a_; \
+      if (x_->tag != tag_) throw InvalidDecl("incorrect binder", ctx, this); \
+      if (!x_->binder.r)   throw Unreachable(); \
+      name_ = x_->bv; \
+      r_ = x_->binder.r; \
     }
     #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
-    #define nodebinder(tag_, r_)  newNode(pool, tag_, 0, SVAR, r_) // This binds term variables only
+    #define nodebinder(tag_, name_, r_) \
+                                  newNode(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
     #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
     switch (tag) {
@@ -264,19 +275,19 @@ namespace Core {
         return;
       }
       case DDEF: {
-        matchbinder(proved(ddef.pf), UNIQUE, p);
+        matchbinder(proved(ddef.pf), UNIQUE, x, px);
         unsigned int id = ctx.addDef(name, TTerm);
-        ctx.addTheorem(namedef, nodebinder(FORALL, node2(p, IFF, nodevar(FREE, ctx.eq, nodevar(BOUND, 0), nodevar(FREE, id)))));
+        ctx.addTheorem(namedef, nodebinder(FORALL, x, node2(px, IFF, nodevar(FREE, ctx.eq, nodevar(BOUND, 0), nodevar(FREE, id)))));
         return;
       }
       case IDEF: {
-        matchbinder(proved(idef.pf), EXISTS, p);
+        matchbinder(proved(idef.pf), EXISTS, x, px);
         unsigned int id = ctx.addDef(name, TTerm);
-        ctx.addTheorem(namedef, p->makeReplace(nodevar(FREE, id), pool));
+        ctx.addTheorem(namedef, px->makeReplace(nodevar(FREE, id), pool));
         return;
       }
       case UNDEF: {
-        throw InvalidDecl("TODO", ctx, this);
+        throw NotImplemented();
       }
     }
 

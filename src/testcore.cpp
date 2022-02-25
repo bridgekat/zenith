@@ -24,16 +24,16 @@ int main() {
   #define fv(id, ...) N(FREE,  id, std::initializer_list<Expr*>{__VA_ARGS__})
   #define bv(id, ...) N(BOUND, id, std::initializer_list<Expr*>{__VA_ARGS__})
 
-  #define T                 N(TRUE)
-  #define F                 N(FALSE)
-  #define un(tag, a)        N(tag, a)
-  #define bin(a, tag, b)    N(tag, a, b)
-  #define forall(a)         N(FORALL, 0, SVAR, a)
-  #define exists(a)         N(EXISTS, 0, SVAR, a)
-  #define unique(a)         N(UNIQUE, 0, SVAR, a)
-  #define forallpred(k, a)  N(FORALL2, k, SPROP, a)
-  #define forallfunc(k, a)  N(FORALL2, k, SVAR, a)
-  #define lam(a)            N(LAM, 0, SVAR, a)
+  #define T                   N(TRUE)
+  #define F                   N(FALSE)
+  #define un(tag, a)          N(tag, a)
+  #define bin(a, tag, b)      N(tag, a, b)
+  #define forall(s, a)        N(FORALL, s, 0, SVAR, a)
+  #define exists(s, a)        N(EXISTS, s, 0, SVAR, a)
+  #define unique(s, a)        N(UNIQUE, s, 0, SVAR, a)
+  #define forallpred(s, k, a) N(FORALL2, s, k, SPROP, a)
+  #define forallfunc(s, k, a) N(FORALL2, s, k, SVAR, a)
+  #define lam(s, a)           N(LAM, s, 0, SVAR, a)
 
   {
     Context ctx;
@@ -43,7 +43,7 @@ int main() {
     unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
 
     // The axiom schema of separation...
-    Expr* x = forallpred(2, forall(exists(forall(bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
+    Expr* x = forallpred("phi", 2, forall("x", exists("y", forall("a", bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
 
     cout << x->toString(ctx) << endl;
     cout << showType(x->checkType(ctx)) << endl;
@@ -51,12 +51,12 @@ int main() {
     unsigned int subset = ctx.addDef("subset", {{ 2, SPROP }, { 1, SVAR }});
     unsigned int issc = ctx.addDef("is_subclass", {{ 1, SPROP }, { 1, SPROP }, { 0, SPROP }});
 
-    Expr* y = lam(fv(subset, lam(lam(T)), bv(0)));
+    Expr* y = lam("x", fv(subset, lam("y", lam("z", T)), bv(0)));
 
     cout << y->toString(ctx) << endl;
     cout << showType(y->checkType(ctx)) << endl;
 
-    Expr* z = fv(issc, lam(F), lam(T));
+    Expr* z = fv(issc, lam("x", F), lam("x", T));
 
     cout << z->toString(ctx) << endl;
     cout << showType(z->checkType(ctx)) << endl;
@@ -65,7 +65,7 @@ int main() {
     cout << (*x == *x) << (*y == *y) << (*z == *z) << endl;
 
     Expr* x1 = x->clone(pool);
-    Expr* xrep = x->binder.r->makeReplaceLam(lam(lam(fv(eq, bv(1), bv(0)))), pool);
+    Expr* xrep = x->binder.r->makeReplaceLam(lam("x", lam("y", fv(eq, bv(1), bv(0)))), pool);
 
     cout << (*x == *x1) << endl;
     cout << xrep->toString(ctx) << endl;
@@ -216,7 +216,7 @@ int main() {
     unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
     unsigned int p = ctx.pushVar("p", {{ 0, SPROP }});
 
-    Expr* e = forallpred(2, forall(exists(forall(bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
+    Expr* e = forallpred("phi", 2, forall("x", exists("y", forall("a", bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
     /*
     cout << e->hash() << endl;
     cout << e->binder.r->hash() << endl;
