@@ -3,6 +3,7 @@
 #include <initializer_list>
 #include "core.hpp"
 #include "elab/tableau.hpp"
+#include "elab/proofprocs.hpp"
 
 using std::string;
 using std::cin, std::cout, std::endl;
@@ -19,7 +20,7 @@ int main() {
   cout << sizeof(Proof) << endl;
   cout << sizeof(Decl) << endl;
 
-  #define N(...) newNode(pool, __VA_ARGS__)
+  #define N(...) Expr::make(pool, __VA_ARGS__)
 
   #define fv(id, ...) N(FREE,  id, std::initializer_list<Expr*>{__VA_ARGS__})
   #define bv(id, ...) N(BOUND, id, std::initializer_list<Expr*>{__VA_ARGS__})
@@ -84,35 +85,35 @@ int main() {
     unsigned int i = ctx.size();
 
     Decl* d =
-      newDecl(ds, block{
-        newDecl(ds, "p", 0, SPROP), // +0
-        newDecl(ds, "h1", un(NOT, bin(fv(i + 0), OR, un(NOT, fv(i + 0))))), // +1
-        newDecl(ds, "h2", fv(i + 0)), // +2
-        newDecl(ds, "t1", bin(fv(i + 0), OR, un(NOT, fv(i + 0))),
-                    newProof(ps, Proof::OR_L, newProof(ps, i + 2), newProof(ps, un(NOT, fv(i + 0))))), // +3
-        newDecl(ds, "t2", nullptr /* false */,
-                    newProof(ps, Proof::NOT_E, newProof(ps, i + 1), newProof(ps, i + 3))), // +4
-        newDecl(ds, Decl::POP),
+      Decl::make(ds, block{
+        Decl::make(ds, "p", 0, SPROP), // +0
+        Decl::make(ds, "h1", un(NOT, bin(fv(i + 0), OR, un(NOT, fv(i + 0))))), // +1
+        Decl::make(ds, "h2", fv(i + 0)), // +2
+        Decl::make(ds, "t1", bin(fv(i + 0), OR, un(NOT, fv(i + 0))),
+                   Proof::make(ps, Proof::OR_L, Proof::make(ps, i + 2), Proof::make(ps, un(NOT, fv(i + 0))))), // +3
+        Decl::make(ds, "t2", nullptr /* false */,
+                   Proof::make(ps, Proof::NOT_E, Proof::make(ps, i + 1), Proof::make(ps, i + 3))), // +4
+        Decl::make(ds, Decl::POP),
         // +0: p : SPROP
         // +1: (not (p or not p))
         // +2: (p -> (p or not p))
         // +3: (p -> false)
-        newDecl(ds, "t3", un(NOT, fv(i + 0)),
-                    newProof(ps, Proof::NOT_I, newProof(ps, i + 3))), // +4
-        newDecl(ds, "t4", nullptr /* p or not p */,
-                    newProof(ps, Proof::OR_R, newProof(ps, fv(i + 0)), newProof(ps, i + 4))), // +5
-        newDecl(ds, "t5", F,
-                    newProof(ps, Proof::NOT_E, newProof(ps, i + 1), newProof(ps, i + 5))), // +6
-        newDecl(ds, Decl::POP),
+        Decl::make(ds, "t3", un(NOT, fv(i + 0)),
+                   Proof::make(ps, Proof::NOT_I, Proof::make(ps, i + 3))), // +4
+        Decl::make(ds, "t4", nullptr /* p or not p */,
+                   Proof::make(ps, Proof::OR_R, Proof::make(ps, fv(i + 0)), Proof::make(ps, i + 4))), // +5
+        Decl::make(ds, "t5", F,
+                   Proof::make(ps, Proof::NOT_E, Proof::make(ps, i + 1), Proof::make(ps, i + 5))), // +6
+        Decl::make(ds, Decl::POP),
         // +0: p : SPROP
         // +1: (not (p or not p) -> p -> (p or not p))
         // +2: (not (p or not p) -> p -> false)
         // +3: (not (p or not p) -> not p)
         // +4: (not (p or not p) -> (p or not p))
         // +5: (not (p or not p) -> false)
-        newDecl(ds, "t6", nullptr /* p or not p*/,
-                    newProof(ps, Proof::RAA, newProof(ps, i + 5))), // +6
-        newDecl(ds, Decl::POP),
+        Decl::make(ds, "t6", nullptr /* p or not p*/,
+                   Proof::make(ps, Proof::RAA, Proof::make(ps, i + 5))), // +6
+        Decl::make(ds, Decl::POP),
         // +0: (forallpred p/0, not (p or not p) -> p -> (p or not p))
         // +1: (forallpred p/0, not (p or not p) -> p -> false)
         // +2: (forallpred p/0, not (p or not p) -> not p)
@@ -124,28 +125,28 @@ int main() {
     d->check(ctx, pool);
 
     Decl* d1 =
-      newDecl(ds, block{
-        newDecl(ds, "x", 0, SVAR), // +6
-        newDecl(ds, "y", 0, SVAR), // +7
-        newDecl(ds, "t7", nullptr /* x = y or not x = y */,
-                    newProof(ps, Proof::FORALL2_E, newProof(ps, i + 5), newProof(ps, fv(eq, fv(i + 6), fv(i + 7))))), // +8
-        newDecl(ds, Decl::POP),
-        newDecl(ds, Decl::POP),
+      Decl::make(ds, block{
+        Decl::make(ds, "x", 0, SVAR), // +6
+        Decl::make(ds, "y", 0, SVAR), // +7
+        Decl::make(ds, "t7", nullptr /* x = y or not x = y */,
+                   Proof::make(ps, Proof::FORALL2_E, Proof::make(ps, i + 5), Proof::make(ps, fv(eq, fv(i + 6), fv(i + 7))))), // +8
+        Decl::make(ds, Decl::POP),
+        Decl::make(ds, Decl::POP),
         // +6: (forall x y, x = y not x = y)
       });
 
     d1->check(ctx, pool);
 
     Decl* d2 =
-      newDecl(ds, block{
-        newDecl(ds, "q", 2, SPROP), // +7
-        newDecl(ds, "x", 0, SVAR), // +8
-        newDecl(ds, "y", 0, SVAR), // +9
-        newDecl(ds, "t8", bin(fv(i + 7, fv(i + 8), fv(i + 9)), OR, un(NOT, fv(i + 7, fv(i + 8), fv(i + 9)))),
-                    newProof(ps, Proof::FORALL2_E, newProof(ps, i + 5), newProof(ps, fv(i + 7, fv(i + 8), fv(i + 9))))), // +10
-        newDecl(ds, Decl::POP),
-        newDecl(ds, Decl::POP),
-        newDecl(ds, Decl::POP),
+      Decl::make(ds, block{
+        Decl::make(ds, "q", 2, SPROP), // +7
+        Decl::make(ds, "x", 0, SVAR), // +8
+        Decl::make(ds, "y", 0, SVAR), // +9
+        Decl::make(ds, "t8", bin(fv(i + 7, fv(i + 8), fv(i + 9)), OR, un(NOT, fv(i + 7, fv(i + 8), fv(i + 9)))),
+                   Proof::make(ps, Proof::FORALL2_E, Proof::make(ps, i + 5), Proof::make(ps, fv(i + 7, fv(i + 8), fv(i + 9))))), // +10
+        Decl::make(ds, Decl::POP),
+        Decl::make(ds, Decl::POP),
+        Decl::make(ds, Decl::POP),
         // +7: (forallpred q/2, forall x y, q x y or not q x y)
       });
 
@@ -168,13 +169,13 @@ int main() {
     unsigned int i = ctx.size();
 
     Decl* d =
-      newDecl(ds, block{
-        newDecl(ds, "x", 0, SVAR), // +0
-        newDecl(ds, "y", 0, SVAR), // +1
-        newDecl(ds, Decl::PDEF, "phi", "phi_def",
-                    bin(fv(eq, fv(i + 0), fv(i + 1)), AND, fv(eq, fv(i + 1), fv(i + 0)))), // +2, +3
-        newDecl(ds, Decl::POP),
-        newDecl(ds, Decl::POP)
+      Decl::make(ds, block{
+        Decl::make(ds, "x", 0, SVAR), // +0
+        Decl::make(ds, "y", 0, SVAR), // +1
+        Decl::make(ds, Decl::PDEF, "phi", "phi_def",
+                   bin(fv(eq, fv(i + 0), fv(i + 1)), AND, fv(eq, fv(i + 1), fv(i + 0)))), // +2, +3
+        Decl::make(ds, Decl::POP),
+        Decl::make(ds, Decl::POP)
         // +0: phi: SVAR -> SVAR -> SPROP
         // +1: phi_def : (forall x y, phi x y <-> (x = y and y = x))
       });
@@ -182,16 +183,16 @@ int main() {
     d->check(ctx, pool);
 
     Decl* d1 =
-      newDecl(ds, block{
-        newDecl(ds, "+", 2, SVAR), // +2
-        newDecl(ds, "x", 0, SVAR), // +3
-        newDecl(ds, "y", 0, SVAR), // +4
-        newDecl(ds, "h1", fv(eq, fv(i + 3), fv(i + 4))), // +5
-        newDecl(ds, Decl::FDEF, "f", "f_def",
-                    fv(i + 2, fv(i + 3), fv(i + 4))), // +6, +7
-        newDecl(ds, Decl::POP),
-        newDecl(ds, Decl::POP),
-        newDecl(ds, Decl::POP)
+      Decl::make(ds, block{
+        Decl::make(ds, "+", 2, SVAR), // +2
+        Decl::make(ds, "x", 0, SVAR), // +3
+        Decl::make(ds, "y", 0, SVAR), // +4
+        Decl::make(ds, "h1", fv(eq, fv(i + 3), fv(i + 4))), // +5
+        Decl::make(ds, Decl::FDEF, "f", "f_def",
+                   fv(i + 2, fv(i + 3), fv(i + 4))), // +6, +7
+        Decl::make(ds, Decl::POP),
+        Decl::make(ds, Decl::POP),
+        Decl::make(ds, Decl::POP)
         // +2: +: SVAR -> SVAR -> SVAR
         // +3: f: SVAR -> SVAR -> SVAR
         // +4: f_def : (forall x y, x = y -> f x y = x + y)
@@ -215,6 +216,9 @@ int main() {
     // unsigned int eq = ctx.eq;
     unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
     unsigned int p = ctx.pushVar("p", {{ 0, SPROP }});
+    unsigned int q = ctx.pushVar("q", {{ 0, SPROP }});
+    unsigned int r = ctx.pushVar("r", {{ 0, SPROP }});
+    unsigned int s = ctx.pushVar("s", {{ 0, SPROP }});
 
     Expr* e = forallpred("phi", 2, forall("x", exists("y", forall("a", bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
     /*
@@ -250,6 +254,17 @@ int main() {
     tableau.addSuccedent(e);
     cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.dfs(0, 0) << endl;
     tableau.clear();
+
+    // Conversion to negation normal form
+    e = bin(bin(fv(p), IFF, fv(q)), IFF, un(NOT, bin(fv(r), IMPLIES, fv(s))));
+    Expr* nnf = Elab::Procs::toNNF(e, ctx, pool);
+    cout << e->toString(ctx) << endl;
+    cout << nnf->toString(ctx) << endl;
+    Elab::Procs::foreachValuation({ p, q, r, s }, [&e, &nnf] (const vector<bool>& fvmap) {
+      cout << Elab::Procs::propValue(e, fvmap);
+      cout << Elab::Procs::propValue(nnf, fvmap);
+    });
+    cout << endl;
   }
 
   return 0;

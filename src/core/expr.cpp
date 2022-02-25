@@ -6,7 +6,7 @@ namespace Core {
   Expr* Expr::clone(Allocator<Expr>& pool) const {
     Expr* res = pool.pushBack(*this);
     switch (tag) {
-      case EMPTY: break;
+      case EMPTY: return res;
       case VAR: {
         Expr* last = nullptr;
         for (const Expr* p = var.c; p; p = p->s) {
@@ -14,17 +14,17 @@ namespace Core {
           (last? last->s : res->var.c) = curr;
           last = curr;
         }
-        break;
+        return res;
       }
       case TRUE: case FALSE: case NOT: case AND: case OR: case IMPLIES: case IFF:
         if (conn.l) res->conn.l = (conn.l)->clone(pool);
         if (conn.r) res->conn.r = (conn.r)->clone(pool);
-        break;
+        return res;
       case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
         if (binder.r) res->binder.r = (binder.r)->clone(pool);
-        break;
+        return res;
     }
-    return res;
+    throw NotImplemented();
   }
 
   void Expr::attachChildren(const std::initializer_list<Expr*>& nodes) {
@@ -64,7 +64,7 @@ namespace Core {
                binder.sort  == rhs.binder.sort  &&
                *(binder.r)  == *(rhs.binder.r);
     }
-    throw Unreachable();
+    throw NotImplemented();
   }
 
   // Using: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
@@ -101,7 +101,7 @@ namespace Core {
         hash_combine(res, binder.r->hash());
         return res;
     }
-    throw Unreachable();
+    throw NotImplemented();
   }
 
   // Give unnamed bound variables a name
@@ -161,7 +161,7 @@ namespace Core {
         return res;
       }
     }
-    throw Unreachable();
+    throw NotImplemented();
   }
 
   Type Expr::checkType(const Context& ctx, vector<Type>& stk) const {
@@ -241,7 +241,7 @@ namespace Core {
         else throw InvalidExpr("function body has invalid type", ctx, this);
       }
     }
-    throw Unreachable();
+    throw NotImplemented();
   }
 
 }

@@ -55,12 +55,12 @@ namespace Core {
     // Checks proof (currently no side-effects on `ctx`)
     // Returned pointer is valid & points to a well-formed formula
     Expr* check(const Context& ctx, Allocator<Expr>& pool) const;
-  };
 
-  template<typename ...Ts>
-  inline Proof* newProof(Allocator<Proof>& pool, const Ts&... args) {
-    return pool.pushBack(Proof(args...));
-  }
+    template<typename ...Ts>
+    inline static Proof* make(Allocator<Proof>& pool, const Ts&... args) {
+      return pool.pushBack(Proof(args...));
+    }
+  };
 
   // An exception class representing checking failure
   struct InvalidProof: public CheckFailure {
@@ -134,12 +134,12 @@ namespace Core {
     // Checks declarations, side-effecting the context `ctx` (newly created expressions will be stored in `pool`)
     // Throws exception on failure
     void check(Context& ctx, Allocator<Expr>& pool) const;
-  };
 
-  template<typename ...Ts>
-  inline Decl* newDecl(Allocator<Decl>& pool, const Ts&... args) {
-    return pool.pushBack(Decl(args...));
-  }
+    template<typename ...Ts>
+    inline static Decl* make(Allocator<Decl>& pool, const Ts&... args) {
+      return pool.pushBack(Decl(args...));
+    }
+  };
 
   // An exception class representing checking failure
   struct InvalidDecl: public CheckFailure {

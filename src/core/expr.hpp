@@ -51,7 +51,7 @@ namespace Core {
           binder.r = nullptr; break;
       }
     }
-    Expr(bool free, unsigned int id, const std::initializer_list<Expr*>& c): tag(VAR) {
+    Expr(bool free, unsigned int id, const std::initializer_list<Expr*>& c = {}): tag(VAR) {
       var.free = free; var.id = id; attachChildren(c);
     }
     Expr(Tag tag, Expr* l): Expr(tag) { if (tag == NOT) conn.l = l; }
@@ -138,7 +138,7 @@ namespace Core {
           if (binder.r) res->binder.r = binder.r->updateVars(n + 1, pool, f);
           return res;
       }
-      throw Unreachable();
+      throw NotImplemented();
     }
 
     // Make a free variable into an overflow variable (deep copying whole expression)
@@ -204,12 +204,12 @@ namespace Core {
     }
 
     // TODO: pretty print (infixl, infixr, precedence, etc.)
-  };
 
-  template <typename ...Ts>
-  inline Expr* newNode(Allocator<Expr>& pool, const Ts&... args) {
-    return pool.pushBack(Expr(args...));
-  }
+    template <typename ...Ts>
+    inline static Expr* make(Allocator<Expr>& pool, const Ts&... args) {
+      return pool.pushBack(Expr(args...));
+    }
+  };
 
   // An exception class representing checking failure
   struct InvalidExpr: public CheckFailure {

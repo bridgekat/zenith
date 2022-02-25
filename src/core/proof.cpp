@@ -62,7 +62,7 @@ namespace Core {
     #define match2(a_, l_, tag_, r_) \
     [[maybe_unused]] Expr* l_, * r_; { \
       Expr* x_ = a_; \
-      if (x_->tag != tag_)           throw InvalidProof("incorrect main connective", ctx, this); \
+      if (x_->tag != tag_)            throw InvalidProof("incorrect main connective", ctx, this); \
       if (!x_->conn.l || !x_->conn.r) throw Unreachable(); \
       l_ = x_->conn.l, r_ = x_->conn.r; \
     }
@@ -83,12 +83,12 @@ namespace Core {
     }
     #define asserteq(l_, r_) \
       if (*(l_) != *(r_)) throw InvalidProof("subexpressions should be equal", ctx, this)
-    #define node0(tag_)           newNode(pool, tag_)
-    #define node1(tag_, l_)       newNode(pool, tag_, l_)
-    #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
+    #define node0(tag_)           Expr::make(pool, tag_)
+    #define node1(tag_, l_)       Expr::make(pool, tag_, l_)
+    #define node2(l_, tag_, r_)   Expr::make(pool, tag_, l_, r_)
     #define nodebinder(tag_, name_, r_) \
-                                  newNode(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
-    #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
+                                  Expr::make(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
+    #define nodevar(f_, id_, ...) Expr::make(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
     switch (tag) {
       case EMPTY: throw InvalidProof("unexpected empty tag", ctx, this);
@@ -110,9 +110,9 @@ namespace Core {
       case OR_L: return node2(proved(0), OR, wff(1)->clone(pool));
       case OR_R: return node2(wff(0)->clone(pool), OR, proved(1));
       case OR_E: { match2(proved(0), p0, OR, q0);
-                  match2(proved(1), p1, IMPLIES, r0);
-                  match2(proved(2), q1, IMPLIES, r1);
-                  asserteq(p0, p1); asserteq(q0, q1); asserteq(r0, r1); return r0; }
+                   match2(proved(1), p1, IMPLIES, r0);
+                   match2(proved(2), q1, IMPLIES, r1);
+                   asserteq(p0, p1); asserteq(q0, q1); asserteq(r0, r1); return r0; }
       case IMPLIES_E: { match2(proved(0), p, IMPLIES, q); asserteq(p, proved(1)); return q; }
       case NOT_I:     { match2(proved(0), p, IMPLIES, f); match0(f, FALSE); return node1(NOT, p); }
       case NOT_E:     { match1(proved(0), NOT, p); asserteq(p, proved(1)); return node0(FALSE); }
@@ -201,7 +201,7 @@ namespace Core {
     #undef node2
     #undef nodebinder
     #undef nodevar
-    throw Unreachable();
+    throw NotImplemented();
   }
 
   void Decl::attachChildren(const std::initializer_list<Decl*>& nodes) {
@@ -240,10 +240,10 @@ namespace Core {
       name_ = x_->bv; \
       r_ = x_->binder.r; \
     }
-    #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
+    #define node2(l_, tag_, r_)   Expr::make(pool, tag_, l_, r_)
     #define nodebinder(tag_, name_, r_) \
-                                  newNode(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
-    #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
+                                  Expr::make(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
+    #define nodevar(f_, id_, ...) Expr::make(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
     switch (tag) {
       case EMPTY: throw InvalidDecl("unexpected empty tag", ctx, this);
@@ -295,7 +295,7 @@ namespace Core {
     #undef node2
     #undef nodebinder
     #undef nodevar
-    throw Unreachable();
+    throw NotImplemented();
   }
 
 }

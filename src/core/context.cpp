@@ -31,12 +31,12 @@ namespace Core {
       return a;
     };
 
-    #define node2(l_, tag_, r_)   newNode(pool, tag_, l_, r_)
+    #define node2(l_, tag_, r_)   Expr::make(pool, tag_, l_, r_)
     #define nodebinder(tag_, name_, r_) \
-                                  newNode(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
+                                  Expr::make(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
     #define nodebinderks(tag_, name_, k_, s_, r_) \
-                                  newNode(pool, tag_, name_, k_, s_, r_)
-    #define nodevar(f_, id_, ...) newNode(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
+                                  Expr::make(pool, tag_, name_, k_, s_, r_)
+    #define nodevar(f_, id_, ...) Expr::make(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
     #define isexpr(info)          holds_alternative<const Expr*>(info)
     #define istype(info)          holds_alternative<Type>(info)
     #define expr(info)            get<const Expr*>(info)
@@ -62,14 +62,14 @@ namespace Core {
         } else if (istype(a[i + 1].info)) {
           // No change for definitions
           a[i] = a[i + 1];
-        } else throw Unreachable();
+        } else throw NotImplemented();
       }
       a.pop_back();
 
     } else if (istype(entry.info)) {
       const Type& t = type(entry.info);
       // Assumed variable must be first- or second-order
-      if (t.size() != 1) throw Unreachable();
+      if (t.size() != 1) throw NotImplemented();
 
       for (size_t i = index; i + 1 < a.size(); i++) {
         // Copy a[i + 1] to a[i], with necessary modifications...
@@ -104,11 +104,11 @@ namespace Core {
               Type{{ ti[0].first + 1, ti[0].second }} :
               concat(t, ti)
           };
-        } else throw Unreachable();
+        } else throw NotImplemented();
       }
       a.pop_back();
 
-    } else throw Unreachable();
+    } else throw NotImplemented();
 
     #undef node2
     #undef nodebinder

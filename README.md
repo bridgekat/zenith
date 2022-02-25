@@ -19,17 +19,22 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
   - [ ] User-defined connectives (requires "implicit arguments"?)
 - [ ] The elaborator
   - [ ] Parser & pretty-printer (WIP)
+    - [x] Parsing algorithms (mostly completed)
+    - [ ] Pretty-printer (WIP)
     - [ ] Customizable syntax
     - [ ] Notation support
   - [ ] Interactive proof-searching
     - [ ] Sequent calculus (analytic tableaux) with optimizations (WIP)
-    - [ ] Translation between ND and SC
-    - [ ] First-order unification
+    - [ ] Translation between ND and SC (WIP)
+    - [ ] First-order unification (WIP)
     - [ ] Equational reasoning
     - [ ] Second-order unification
     - [ ] Tactics API
     - [ ] Resolution-based methods (how to translate these to ND?)
   - [ ] Language server & VSCode extension (WIP)
+    - [x] Boilerplate, IO, etc.
+    - [ ] Tracking document changes (WIP)
+    - [ ] Basic functionalities
 - [ ] Mathematics
   - [x] PA
   - [x] ZFC
