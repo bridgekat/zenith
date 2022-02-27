@@ -15,24 +15,25 @@ namespace Core {
   template <typename T>
   class Allocator {
   private:
-    size_t bSize, next;
+    std::size_t bSize, next;
     std::vector<T*> blocks;
 
   public:
-    Allocator(size_t blockSize = 1024): bSize(blockSize), next(0), blocks() {}
+    Allocator(std::size_t blockSize = 1024): bSize(blockSize), next(0), blocks() {}
     Allocator(Allocator&&) = default;
     Allocator& operator=(Allocator&&) = default;
-    ~Allocator() { for (auto p: blocks) delete[] p; }
+    ~Allocator() { for (T* p: blocks) delete[] p; }
 
     T* pushBack(const T& obj) {
       if (next == 0) blocks.push_back(new T[bSize]);
-      T* res = &blocks.back()[next];
+      T* res = blocks.back() + next;
       *res = obj;
-      next++; if (next >= bSize) next = 0;
+      next++;
+      if (next >= bSize) next = 0;
       return res;
     }
 
-    size_t size() const {
+    std::size_t size() const {
       if (next == 0) return bSize * blocks.size();
       return bSize * (blocks.size() - 1) + next;
     }

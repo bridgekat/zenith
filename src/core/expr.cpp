@@ -27,7 +27,7 @@ namespace Core {
     throw NotImplemented();
   }
 
-  void Expr::attachChildren(const std::initializer_list<Expr*>& nodes) {
+  void Expr::attachChildren(const std::initializer_list<Expr*>& nodes) noexcept {
     if (tag != VAR) return;
     Expr* last = nullptr;
     for (Expr* node: nodes) {
@@ -37,7 +37,7 @@ namespace Core {
     (last? last->s : var.c) = nullptr;
   }
 
-  bool Expr::operator==(const Expr& rhs) const {
+  bool Expr::operator==(const Expr& rhs) const noexcept {
     if (tag != rhs.tag) return false;
     // tag == rhs.tag
     switch (tag) {
@@ -69,12 +69,12 @@ namespace Core {
 
   // Using: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
   template <class T>
-  inline void hash_combine(size_t& seed, const T& v) {
+  inline void hash_combine(size_t& seed, const T& v) noexcept {
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
   }
 
-  size_t Expr::hash() const {
+  size_t Expr::hash() const noexcept {
     size_t res = static_cast<size_t>(tag);
     switch (tag) {
       case EMPTY: return res;
@@ -240,6 +240,29 @@ namespace Core {
         }
         else throw InvalidExpr("function body has invalid type", ctx, this);
       }
+    }
+
+    throw NotImplemented();
+  }
+
+  bool Expr::occurs(unsigned int id) const noexcept {
+    switch (tag) {
+      case EMPTY:
+        return false;
+      case VAR:
+        if (var.free && var.id == id) return true;
+        for (const Expr* p = var.c; p; p = p->s) {
+          if (p->occurs(id)) return true;
+        }
+        return false;
+      case TRUE: case FALSE:
+        return false;
+      case NOT:
+        return conn.l && conn.l->occurs(id);
+      case AND: case OR: case IMPLIES: case IFF:
+        return (conn.l && conn.l->occurs(id)) || (conn.r && conn.r->occurs(id));
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
+        return binder.r && binder.r->occurs(id);
     }
     throw NotImplemented();
   }

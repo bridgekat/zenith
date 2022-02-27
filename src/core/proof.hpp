@@ -62,11 +62,9 @@ namespace Core {
     }
   };
 
-  // An exception class representing checking failure
   struct InvalidProof: public CheckFailure {
     InvalidProof(const string& s, const Context&, const Proof*): CheckFailure("Invalid proof, " + s) {}
   };
-
 
   // Pre (for all methods): there is no "cycle" throughout the tree
   // Pre & invariant (for all methods): all nonzero pointers (in the "active variant") are valid
@@ -141,9 +139,8 @@ namespace Core {
     }
   };
 
-  // An exception class representing checking failure
   struct InvalidDecl: public CheckFailure {
-    InvalidDecl(const string& s, const Context&, const Decl*): CheckFailure("Invalid expression, " + s) {}
+    InvalidDecl(const string& s, const Context&, const Decl*): CheckFailure("Invalid declaration, " + s) {}
   };
 
 }

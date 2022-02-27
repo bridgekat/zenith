@@ -10,7 +10,6 @@ namespace Parsing {
 
   // See: https://en.wikipedia.org/wiki/Earley_parser#The_algorithm (for an overview)
   // See: https://loup-vaillant.fr/tutorials/earley-parsing/ (for a simple way to deal with ε rules)
-  // See: 
   // Other related information:
   //   https://github.com/jeffreykegler/kollos/blob/master/notes/misc/leo2.md
   //   https://jeffreykegler.github.io/Marpa-web-site/

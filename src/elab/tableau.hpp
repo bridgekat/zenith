@@ -7,7 +7,6 @@
 #include <utility>
 #include <unordered_set>
 #include <core.hpp>
-#include <iostream>
 
 
 namespace Elab {
@@ -18,8 +17,7 @@ namespace Elab {
   using namespace Core;
 
 
-  // (TEMP CODE)
-  // Method of analytic tableaux (aka. sequent calculus) for classical logic
+  // Method of analytic tableaux (aka. sequent calculus, system LK) for classical logic
   // See: https://en.wikipedia.org/wiki/Method_of_analytic_tableaux
   // See: https://en.wikipedia.org/wiki/Sequent_calculus#The_system_LK
   class Tableau {
@@ -40,8 +38,10 @@ namespace Elab {
       };
     };
 
-    vector<const Expr*> cedents[2];
-    unordered_set<ExprHash, ExprHash::GetHash> hashset[2];
+    // Antecedents in `cedents[0]` and `hashset[0]`
+    // Succedents in `cedents[1]` and `hashset[1]`
+    vector<const Expr*> cedents[2];                        // For a queue-like structure
+    unordered_set<ExprHash, ExprHash::GetHash> hashset[2]; // For fast membership testing
 
     Tableau(): cedents(), hashset() {}
 
@@ -96,6 +96,7 @@ namespace Elab {
       using enum Expr::Tag;
       auto ante = cedents[0], succ = cedents[1];
 
+      // Left logical rules (try breaking down one antecedent)
       if (antei < ante.size()) {
         const Expr* e = ante[antei];
         antei++;
@@ -152,6 +153,7 @@ namespace Elab {
         }
       }
 
+      // Right logical rules (try breaking down one succedent)
       if (succi < succ.size()) {
         const Expr* e = succ[succi];
         succi++;
@@ -208,6 +210,7 @@ namespace Elab {
         }
       }
 
+      // We have used up everything and the branch is still not closed
       return false;
     }
   };

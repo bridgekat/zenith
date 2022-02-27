@@ -3,7 +3,7 @@
 #include <initializer_list>
 #include "core.hpp"
 #include "elab/tableau.hpp"
-#include "elab/proofprocs.hpp"
+#include "elab/procs.hpp"
 
 using std::string;
 using std::cin, std::cout, std::endl;

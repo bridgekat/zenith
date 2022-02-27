@@ -80,14 +80,14 @@ namespace Core {
 
     // Attach children (no-copy)
     // Each node may only be attached to **one** parent node at a time!
-    void attachChildren(const std::initializer_list<Expr*>& nodes);
+    void attachChildren(const std::initializer_list<Expr*>& nodes) noexcept;
 
     // Syntactical equality and hash code (up to alpha-renaming!)
     // Pre: all nonzero pointers are valid
     // O(size)
-    bool operator==(const Expr& rhs) const;
-    bool operator!=(const Expr& rhs) const { return !(*this == rhs); }
-    size_t hash() const;
+    bool operator==(const Expr& rhs) const noexcept;
+    bool operator!=(const Expr& rhs) const noexcept { return !(*this == rhs); }
+    size_t hash() const noexcept;
 
     // Print
     // Pre: all nonzero pointers are valid
@@ -103,6 +103,10 @@ namespace Core {
     // O(size)
     Type checkType(const Context& ctx, vector<Type>& stk) const;
     Type checkType(const Context& ctx) const { vector<Type> stk; return checkType(ctx, stk); }
+
+    // Check if given variable is in the subtree
+    // Pre: all nonzero pointers are valid
+    bool occurs(unsigned int id) const noexcept;
 
     // Modification (deep copying whole expression)
     // Pre: all nonzero pointers are valid

@@ -11,12 +11,9 @@ if (ENABLE_CODE_ANALYSIS)
   message (STATUS "cppcheck ${cppcheck}")
   if (NOT (cppcheck MATCHES "NOTFOUND"))
     # Notes:
-    # - unmatchedSuppression needed since not all source files are
-    #   analyzed simultaneously
-    # - unusedFunction needed since not all source files are
-    #   analyzed simultaneously
-    # - template needed to force "warning" into output string, and
-    #   to make the 'id' available for suppression
+    # - unmatchedSuppression needed since not all source files are analyzed simultaneously
+    # - unusedFunction needed since not all source files are analyzed simultaneously
+    # - template needed to force `warning` into output string, and to make `id` available for suppression
     set (CMAKE_CXX_CPPCHECK "${cppcheck}"
       "--enable=all"
       "--inconclusive"
@@ -55,6 +52,7 @@ add_executable (testcore
   src/core/context.cpp
   src/core/expr.cpp
   src/core/proof.cpp
+  src/elab/procs.cpp
   src/testcore.cpp)
 target_default_compile_options  (testcore)
 target_include_directories      (testcore PRIVATE src)

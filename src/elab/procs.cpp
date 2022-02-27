@@ -1,20 +1,7 @@
-// Elab :: Procs
+#include "procs.hpp"
 
-#ifndef PROOFPROCS_HPP_
-#define PROOFPROCS_HPP_
-
-#include <vector>
-#include <algorithm>
-#include <core.hpp>
-
-
-// Some potentially useful procedures
 namespace Elab::Procs {
 
-  using namespace Core;
-  using std::vector;
-
-  // Pre: `e` is a propositional formula
   bool propValue(const Expr* e, const vector<bool>& fvmap) {
     using enum Expr::Tag;
     switch (e->tag) {
@@ -34,23 +21,7 @@ namespace Elab::Procs {
     throw NotImplemented();
   }
 
-  // Pre: `fvs.size()` <= 63
-  template <typename F>
-  void foreachValuation(const vector<unsigned int>& fvs, F f) {
-    size_t n = fvs.size(), m = *std::max_element(fvs.cbegin(), fvs.cend()) + 1;
-    uint64_t final = 1ull << n, mask = 0;
-    do {
-      vector<bool> fvmap(m);
-      for (size_t i = 0; i < n; i++) if ((mask >> i) & 1u) fvmap[fvs[i]] = true;
-      f(fvmap);
-      mask++;
-    } while (mask != final);
-  }
-
-  // Pre: `e` is well-formed
-  // (Returns a copy in `pool`)
-  // (Also removes IMPLIES, IFF and UNIQUE)
-  Expr* toNNF(const Expr* e, const Context& ctx, Allocator<Expr>& pool, bool negated = false) {
+  Expr* toNNF(const Expr* e, const Context& ctx, Allocator<Expr>& pool, bool negated) {
     using enum Expr::Tag;
     switch (e->tag) {
       case VAR:
@@ -107,8 +78,40 @@ namespace Elab::Procs {
     throw NotImplemented();
   }
 
+  // The Martelli-Montanari unification algorithm.
+  // All free variables with `id >= offset` are considered as undetermined variables; others are just constants.
+  // See: https://en.wikipedia.org/wiki/Unification_(computer_science)#A_unification_algorithm (not this one)
+  // See: http://moscova.inria.fr/~levy/courses/X/IF/03/pi/levy2/martelli-montanari.pdf
+  optional<Subs> unify(unsigned int offset, vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
+    using enum Expr::Tag;
+    Subs res;
 
+    // Adds the assignment
+    auto assign = [&a, &res] (size_t i, unsigned int id, const Expr* e) {
+
+    };
+
+    for (size_t i = 0; i < a.size(); i++) {
+      const Expr* lhs = a[i].first, * rhs = a[i].second;
+      bool lhsf = lhs->tag == VAR && lhs->var.id >= offset;
+      bool rhsf = rhs->tag == VAR && rhs->var.id >= offset;
+      if (lhsf && rhsf) {
+        if (lhs->var.id == rhs->var.id) continue;
+
+      }
+    }
+
+    return res;
+  }
+
+  // A simple anti-unification algorithm.
+  // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
+  tuple<Expr*, Subs, Subs> antiunify(unsigned int offset, const Expr* l, const Expr* r, Allocator<Expr>& pool) {
+    tuple<Expr*, Subs, Subs> res;
+
+    // TODO
+
+    return res;
+  }
 
 }
-
-#endif // PROOFPROCS_HPP_
