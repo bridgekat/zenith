@@ -26,7 +26,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
   - [ ] Interactive proof-searching
     - [ ] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
     - [ ] Translation between ND and SC (WIP)
-    - [ ] [First-order unification](src/elab/procs.hpp) (Martelli-Montanari, WIP)
+    - [x] [First-order unification](src/elab/procs.hpp) (Robinson's)
     - [ ] Second-order unification
     - [ ] Equational reasoning
     - [ ] Tactics API

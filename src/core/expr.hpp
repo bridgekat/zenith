@@ -26,7 +26,7 @@ namespace Core {
     };
     using enum Tag;
 
-    Tag tag = EMPTY;
+    Tag tag;
     Expr* s = nullptr; // Next sibling (for children of VAR nodes only)
     string bv = "";    // Bound variable name (for binder nodes only)
     union {
@@ -40,33 +40,35 @@ namespace Core {
 
     // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
     Expr(): tag(EMPTY) {}
-    Expr(Tag tag): tag(tag) {
-      switch (tag) {
-        case EMPTY: break;
-        case VAR:
-          var.c = nullptr; break;
-        case TRUE: case FALSE: case NOT: case AND: case OR: case IMPLIES: case IFF:
-          conn.l = conn.r = nullptr; break;
-        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
-          binder.r = nullptr; break;
-      }
-    }
     Expr(bool free, unsigned int id, const std::initializer_list<Expr*>& c = {}): tag(VAR) {
       var.free = free; var.id = id; attachChildren(c);
     }
-    Expr(Tag tag, Expr* l): Expr(tag) { if (tag == NOT) conn.l = l; }
-    Expr(Tag tag, Expr* l, Expr* r): Expr(tag) {
+    Expr(Tag tag): tag(tag) {
       switch (tag) {
-        case AND: case OR: case IMPLIES: case IFF:
-          conn.l = l; conn.r = r; break;
-        default: break;
+        case TRUE: case FALSE:
+          conn.l = conn.r = nullptr; return;
+        default: throw new NotImplemented();
       }
     }
-    Expr(Tag tag, const string& bv, unsigned short arity, Sort sort, Expr* r): Expr(tag) {
+    Expr(Tag tag, Expr* l): tag(tag) {
+      switch (tag) {
+        case NOT:
+          conn.l = l; conn.r = nullptr; return;
+        default: throw new NotImplemented();
+      }
+    }
+    Expr(Tag tag, Expr* l, Expr* r): tag(tag) {
+      switch (tag) {
+        case AND: case OR: case IMPLIES: case IFF:
+          conn.l = l; conn.r = r; return;
+        default: throw new NotImplemented();
+      }
+    }
+    Expr(Tag tag, const string& bv, unsigned short arity, Sort sort, Expr* r): tag(tag) {
       switch (tag) {
         case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
-          this->bv = bv; binder.arity = arity; binder.sort = sort; binder.r = r; break;
-        default: break;
+          this->bv = bv; binder.arity = arity; binder.sort = sort; binder.r = r; return;
+        default: throw new NotImplemented();
       }
     }
     // Assignment is shallow copy
@@ -83,7 +85,7 @@ namespace Core {
     void attachChildren(const std::initializer_list<Expr*>& nodes) noexcept;
 
     // Syntactical equality and hash code (up to alpha-renaming!)
-    // Pre: all nonzero pointers are valid
+    // Pre: { `this`, `rhs` } is arity-consistent
     // O(size)
     bool operator==(const Expr& rhs) const noexcept;
     bool operator!=(const Expr& rhs) const noexcept { return !(*this == rhs); }
@@ -126,6 +128,7 @@ namespace Core {
             (last? last->s : res->var.c) = q;
             last = q;
           }
+          (last? last->s : res->var.c) = nullptr;
           // Apply f on the newly created node and return
           return f(n, res);
         }
@@ -170,8 +173,8 @@ namespace Core {
     }
 
     // Skip through lambda binders
-    // Pre: expression must be well-formed
-    pair<unsigned int, const Expr*> getBody() const {
+    // Pre: expression must be arity-consistent
+    pair<unsigned int, const Expr*> getBody() const noexcept {
       unsigned int res = 0;
       const Expr* p = this;
       while (p->tag == LAM) p = p->binder.r, res++;

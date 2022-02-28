@@ -10,10 +10,11 @@ namespace Core {
       case VAR: {
         Expr* last = nullptr;
         for (const Expr* p = var.c; p; p = p->s) {
-          Expr* curr = p->clone(pool);
-          (last? last->s : res->var.c) = curr;
-          last = curr;
+          Expr* q = p->clone(pool);
+          (last? last->s : res->var.c) = q;
+          last = q;
         }
+        (last? last->s : res->var.c) = nullptr;
         return res;
       }
       case TRUE: case FALSE: case NOT: case AND: case OR: case IMPLIES: case IFF:
@@ -30,9 +31,9 @@ namespace Core {
   void Expr::attachChildren(const std::initializer_list<Expr*>& nodes) noexcept {
     if (tag != VAR) return;
     Expr* last = nullptr;
-    for (Expr* node: nodes) {
-      (last? last->s : var.c) = node;
-      last = node;
+    for (Expr* q: nodes) {
+      (last? last->s : var.c) = q;
+      last = q;
     }
     (last? last->s : var.c) = nullptr;
   }

@@ -78,40 +78,192 @@ namespace Elab::Procs {
     throw NotImplemented();
   }
 
-  // The Martelli-Montanari unification algorithm.
-  // All free variables with `id >= offset` are considered as undetermined variables; others are just constants.
-  // See: https://en.wikipedia.org/wiki/Unification_(computer_science)#A_unification_algorithm (not this one)
-  // See: http://moscova.inria.fr/~levy/courses/X/IF/03/pi/levy2/martelli-montanari.pdf
+  // A simple anti-unification algorithm.
+  // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
+  class Antiunifier {
+  public:
+    unsigned int nextid;
+    Allocator<Expr>* pool;
+    Subs ls, rs;
+
+    Antiunifier(): nextid{}, pool{}, ls{}, rs{} {}
+    Antiunifier(const Antiunifier&) = delete;
+    Antiunifier& operator=(const Antiunifier&) = delete;
+
+    Expr* dfs(const Expr* lhs, const Expr* rhs) {
+      using enum Expr::Tag;
+
+      // If roots are different, return this
+      auto different = [this, lhs, rhs] () {
+        unsigned int id = nextid;
+        nextid++;
+        ls.ts.push_back(lhs);
+        rs.ts.push_back(rhs);
+        return Expr::make(*pool, FREE, id);
+      };
+ 
+      if (lhs->tag != rhs->tag) return different();
+      // lhs->tag == rhs->tag
+      switch (lhs->tag) {
+        case EMPTY:
+          throw Unreachable();
+        case VAR: {
+          if (lhs->var.free != rhs->var.free || lhs->var.id != rhs->var.id) {
+            return different();
+          }
+          Expr* res = Expr::make(*pool, lhs->var.free, lhs->var.id), * last = nullptr;
+          const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
+          for (; plhs && prhs; plhs = plhs->s, prhs = prhs->s) {
+            Expr* q = dfs(plhs, prhs);
+            (last? last->s : res->var.c) = q;
+            last = q;
+          }
+          (last? last->s : res->var.c) = nullptr;
+          if (plhs || prhs) throw Unreachable();
+          return res;
+        }
+        case TRUE: case FALSE:
+          return Expr::make(*pool, lhs->tag);
+        case NOT:
+          return Expr::make(*pool, lhs->tag, dfs(lhs->conn.l, rhs->conn.l));
+        case AND: case OR: case IMPLIES: case IFF:
+          return Expr::make(*pool, lhs->tag, dfs(lhs->conn.l, rhs->conn.l), dfs(lhs->conn.r, rhs->conn.r));
+        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+          if (lhs->binder.arity != rhs->binder.arity || lhs->binder.sort != rhs->binder.sort) {
+            return different();
+          }
+          return Expr::make(*pool, lhs->tag,
+            lhs->bv, lhs->binder.arity, lhs->binder.sort,
+            dfs(lhs->binder.r, rhs->binder.r));
+      }
+      throw NotImplemented();
+    }
+
+    tuple<Expr*, Subs, Subs> operator()(unsigned int offset, Allocator<Expr>* pool, const Expr* lhs, const Expr* rhs) {
+      this->pool = pool;
+      ls.offset = rs.offset = this->nextid = offset;
+      ls.ts.clear(); rs.ts.clear();
+      Expr* c = dfs(lhs, rhs);
+      return { c, ls, rs };
+    }
+  };
+
+  tuple<Expr*, Subs, Subs> antiunify(unsigned int offset, const Expr* l, const Expr* r, Allocator<Expr>& pool) {
+    return Antiunifier()(offset, &pool, l, r);
+  }
+
+  // The Robinson's unification algorithm (could take exponential time for certain cases.)
+  // See: https://en.wikipedia.org/wiki/Unification_(computer_science)#A_unification_algorithm
   optional<Subs> unify(unsigned int offset, vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
     using enum Expr::Tag;
-    Subs res;
 
-    // Adds the assignment
-    auto assign = [&a, &res] (size_t i, unsigned int id, const Expr* e) {
-
+    Subs res{ offset, vector<const Expr*>() };
+    auto putsubs = [&res, &pool, &a] (unsigned int id, const Expr* e, size_t i0) {
+      // Make enough space
+      while (id >= res.offset + res.ts.size()) {
+        res.ts.push_back(nullptr);
+      }
+      // id < res.offset + res.ts.size()
+      res.ts[id - res.offset] = e;
+      // Update the rest of `a`
+      auto f = [id, e, &pool] (unsigned int, Expr* x) {
+        if (x->var.free && x->var.id == id) return e->clone(pool);
+        return x;
+      };
+      for (size_t i = i0; i < a.size(); i++) {
+        a[i].first = a[i].first->updateVars(0, pool, f);
+        a[i].second = a[i].second->updateVars(0, pool, f);
+      }
     };
 
     for (size_t i = 0; i < a.size(); i++) {
       const Expr* lhs = a[i].first, * rhs = a[i].second;
-      bool lhsf = lhs->tag == VAR && lhs->var.id >= offset;
-      bool rhsf = rhs->tag == VAR && rhs->var.id >= offset;
-      if (lhsf && rhsf) {
-        if (lhs->var.id == rhs->var.id) continue;
 
+      if (lhs->tag == VAR && lhs->var.free && lhs->var.id >= offset) {
+        if (*lhs == *rhs);
+        else if (rhs->occurs(lhs->var.id)) return nullopt;
+        else putsubs(lhs->var.id, rhs, i + 1);
+        continue;
+
+      } else if (rhs->tag == VAR && rhs->var.free && rhs->var.id >= offset) {
+        if (*lhs == *rhs);
+        else if (lhs->occurs(rhs->var.id)) return nullopt;
+        else putsubs(rhs->var.id, lhs, i + 1);
+        continue;
+
+      } else {
+        if (lhs->tag != rhs->tag) return nullopt;
+        // lhs->tag == rhs->tag
+        switch (lhs->tag) {
+          case EMPTY:
+            throw Unreachable();
+          case VAR: {
+            if (lhs->var.free != rhs->var.free || lhs->var.id != rhs->var.id) return nullopt;
+            const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
+            for (; plhs && prhs; plhs = plhs->s, prhs = prhs->s) {
+              a.emplace_back(plhs, prhs);
+            }
+            if (plhs || prhs) throw Unreachable();
+            break;
+          }
+          case TRUE: case FALSE:
+            break;
+          case NOT:
+            a.emplace_back(lhs->conn.l, rhs->conn.l);
+            break;
+          case AND: case OR: case IMPLIES: case IFF:
+            a.emplace_back(lhs->conn.l, rhs->conn.l);
+            a.emplace_back(lhs->conn.r, rhs->conn.r);
+            break;
+          case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+            if (lhs->binder.arity != rhs->binder.arity || lhs->binder.sort != rhs->binder.sort) {
+              return nullopt;
+            }
+            a.emplace_back(lhs->binder.r, rhs->binder.r);
+            break;
+        }
+        continue;
       }
     }
 
     return res;
   }
 
-  // A simple anti-unification algorithm.
-  // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
-  tuple<Expr*, Subs, Subs> antiunify(unsigned int offset, const Expr* l, const Expr* r, Allocator<Expr>& pool) {
-    tuple<Expr*, Subs, Subs> res;
+  /*
+  // The Martelli-Montanari unification algorithm.
+  // All free variables with `id >= offset` are considered as undetermined variables; others are just constants.
+  // See: http://moscova.inria.fr/~levy/courses/X/IF/03/pi/levy2/martelli-montanari.pdf
+  optional<Subs> mmunify(unsigned int offset, vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
+    using enum Expr::Tag;
 
-    // TODO
+    *
+    * Side note: so what Tony Field described here is not the real Martelli-Montanari:
+    * https://www.doc.ic.ac.uk/~ajf/haskelltests/typeinference/spec.pdf
+    * This method could take exponential time on certain cases, as discussed in the Martelli-Montanari paper...
+    * e.g. consider the following constructions:
+    *
+    * ```
+    * left :: Int -> Type
+    * left n
+    *   | n == 0    = TFun (TFun (TVar s) (TVar s)) (TVar s)
+    *   | otherwise = TFun (TFun (left (n - 1)) (TVar s)) (TVar s)
+    *   where s = "v" ++ show n
+    *
+    * right :: Int -> Type
+    * right n
+    *   | n == 0    = TFun (TFun (TVar s) (TVar s)) (TVar s)
+    *   | otherwise = TFun (TFun (TVar s) (right (n - 1))) (TVar s)
+    *   where s = "v" ++ show n
+    * ```
+    *
+    * Now run: `unify (left 15) (right 15)`. It may take half a minute to complete.
+    * Changing 15 to 20 will cause stack overflow.
+    * (There's another problem with the `applySub` function defined in the spec; it only works when
+    *  the RHS of every substitution does not contain other variables, but is easy to fix.)
+    *
 
     return res;
   }
+  */
 
 }

@@ -205,6 +205,7 @@ int main() {
       if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
       if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
     }
+    cout << endl;
   }
 
   {
@@ -254,8 +255,9 @@ int main() {
     tableau.addSuccedent(e);
     cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.dfs(0, 0) << endl;
     tableau.clear();
+    cout << endl;
 
-    // Conversion to negation normal form
+    cout << "Conversion to negation normal form:" << endl;
     e = bin(bin(fv(p), IFF, fv(q)), IFF, un(NOT, bin(fv(r), IMPLIES, fv(s))));
     Expr* nnf = Elab::Procs::toNNF(e, ctx, pool);
     cout << e->toString(ctx) << endl;
@@ -264,6 +266,62 @@ int main() {
       cout << Elab::Procs::propValue(e, fvmap);
       cout << Elab::Procs::propValue(nnf, fvmap);
     });
+    cout << endl;
+    cout << endl;
+  }
+
+  {
+    using namespace Elab::Procs;
+    Allocator<Expr> pool;
+    Context ctx;
+
+    unsigned int eq = ctx.eq;
+    unsigned int f = ctx.pushVar("f", {{ 2, SVAR }});
+    unsigned int g = ctx.pushVar("g", {{ 2, SVAR }});
+    unsigned int h = ctx.pushVar("h", {{ 2, SVAR }});
+    unsigned int a = ctx.pushVar("a", TTerm);
+    unsigned int b = ctx.pushVar("b", TTerm);
+    unsigned int offset = ctx.size();
+    unsigned int x = ctx.pushVar("x", TTerm);
+    unsigned int y = ctx.pushVar("y", TTerm);
+    unsigned int z = ctx.pushVar("z", TTerm);
+    unsigned int u = ctx.pushVar("u", TTerm);
+    unsigned int v = ctx.pushVar("v", TTerm);
+
+    const Expr* lhs = fv(eq, fv(f, fv(x), fv(g, fv(x), fv(y))), fv(h, fv(z), fv(y)));
+    const Expr* rhs = fv(eq, fv(z), fv(h, fv(f, fv(u), fv(v)), fv(f, fv(a), fv(b))));
+    const Expr* lhs1 = fv(f, fv(x), fv(y));
+    const Expr* rhs1 = fv(f, fv(x), fv(f, fv(x), fv(y)));
+
+    cout << "First-order unification:" << endl;
+    cout << lhs1->toString(ctx) << endl;
+    cout << rhs1->toString(ctx) << endl;
+    cout << unify(offset, {{ lhs1, rhs1 }}, pool).has_value() << endl;
+    cout << endl;
+
+    cout << lhs->toString(ctx) << endl;
+    cout << rhs->toString(ctx) << endl;
+    Subs subs = unify(offset, {{ lhs, rhs }}, pool).value();
+    for (size_t i = 0; i < subs.ts.size(); i++) if (subs.ts[i]) {
+      cout << Expr(FREE, subs.offset + i).toString(ctx) << " -> " << subs.ts[i]->toString(ctx) << endl;
+    }
+    cout << applySubs(lhs, subs, pool)->toString(ctx) << endl;
+    cout << applySubs(rhs, subs, pool)->toString(ctx) << endl;
+    cout << endl;
+
+    cout << "First-order anti-unification:" << endl;
+    auto [tmpl, lsub, rsub] = antiunify(ctx.size(), lhs, rhs, pool);
+    cout << "Template: " << tmpl->toString(ctx) << endl;
+    cout << "LHS substitution:" << endl;
+    for (size_t i = 0; i < lsub.ts.size(); i++) if (subs.ts[i]) {
+      cout << Expr(FREE, lsub.offset + i).toString(ctx) << " -> " << lsub.ts[i]->toString(ctx) << endl;
+    }
+    cout << applySubs(lhs, lsub, pool)->toString(ctx) << endl;
+    cout << "RHS substitution:" << endl;
+    for (size_t i = 0; i < rsub.ts.size(); i++) if (subs.ts[i]) {
+      cout << Expr(FREE, rsub.offset + i).toString(ctx) << " -> " << rsub.ts[i]->toString(ctx) << endl;
+    }
+    cout << applySubs(rhs, rsub, pool)->toString(ctx) << endl;
     cout << endl;
   }
 
