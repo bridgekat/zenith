@@ -53,6 +53,7 @@ add_executable (testcore
   src/core/expr.cpp
   src/core/proof.cpp
   src/elab/procs.cpp
+  src/elab/tableau.cpp
   src/testcore.cpp)
 target_default_compile_options  (testcore)
 target_include_directories      (testcore PRIVATE src)

@@ -43,7 +43,7 @@ namespace Elab::Procs {
   Expr* toNNF(const Expr* e, const Context& ctx, Allocator<Expr>& pool, bool negated = false);
 
   // A substitution of free variables with id in the interval [`offset`, `offset + ts.size()`).
-  // `ts` should not contain circular dependencies.
+  // `ts` should not contain circular dependencies. Use `nullptr` to represent unmodified variables.
   struct Subs {
     unsigned int offset;
     vector<const Expr*> ts;

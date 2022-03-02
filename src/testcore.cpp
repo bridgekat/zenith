@@ -71,6 +71,7 @@ int main() {
     cout << (*x == *x1) << endl;
     cout << xrep->toString(ctx) << endl;
     cout << showType(xrep->checkType(ctx)) << endl;
+    cout << endl;
   }
 
   {
@@ -157,6 +158,7 @@ int main() {
       if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
       if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
     }
+    cout << endl;
   }
 
   {

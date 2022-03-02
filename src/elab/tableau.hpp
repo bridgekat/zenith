@@ -17,33 +17,44 @@ namespace Elab {
   using namespace Core;
 
 
-  // Method of analytic tableaux (aka. sequent calculus, system LK) for classical logic
-  // See: https://en.wikipedia.org/wiki/Method_of_analytic_tableaux
-  // See: https://en.wikipedia.org/wiki/Sequent_calculus#The_system_LK
+  // "Expression with hash" (a wrapper for `const Expr*` that overloads the `==` operator)
+  struct ExprHash {
+    const Expr* e;
+    size_t hash;
+
+    // `*e` should not be changed after this construction
+    explicit ExprHash(const Expr* e): e(e), hash(e->hash()) {}
+    bool operator==(const ExprHash& r) const { return hash == r.hash && *e == *(r.e); }
+    bool operator!=(const ExprHash& r) const { return hash != r.hash || *e != *(r.e); }
+
+    struct GetHash {
+      size_t operator()(const ExprHash& eh) const { return eh.hash; }
+    };
+  };
+
+  // Method of analytic tableaux (aka. sequent calculus) for classical logic
+
+  // For an introduction, see:
+  // - https://en.wikipedia.org/wiki/Method_of_analytic_tableaux
+  // - https://en.wikipedia.org/wiki/Sequent_calculus#The_system_LK
+
+  // For implementation-related things, see:
+  // - https://www21.in.tum.de/teaching/sar/SS20/2.pdf
+  // - https://moodle.risc.jku.at/pluginfile.php/10562/mod_resource/content/12/07-fol3.pdf
+  // - https://www.wolfgangschwarz.net/trees/
+  // - https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.216.388&rep=rep1&type=pdf
+  //   (Also contains several completeness proofs)
+
   class Tableau {
   public:
 
-    // "Expression with hash" (a wrapper for `const Expr*` that overloads equality sign)
-    struct ExprHash {
-      const Expr* e;
-      size_t hash;
-
-      // `*e` should not be changed after this construction
-      ExprHash(const Expr* e): e(e), hash(e->hash()) {}
-      bool operator==(const ExprHash& r) const { return hash == r.hash && *e == *(r.e); }
-      bool operator!=(const ExprHash& r) const { return hash != r.hash || *e != *(r.e); }
-
-      struct GetHash {
-        size_t operator()(const ExprHash& eh) const { return eh.hash; }
-      };
-    };
-
+    const Context& ctx;
     // Antecedents in `cedents[0]` and `hashset[0]`
     // Succedents in `cedents[1]` and `hashset[1]`
     vector<const Expr*> cedents[2];                        // For a queue-like structure
     unordered_set<ExprHash, ExprHash::GetHash> hashset[2]; // For fast membership testing
 
-    Tableau(): cedents(), hashset() {}
+    Tableau(const Context& ctx): ctx(ctx), cedents(), hashset() {}
 
     void addAntecedent(const Expr* e) {
       auto it = hashset[0].insert(ExprHash(e));
@@ -64,155 +75,9 @@ namespace Elab {
       cedents[1].clear();
     }
 
-    // Scope guard for "insert antecedents/succedents, check if closed, recurse, and remove them"
-    template <unsigned int I, unsigned int J>
-    class With {
-    public:
-      Tableau* const p;
-      pair<unordered_set<ExprHash, ExprHash::GetHash>::iterator, bool> it;
-      With(Tableau* p, const Expr* e, bool* closed): p(p), it() {
-        ExprHash ehash = ExprHash(e);
-        it = p->hashset[I].insert(ehash);
-        if (it.second) {
-          p->cedents[I].push_back(e);
-          if (p->hashset[J].contains(ehash)) *closed = true;
-        }
-      }
-      With(const With&) = delete;
-      With& operator=(const With&) = delete;
-      ~With() {
-        if (it.second) {
-          p->cedents[I].pop_back();
-          p->hashset[I].erase(it.first);
-        }
-      }
-    };
-    using WithAnte = With<0, 1>;
-    using WithSucc = With<1, 0>;
-
     // Pre: all elements of `ante`, `succ`, `anteSet` and `succSet` are valid, well-formed formulas
     // All states will be unmodified/restored
-    bool dfs(size_t antei, size_t succi) {
-      using enum Expr::Tag;
-      auto ante = cedents[0], succ = cedents[1];
-
-      // Left logical rules (try breaking down one antecedent)
-      if (antei < ante.size()) {
-        const Expr* e = ante[antei];
-        antei++;
-        switch (e->tag) {
-          case NOT: {
-            bool closed = false;
-            WithSucc n(this, e->conn.l, &closed);
-            return closed || dfs(antei, succi);
-          }
-          case AND: {
-            bool closed = false;
-            WithAnte l(this, e->conn.l, &closed);
-            WithAnte r(this, e->conn.r, &closed);
-            return closed || dfs(antei, succi);
-          }
-          case OR: {
-            {
-              bool closed = false;
-              WithAnte l(this, e->conn.l, &closed);
-              if (!closed && !dfs(antei, succi)) return false;
-            }
-            {
-              bool closed = false;
-              WithSucc l(this, e->conn.l, &closed); // Optimization
-              WithAnte r(this, e->conn.r, &closed);
-              if (!closed && !dfs(antei, succi)) return false;
-            }
-            return true;
-          }
-          case IMPLIES: {
-            {
-              bool closed = false;
-              WithSucc n(this, e->conn.l, &closed);
-              if (!closed && !dfs(antei, succi)) return false;
-            }
-            {
-              bool closed = false;
-              WithAnte l(this, e->conn.l, &closed); // Optimization
-              WithAnte r(this, e->conn.r, &closed);
-              if (!closed && !dfs(antei, succi)) return false;
-            }
-            return true;
-          }
-          case IFF: {
-            Expr mp(IMPLIES, e->conn.l, e->conn.r);
-            Expr mpr(IMPLIES, e->conn.r, e->conn.l);
-            bool closed = false;
-            WithAnte l(this, &mp, &closed);
-            WithAnte r(this, &mpr, &closed);
-            return closed || dfs(antei, succi);
-          }
-          default:
-            return dfs(antei, succi);
-        }
-      }
-
-      // Right logical rules (try breaking down one succedent)
-      if (succi < succ.size()) {
-        const Expr* e = succ[succi];
-        succi++;
-        switch (e->tag) {
-          case NOT: {
-            bool closed = false;
-            WithAnte n(this, e->conn.l, &closed);
-            return closed || dfs(antei, succi);
-          }
-          case AND: {
-            {
-              bool closed = false;
-              WithSucc l(this, e->conn.l, &closed);
-              if (!closed && !dfs(antei, succi)) return false;
-            }
-            {
-              bool closed = false;
-              WithAnte l(this, e->conn.l, &closed); // Optimization
-              WithSucc r(this, e->conn.r, &closed);
-              if (!closed && !dfs(antei, succi)) return false;
-            }
-            return true;
-          }
-          case OR: {
-            bool closed = false;
-            WithSucc l(this, e->conn.l, &closed);
-            WithSucc r(this, e->conn.r, &closed);
-            return closed || dfs(antei, succi);
-          }
-          case IMPLIES: {
-            bool closed = false;
-            WithAnte l(this, e->conn.l, &closed);
-            WithSucc r(this, e->conn.r, &closed);
-            return closed || dfs(antei, succi);
-          }
-          case IFF: {
-            Expr mp(IMPLIES, e->conn.l, e->conn.r);
-            Expr mpr(IMPLIES, e->conn.r, e->conn.l);
-            {
-              bool closed = false;
-              WithSucc l(this, &mp, &closed);
-              if (!closed && !dfs(antei, succi)) return false;
-            }
-            {
-              bool closed = false;
-              WithAnte l(this, &mp, &closed); // Optimization
-              WithSucc r(this, &mpr, &closed);
-              if (!closed && !dfs(antei, succi)) return false;
-            }
-            return true;
-          }
-          default:
-            return dfs(antei, succi);
-        }
-      }
-
-      // We have used up everything and the branch is still not closed
-      return false;
-    }
+    bool dfs(size_t antei, size_t succi);
   };
 
 }

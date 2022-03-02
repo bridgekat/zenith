@@ -83,12 +83,12 @@ namespace Parsing {
   // Function object for the DFA construction from NFA
   class PowersetConstruction {
   public:
-    const NFALexer& nfa;
+    const NFALexer* nfa;
     DFALexer* dfa;
     vector<bool> v;
     unordered_map<vector<bool>, DFALexer::State> mp;
 
-    PowersetConstruction(const NFALexer& nfa, DFALexer* dfa): nfa(nfa), dfa(dfa), v(), mp() {}
+    PowersetConstruction(const NFALexer* nfa, DFALexer* dfa): nfa(nfa), dfa(dfa), v(), mp() {}
     PowersetConstruction(const PowersetConstruction&) = delete;
     PowersetConstruction& operator=(const PowersetConstruction&) = delete;
 
@@ -97,7 +97,7 @@ namespace Parsing {
       vector<NFALexer::State> stk = s;
       while (!stk.empty()) {
         NFALexer::State nx = stk.back(); stk.pop_back();
-        for (auto [cc, nu]: nfa.table[nx].tr) if (cc == 0 && !v[nu]) {
+        for (auto [cc, nu]: nfa->table[nx].tr) if (cc == 0 && !v[nu]) {
           s.push_back(nu);
           stk.push_back(nu);
           v[nu] = true;
@@ -119,7 +119,7 @@ namespace Parsing {
       // Check if `s` contains accepting states
       optional<TokenID> curr;
       for (auto ns: s) {
-        auto opt = nfa.table[ns].ac;
+        auto opt = nfa->table[ns].ac;
         if (opt && (!curr || curr.value() > opt.value())) curr = opt;
       }
       dfa->table[x].ac = curr;
@@ -128,7 +128,7 @@ namespace Parsing {
       for (unsigned int c = 0x01; c <= 0xFF; c++) {
         // Compute u
         vector<NFALexer::State> t;
-        for (auto nx: s) for (auto [cc, nu]: nfa.table[nx].tr) {
+        for (auto nx: s) for (auto [cc, nu]: nfa->table[nx].tr) {
           if (cc == c && !v[nu]) {
             t.push_back(nu);
             v[nu] = true;
@@ -153,10 +153,10 @@ namespace Parsing {
     }
 
     void operator() () {
-      v.clear(); v.resize(nfa.table.size());
+      v.clear(); v.resize(nfa->table.size());
       mp.clear();
-      vector<NFALexer::State> s = { nfa.initial };
-      v[nfa.initial] = true;
+      vector<NFALexer::State> s = { nfa->initial };
+      v[nfa->initial] = true;
       closure(v, s);
       node(dfa->initial, v);
       clearv(s);
@@ -169,7 +169,7 @@ namespace Parsing {
   };
 
   DFALexer::DFALexer(const NFALexer& nfa): table(), initial(0), rest() {
-    PowersetConstruction(nfa, this)();
+    PowersetConstruction(&nfa, this)();
   }
 
   // Function object for the DFA state minimization

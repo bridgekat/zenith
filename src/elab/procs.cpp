@@ -158,6 +158,8 @@ namespace Elab::Procs {
     using enum Expr::Tag;
 
     Subs res{ offset, vector<const Expr*>() };
+
+    // Add a new substitution to `res`, then update the rest of `a` to eliminate the variable with id `id`.
     auto putsubs = [&res, &pool, &a] (unsigned int id, const Expr* e, size_t i0) {
       // Make enough space
       while (id >= res.offset + res.ts.size()) {
@@ -176,22 +178,27 @@ namespace Elab::Procs {
       }
     };
 
+    // Each step transforms `a` into an equivalent set of equations
+    // (in `a` and `res`; the latter contains equations in triangular/solved form.)
     for (size_t i = 0; i < a.size(); i++) {
       const Expr* lhs = a[i].first, * rhs = a[i].second;
 
       if (lhs->tag == VAR && lhs->var.free && lhs->var.id >= offset) {
+        // Variable elimination on the left.
         if (*lhs == *rhs);
         else if (rhs->occurs(lhs->var.id)) return nullopt;
         else putsubs(lhs->var.id, rhs, i + 1);
         continue;
 
       } else if (rhs->tag == VAR && rhs->var.free && rhs->var.id >= offset) {
+        // Variable elimination on the right.
         if (*lhs == *rhs);
         else if (lhs->occurs(rhs->var.id)) return nullopt;
         else putsubs(rhs->var.id, lhs, i + 1);
         continue;
 
       } else {
+        // Try term reduction.
         if (lhs->tag != rhs->tag) return nullopt;
         // lhs->tag == rhs->tag
         switch (lhs->tag) {
