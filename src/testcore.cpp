@@ -14,6 +14,7 @@ using namespace Core;
 
 int main() {
   using enum Expr::Tag;
+  using enum Expr::VarTag;
 
   cout << sizeof(string) << endl;
   cout << sizeof(Expr) << endl;
@@ -22,8 +23,9 @@ int main() {
 
   #define N(...) Expr::make(pool, __VA_ARGS__)
 
-  #define fv(id, ...) N(FREE,  id, std::initializer_list<Expr*>{__VA_ARGS__})
-  #define bv(id, ...) N(BOUND, id, std::initializer_list<Expr*>{__VA_ARGS__})
+  #define fv(id, ...) N(FREE,         id, std::initializer_list<Expr*>{__VA_ARGS__})
+  #define bv(id, ...) N(BOUND,        id, std::initializer_list<Expr*>{__VA_ARGS__})
+  #define uv(id, ...) N(UNDETERMINED, id, std::initializer_list<Expr*>{__VA_ARGS__})
 
   #define T                   N(TRUE)
   #define F                   N(FALSE)
@@ -214,7 +216,7 @@ int main() {
     using namespace Elab;
     Allocator<Expr> pool;
     Context ctx;
-    Tableau tableau;
+    Tableau tableau(ctx);
 
     // unsigned int eq = ctx.eq;
     unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
@@ -239,7 +241,7 @@ int main() {
     cout << e->conn.l->conn.r->conn.l->hash() << endl;
     */
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.dfs(0, 0) << endl;
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search() << endl;
     tableau.clear();
 
     e = bin(fv(p), OR, un(NOT, fv(p)));
@@ -249,13 +251,13 @@ int main() {
     cout << e->conn.r->conn.l->hash() << endl;
     */
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.dfs(0, 0) << endl;
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search() << endl;
     tableau.clear();
 
     // ¬(p ↔ ¬p)
     e = un(NOT, bin(fv(p), IFF, un(NOT, fv(p))));
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.dfs(0, 0) << endl;
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search() << endl;
     tableau.clear();
     cout << endl;
 
@@ -283,47 +285,51 @@ int main() {
     unsigned int h = ctx.pushVar("h", {{ 2, SVAR }});
     unsigned int a = ctx.pushVar("a", TTerm);
     unsigned int b = ctx.pushVar("b", TTerm);
-    unsigned int offset = ctx.size();
     unsigned int x = ctx.pushVar("x", TTerm);
     unsigned int y = ctx.pushVar("y", TTerm);
     unsigned int z = ctx.pushVar("z", TTerm);
     unsigned int u = ctx.pushVar("u", TTerm);
     unsigned int v = ctx.pushVar("v", TTerm);
 
-    const Expr* lhs = fv(eq, fv(f, fv(x), fv(g, fv(x), fv(y))), fv(h, fv(z), fv(y)));
-    const Expr* rhs = fv(eq, fv(z), fv(h, fv(f, fv(u), fv(v)), fv(f, fv(a), fv(b))));
-    const Expr* lhs1 = fv(f, fv(x), fv(y));
-    const Expr* rhs1 = fv(f, fv(x), fv(f, fv(x), fv(y)));
+    enum Undetermined : unsigned int { X, Y, Z, U, V };
+
+    const Expr* lhs = fv(eq, fv(f, uv(X), fv(g, uv(X), uv(Y))), fv(h, uv(Z), uv(Y)));
+    const Expr* rhs = fv(eq, uv(Z), fv(h, fv(f, uv(U), uv(V)), fv(f, fv(a), fv(b))));
+    const Expr* lhs1 = fv(f, uv(X), uv(Y));
+    const Expr* rhs1 = fv(f, uv(X), fv(f, uv(X), uv(Y)));
 
     cout << "First-order unification:" << endl;
     cout << lhs1->toString(ctx) << endl;
     cout << rhs1->toString(ctx) << endl;
-    cout << unify(offset, {{ lhs1, rhs1 }}, pool).has_value() << endl;
+    cout << unify({{ lhs1, rhs1 }}, pool).has_value() << endl;
     cout << endl;
 
     cout << lhs->toString(ctx) << endl;
     cout << rhs->toString(ctx) << endl;
-    Subs subs = unify(offset, {{ lhs, rhs }}, pool).value();
-    for (size_t i = 0; i < subs.ts.size(); i++) if (subs.ts[i]) {
-      cout << Expr(FREE, subs.offset + i).toString(ctx) << " -> " << subs.ts[i]->toString(ctx) << endl;
+    Subs subs = unify({{ lhs, rhs }}, pool).value();
+    for (size_t i = 0; i < subs.size(); i++) if (subs[i]) {
+      cout << Expr(UNDETERMINED, i).toString(ctx) << " -> " << subs[i]->toString(ctx) << endl;
     }
     cout << applySubs(lhs, subs, pool)->toString(ctx) << endl;
     cout << applySubs(rhs, subs, pool)->toString(ctx) << endl;
     cout << endl;
 
+    const Expr* lhs2 = fv(eq, fv(f, fv(x), fv(g, fv(x), fv(y))), fv(h, fv(z), fv(y)));
+    const Expr* rhs2 = fv(eq, fv(z), fv(h, fv(f, fv(u), fv(v)), fv(f, fv(a), fv(b))));
+
     cout << "First-order anti-unification:" << endl;
-    auto [tmpl, lsub, rsub] = antiunify(ctx.size(), lhs, rhs, pool);
+    auto [tmpl, lsub, rsub] = antiunify(lhs2, rhs2, pool);
     cout << "Template: " << tmpl->toString(ctx) << endl;
     cout << "LHS substitution:" << endl;
-    for (size_t i = 0; i < lsub.ts.size(); i++) if (subs.ts[i]) {
-      cout << Expr(FREE, lsub.offset + i).toString(ctx) << " -> " << lsub.ts[i]->toString(ctx) << endl;
+    for (size_t i = 0; i < lsub.size(); i++) if (subs[i]) {
+      cout << Expr(UNDETERMINED, i).toString(ctx) << " -> " << lsub[i]->toString(ctx) << endl;
     }
-    cout << applySubs(lhs, lsub, pool)->toString(ctx) << endl;
+    cout << applySubs(lhs2, lsub, pool)->toString(ctx) << endl;
     cout << "RHS substitution:" << endl;
-    for (size_t i = 0; i < rsub.ts.size(); i++) if (subs.ts[i]) {
-      cout << Expr(FREE, rsub.offset + i).toString(ctx) << " -> " << rsub.ts[i]->toString(ctx) << endl;
+    for (size_t i = 0; i < rsub.size(); i++) if (subs[i]) {
+      cout << Expr(UNDETERMINED, i).toString(ctx) << " -> " << rsub[i]->toString(ctx) << endl;
     }
-    cout << applySubs(rhs, rsub, pool)->toString(ctx) << endl;
+    cout << applySubs(rhs2, rsub, pool)->toString(ctx) << endl;
     cout << endl;
   }
 

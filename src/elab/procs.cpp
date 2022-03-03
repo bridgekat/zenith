@@ -4,9 +4,10 @@ namespace Elab::Procs {
 
   bool propValue(const Expr* e, const vector<bool>& fvmap) {
     using enum Expr::Tag;
+    using enum Expr::VarTag;
     switch (e->tag) {
       case VAR:
-        if (!e->var.free) throw Unreachable();
+        if (e->var.vartag != FREE) throw Unreachable();
         return e->var.id < fvmap.size() ? fvmap[e->var.id] : false;
       case TRUE:    return true;
       case FALSE:   return false;
@@ -23,6 +24,7 @@ namespace Elab::Procs {
 
   Expr* toNNF(const Expr* e, const Context& ctx, Allocator<Expr>& pool, bool negated) {
     using enum Expr::Tag;
+    using enum Expr::VarTag;
     switch (e->tag) {
       case VAR:
         return negated ? Expr::make(pool, NOT, e->clone(pool)) : e->clone(pool);
@@ -82,24 +84,23 @@ namespace Elab::Procs {
   // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
   class Antiunifier {
   public:
-    unsigned int nextid;
     Allocator<Expr>* pool;
     Subs ls, rs;
 
-    Antiunifier(): nextid{}, pool{}, ls{}, rs{} {}
+    Antiunifier(): pool{}, ls(), rs() {}
     Antiunifier(const Antiunifier&) = delete;
     Antiunifier& operator=(const Antiunifier&) = delete;
 
     Expr* dfs(const Expr* lhs, const Expr* rhs) {
       using enum Expr::Tag;
+      using enum Expr::VarTag;
 
       // If roots are different, return this
       auto different = [this, lhs, rhs] () {
-        unsigned int id = nextid;
-        nextid++;
-        ls.ts.push_back(lhs);
-        rs.ts.push_back(rhs);
-        return Expr::make(*pool, FREE, id);
+        unsigned int id = ls.size();
+        ls.push_back(lhs);
+        rs.push_back(rhs);
+        return Expr::make(*pool, UNDETERMINED, id);
       };
  
       if (lhs->tag != rhs->tag) return different();
@@ -108,10 +109,10 @@ namespace Elab::Procs {
         case EMPTY:
           throw Unreachable();
         case VAR: {
-          if (lhs->var.free != rhs->var.free || lhs->var.id != rhs->var.id) {
+          if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) {
             return different();
           }
-          Expr* res = Expr::make(*pool, lhs->var.free, lhs->var.id), * last = nullptr;
+          Expr* res = Expr::make(*pool, lhs->var.vartag, lhs->var.id), * last = nullptr;
           const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
           for (; plhs && prhs; plhs = plhs->s, prhs = prhs->s) {
             Expr* q = dfs(plhs, prhs);
@@ -139,37 +140,34 @@ namespace Elab::Procs {
       throw NotImplemented();
     }
 
-    tuple<Expr*, Subs, Subs> operator()(unsigned int offset, Allocator<Expr>* pool, const Expr* lhs, const Expr* rhs) {
+    tuple<Expr*, Subs, Subs> operator()(Allocator<Expr>* pool, const Expr* lhs, const Expr* rhs) {
       this->pool = pool;
-      ls.offset = rs.offset = this->nextid = offset;
-      ls.ts.clear(); rs.ts.clear();
+      ls.clear(); rs.clear();
       Expr* c = dfs(lhs, rhs);
       return { c, ls, rs };
     }
   };
 
-  tuple<Expr*, Subs, Subs> antiunify(unsigned int offset, const Expr* l, const Expr* r, Allocator<Expr>& pool) {
-    return Antiunifier()(offset, &pool, l, r);
+  tuple<Expr*, Subs, Subs> antiunify(const Expr* l, const Expr* r, Allocator<Expr>& pool) {
+    return Antiunifier()(&pool, l, r);
   }
 
   // The Robinson's unification algorithm (could take exponential time for certain cases.)
   // See: https://en.wikipedia.org/wiki/Unification_(computer_science)#A_unification_algorithm
-  optional<Subs> unify(unsigned int offset, vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
+  optional<Subs> unify(vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
     using enum Expr::Tag;
-
-    Subs res{ offset, vector<const Expr*>() };
+    using enum Expr::VarTag;
+    Subs res;
 
     // Add a new substitution to `res`, then update the rest of `a` to eliminate the variable with id `id`.
     auto putsubs = [&res, &pool, &a] (unsigned int id, const Expr* e, size_t i0) {
       // Make enough space
-      while (id >= res.offset + res.ts.size()) {
-        res.ts.push_back(nullptr);
-      }
-      // id < res.offset + res.ts.size()
-      res.ts[id - res.offset] = e;
+      while (id >= res.size()) res.push_back(nullptr);
+      // id < res.size()
+      res[id] = e;
       // Update the rest of `a`
       auto f = [id, e, &pool] (unsigned int, Expr* x) {
-        if (x->var.free && x->var.id == id) return e->clone(pool);
+        if (x->var.vartag == UNDETERMINED && x->var.id == id) return e->clone(pool);
         return x;
       };
       for (size_t i = i0; i < a.size(); i++) {
@@ -183,17 +181,17 @@ namespace Elab::Procs {
     for (size_t i = 0; i < a.size(); i++) {
       const Expr* lhs = a[i].first, * rhs = a[i].second;
 
-      if (lhs->tag == VAR && lhs->var.free && lhs->var.id >= offset) {
+      if (lhs->tag == VAR && lhs->var.vartag == UNDETERMINED) {
         // Variable elimination on the left.
         if (*lhs == *rhs);
-        else if (rhs->occurs(lhs->var.id)) return nullopt;
+        else if (rhs->occurs(UNDETERMINED, lhs->var.id)) return nullopt;
         else putsubs(lhs->var.id, rhs, i + 1);
         continue;
 
-      } else if (rhs->tag == VAR && rhs->var.free && rhs->var.id >= offset) {
+      } else if (rhs->tag == VAR && rhs->var.vartag == UNDETERMINED) {
         // Variable elimination on the right.
         if (*lhs == *rhs);
-        else if (lhs->occurs(rhs->var.id)) return nullopt;
+        else if (lhs->occurs(UNDETERMINED, rhs->var.id)) return nullopt;
         else putsubs(rhs->var.id, lhs, i + 1);
         continue;
 
@@ -205,7 +203,7 @@ namespace Elab::Procs {
           case EMPTY:
             throw Unreachable();
           case VAR: {
-            if (lhs->var.free != rhs->var.free || lhs->var.id != rhs->var.id) return nullopt;
+            if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) return nullopt;
             const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
             for (; plhs && prhs; plhs = plhs->s, prhs = prhs->s) {
               a.emplace_back(plhs, prhs);
@@ -238,9 +236,8 @@ namespace Elab::Procs {
 
   /*
   // The Martelli-Montanari unification algorithm.
-  // All free variables with `id >= offset` are considered as undetermined variables; others are just constants.
   // See: http://moscova.inria.fr/~levy/courses/X/IF/03/pi/levy2/martelli-montanari.pdf
-  optional<Subs> mmunify(unsigned int offset, vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
+  optional<Subs> mmunify(vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
     using enum Expr::Tag;
 
     *

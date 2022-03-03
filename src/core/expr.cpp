@@ -44,7 +44,7 @@ namespace Core {
     switch (tag) {
       case EMPTY: return true;
       case VAR: {
-        if (var.free != rhs.var.free || var.id != rhs.var.id) return false;
+        if (var.vartag != rhs.var.vartag || var.id != rhs.var.id) return false;
         const Expr* p = var.c, * prhs = rhs.var.c;
         for (; p && prhs; p = p->s, prhs = prhs->s) {
           if (!(*p == *prhs)) return false;
@@ -80,7 +80,7 @@ namespace Core {
     switch (tag) {
       case EMPTY: return res;
       case VAR: {
-        hash_combine(res, var.free);
+        hash_combine(res, static_cast<unsigned char>(var.vartag));
         hash_combine(res, var.id);
         for (const Expr* p = var.c; p; p = p->s) {
           hash_combine(res, p->hash());
@@ -120,9 +120,10 @@ namespace Core {
     switch (tag) {
       case EMPTY: return "[?]";
       case VAR: {
-        string res = var.free ?
-          (ctx.valid(var.id)   ? ctx.nameOf(var.id)                  : "[" + std::to_string(var.id) + "]") :
-          (var.id < stk.size() ? stk[stk.size() - 1 - var.id].second : "{" + std::to_string(var.id) + "}");
+        string res =
+          var.vartag == BOUND ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id].second : "(" + std::to_string(var.id) + ")") :
+          var.vartag == FREE  ? (ctx.valid(var.id)   ? ctx.nameOf(var.id)                  : "[" + std::to_string(var.id) + "]") :
+          var.vartag == UNDETERMINED ? "{" + std::to_string(var.id) + "}" : "[?]";
         for (const Expr* p = var.c; p; p = p->s) {
           res += " " + p->toString(ctx, stk);
         }
@@ -174,12 +175,17 @@ namespace Core {
 
       case VAR: {
         // Get type of the LHS
-        const Type* t_ = var.free ?
-          (ctx.valid(var.id)   ? get_if<Type>(&ctx[var.id])    : nullptr) :
-          (var.id < stk.size() ? &stk[stk.size() - 1 - var.id] : nullptr);
+        const Type* t_ =
+          var.vartag == BOUND ? (var.id < stk.size() ? &stk[stk.size() - 1 - var.id] : nullptr) :
+          var.vartag == FREE  ? (ctx.valid(var.id)   ? get_if<Type>(&ctx[var.id])    : nullptr) :
+          nullptr;
         if (!t_ || t_->empty())
-          throw InvalidExpr(var.free? "free variable not in context" :
-                                      "de Brujin index too large", ctx, this);
+          throw InvalidExpr(
+            var.vartag == BOUND ? "de Brujin index too large" :
+            var.vartag == FREE  ? "free variable not in context" :
+            var.vartag == UNDETERMINED ? "unexpected undetermined variable" :
+            "unknown variable tag: " + static_cast<unsigned char>(var.vartag), ctx, this
+          );
         const Type& t = *t_;
 
         // Try applying arguments one by one
@@ -246,24 +252,24 @@ namespace Core {
     throw NotImplemented();
   }
 
-  bool Expr::occurs(unsigned int id) const noexcept {
+  bool Expr::occurs(VarTag vartag, unsigned int id) const noexcept {
     switch (tag) {
       case EMPTY:
         return false;
       case VAR:
-        if (var.free && var.id == id) return true;
+        if (var.vartag == vartag && var.id == id) return true;
         for (const Expr* p = var.c; p; p = p->s) {
-          if (p->occurs(id)) return true;
+          if (p->occurs(vartag, id)) return true;
         }
         return false;
       case TRUE: case FALSE:
         return false;
       case NOT:
-        return conn.l && conn.l->occurs(id);
+        return conn.l && conn.l->occurs(vartag, id);
       case AND: case OR: case IMPLIES: case IFF:
-        return (conn.l && conn.l->occurs(id)) || (conn.r && conn.r->occurs(id));
+        return (conn.l && conn.l->occurs(vartag, id)) || (conn.r && conn.r->occurs(vartag, id));
       case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
-        return binder.r && binder.r->occurs(id);
+        return binder.r && binder.r->occurs(vartag, id);
     }
     throw NotImplemented();
   }

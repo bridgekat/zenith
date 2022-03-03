@@ -9,9 +9,6 @@
 
 namespace Core {
 
-  constexpr bool FREE = true;
-  constexpr bool BOUND = false;
-
   // Formula (schema) tree node, and related syntactic operations
   // Pre (for all methods): there is no "cycle" throughout the tree
   // Pre & invariant (for all methods): all nonzero pointers (in the "active variant") are valid
@@ -24,14 +21,18 @@ namespace Core {
       VAR, TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
       FORALL, EXISTS, UNIQUE, FORALL2, LAM
     };
+    enum class VarTag: unsigned char {
+      BOUND = 0, FREE, UNDETERMINED
+    };
     using enum Tag;
+    using enum VarTag;
 
     Tag tag;
     Expr* s = nullptr; // Next sibling (for children of VAR nodes only)
     string bv = "";    // Bound variable name (for binder nodes only)
     union {
       // VAR (`id` stands for context index for free variables, de Brujin index for bound variables)
-      struct { bool free; unsigned int id; Expr* c; } var;
+      struct { VarTag vartag; unsigned int id; Expr* c; } var;
       // TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF (`l` is ignored for the first two; `r` is ignored for the first three)
       struct { Expr* l, * r; } conn;
       // FORALL, EXISTS, UNIQUE, FORALL2, LAM (`arity` and `sort` must be 0 and SVAR for the first three and the last one)
@@ -40,8 +41,8 @@ namespace Core {
 
     // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
     Expr(): tag(EMPTY) {}
-    Expr(bool free, unsigned int id, const std::initializer_list<Expr*>& c = {}): tag(VAR) {
-      var.free = free; var.id = id; attachChildren(c);
+    Expr(VarTag vartag, unsigned int id, const std::initializer_list<Expr*>& c = {}): tag(VAR) {
+      var.vartag = vartag; var.id = id; attachChildren(c);
     }
     Expr(Tag tag): tag(tag) {
       switch (tag) {
@@ -108,7 +109,7 @@ namespace Core {
 
     // Check if given variable is in the subtree
     // Pre: all nonzero pointers are valid
-    bool occurs(unsigned int id) const noexcept;
+    bool occurs(VarTag vartag, unsigned int id) const noexcept;
 
     // Modification (deep copying whole expression)
     // Pre: all nonzero pointers are valid
@@ -151,7 +152,7 @@ namespace Core {
     // Make a free variable into an overflow variable (deep copying whole expression)
     Expr* makeBound(unsigned int id, Allocator<Expr>& pool) const {
       return updateVars(0, pool, [id] (unsigned int n, Expr* x) {
-        if (x->var.free && x->var.id == id) { x->var.free = false; x->var.id = n; }
+        if (x->var.vartag == FREE && x->var.id == id) { x->var.vartag = BOUND; x->var.id = n; }
         return x;
       });
     }
@@ -159,7 +160,7 @@ namespace Core {
     // Replace one overflow variable by an expression (deep copying whole expression)
     Expr* makeReplace(const Expr* t, Allocator<Expr>& pool) const {
       return updateVars(0, pool, [t, &pool] (unsigned int n, Expr* x) {
-        if (!x->var.free && x->var.id == n) return t->clone(pool);
+        if (x->var.vartag == BOUND && x->var.id == n) return t->clone(pool);
         return x;
       });
     }
@@ -167,7 +168,7 @@ namespace Core {
     // Prepare to insert k binders around a subexpression with overflow variables (deep copying whole expression)
     Expr* makeGap(unsigned int k, Allocator<Expr>& pool) const {
       return updateVars(0, pool, [k] (unsigned int n, Expr* x) {
-        if (!x->var.free && x->var.id >= n) x->var.id += k;
+        if (x->var.vartag == BOUND && x->var.id >= n) x->var.id += k;
         return x;
       });
     }
@@ -187,7 +188,7 @@ namespace Core {
     Expr* makeReplaceK(vector<const Expr*> ts, Allocator<Expr>& pool) const {
       std::reverse(ts.begin(), ts.end()); // Leftmost arguments are used to substitute highest lambdas
       return updateVars(0, pool, [&ts, &pool] (unsigned int n, Expr* x) {
-        if (!x->var.free && x->var.id >= n) return ts[x->var.id - n]->makeGap(n, pool);
+        if (x->var.vartag == BOUND && x->var.id >= n) return ts[x->var.id - n]->makeGap(n, pool);
         return x;
       });
     }
@@ -200,7 +201,7 @@ namespace Core {
     Expr* makeReplaceLam(const Expr* lam, Allocator<Expr>& pool) const {
       auto [k, body] = lam->getBody();
       return updateVars(0, pool, [k, body, &pool] (unsigned int n, Expr* x) {
-        if (!x->var.free && x->var.id == n) {
+        if (x->var.vartag == BOUND && x->var.id == n) {
           vector<const Expr*> args;
           for (const Expr* p = x->var.c; p; p = p->s) args.push_back(p);
           if (k != args.size()) throw Unreachable();

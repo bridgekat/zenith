@@ -20,6 +20,7 @@ namespace Core {
   // Context-changing rules (implies-intro, forall[func, pred]-intro) here
   bool Context::pop(Allocator<Expr>& pool) {
     using enum Expr::Tag;
+    using enum Expr::VarTag;
 
     if (ind.empty()) return false;
     size_t index = ind.back(); ind.pop_back();
@@ -52,7 +53,7 @@ namespace Core {
           // Implies-intro for theorems
           auto modify = [index, &pool] (unsigned int, Expr* x) {
             // If defined after the hypothesis...
-            if (x->var.free && x->var.id > index) x->var.id--;
+            if (x->var.vartag == FREE && x->var.id > index) x->var.id--;
             return x;
           };
           a[i] = {
@@ -77,13 +78,13 @@ namespace Core {
           // Forallfunc/pred-intro for theorems
           auto modify = [index, &pool] (unsigned int n, Expr* x) {
             // If it is the assumed variable...
-            if (x->var.free && x->var.id == index) {
-              x->var.free = false; x->var.id = n;
+            if (x->var.vartag == FREE && x->var.id == index) {
+              x->var.vartag = BOUND; x->var.id = n;
             }
             // If defined after the assumed variable...
-            else if (x->var.free && x->var.id > index) {
+            else if (x->var.vartag == FREE && x->var.id > index) {
               x->var.id--;
-              Expr* arg = nodevar(false, n);
+              Expr* arg = nodevar(BOUND, n);
               arg->s = x->var.c; x->var.c = arg;
             }
             return x;

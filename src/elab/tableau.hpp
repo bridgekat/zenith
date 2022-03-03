@@ -7,6 +7,7 @@
 #include <utility>
 #include <unordered_set>
 #include <core.hpp>
+#include "procs.hpp"
 
 
 namespace Elab {
@@ -23,12 +24,12 @@ namespace Elab {
     size_t hash;
 
     // `*e` should not be changed after this construction
-    explicit ExprHash(const Expr* e): e(e), hash(e->hash()) {}
-    bool operator==(const ExprHash& r) const { return hash == r.hash && *e == *(r.e); }
-    bool operator!=(const ExprHash& r) const { return hash != r.hash || *e != *(r.e); }
+    explicit ExprHash(const Expr* e) noexcept: e(e), hash(e->hash()) {}
+    bool operator==(const ExprHash& r) const noexcept { return hash == r.hash && *e == *(r.e); }
+    bool operator!=(const ExprHash& r) const noexcept { return hash != r.hash || *e != *(r.e); }
 
     struct GetHash {
-      size_t operator()(const ExprHash& eh) const { return eh.hash; }
+      size_t operator()(const ExprHash& eh) const noexcept { return eh.hash; }
     };
   };
 
@@ -45,39 +46,61 @@ namespace Elab {
   // - https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.216.388&rep=rep1&type=pdf
   //   (Also contains several completeness proofs)
 
+  // For translation of LK (tableaux) to NK (natural deduction), see:
+  // - http://ceur-ws.org/Vol-2162/paper-03.pdf
+
   class Tableau {
   public:
+    // Antecedents in `cedents[...][L]` and `hashset[L]`
+    // Succedents in `cedents[...][R]` and `hashset[R]`
+    // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ" (existential).
+    enum Position: unsigned int { L, R };
+    enum Type: unsigned int { ι, α, β, γ, δ, N }; // Tweak parameters here (1/3)
+    enum VarTag: unsigned char { UNIVERSAL, SKOLEM };
 
-    const Context& ctx;
-    // Antecedents in `cedents[0]` and `hashset[0]`
-    // Succedents in `cedents[1]` and `hashset[1]`
-    vector<const Expr*> cedents[2];                        // For a queue-like structure
-    unordered_set<ExprHash, ExprHash::GetHash> hashset[2]; // For fast membership testing
-
-    Tableau(const Context& ctx): ctx(ctx), cedents(), hashset() {}
+    Tableau(const Context& ctx) noexcept:
+      ctx(ctx), cedents(), indices{}, hashset(), vars(), subs() {}
 
     void addAntecedent(const Expr* e) {
-      auto it = hashset[0].insert(ExprHash(e));
-      if (it.second) cedents[0].push_back(e);
+      auto it = hashset[L].insert(ExprHash(e));
+      if (it.second) cedents[classify(L, e)][L].push_back(e);
     }
 
     void addSuccedent(const Expr* e) {
-      auto it = hashset[1].insert(ExprHash(e));
-      if (it.second) cedents[1].push_back(e);
+      auto it = hashset[R].insert(ExprHash(e));
+      if (it.second) cedents[classify(R, e)][R].push_back(e);
     }
 
     // TODO: initial check (the given proof state may already be closed)
 
-    void clear() {
-      hashset[0].clear();
-      cedents[0].clear();
-      hashset[1].clear();
-      cedents[1].clear();
+    void clear() noexcept {
+      hashset[L].clear();
+      hashset[R].clear();
+      for (unsigned int i = 0; i < N; i++) {
+        cedents[i][L].clear();
+        cedents[i][R].clear();
+      }
     }
 
-    // Pre: all elements of `ante`, `succ`, `anteSet` and `succSet` are valid, well-formed formulas
-    // All states will be unmodified/restored
-    bool dfs(size_t antei, size_t succi);
+    bool search();
+
+  private:
+    const Context& ctx;                                    // For offset and `eq`
+    vector<const Expr*> cedents[N][2];                     // For queue-like structures
+    size_t indices[N][2];                                  // Head index of queues
+    unordered_set<ExprHash, ExprHash::GetHash> hashset[2]; // For fast membership testing
+
+    vector<VarTag> vars;
+    Procs::Subs subs;
+
+    template <Position LR, Position RL>
+    friend class WithCedent;
+
+    template <VarTag VT>
+    friend class WithVar;
+
+    static Type classify(Position antesucc, const Expr* e) noexcept;
+    bool dfs();
   };
 
 }

@@ -68,7 +68,7 @@ namespace Core {
     }
     #define matcheq(a_, l_, r_) Expr* l_, * r_; { \
       Expr* x_ = a_; \
-      if (x_->tag != VAR || !x_->var.free || x_->var.id != ctx.eq) \
+      if (x_->tag != VAR || x_->var.vartag != FREE || x_->var.id != ctx.eq) \
         throw InvalidProof("expected proof of equality", ctx, this); \
       l_ = x_->var.c; r_ = l_->s; /* x_ is well-formed so we can expect exactly two child nodes here*/ \
     }
@@ -103,6 +103,7 @@ namespace Core {
       // Introduction & elimination rules here
       // (Manual pattern matching!)
       using enum Expr::Tag;
+      using enum Expr::VarTag;
 
       case AND_I: return node2(proved(0), AND, proved(1));
       case AND_L: { match2(proved(0), p, AND, q); return p; }
@@ -158,8 +159,8 @@ namespace Core {
         matchbinder(proved(1), FORALL, x1, a); match2(a, px1, IMPLIES, b);
         matchbinder(b,         FORALL, x2, c); match2(c, px2, IMPLIES, d);
         matcheq(d, l, r);
-        if (!(l->tag == VAR && !l->var.free && l->var.id == 1 &&
-              r->tag == VAR && !r->var.free && r->var.id == 0))
+        if (!(l->tag == VAR && l->var.vartag == BOUND && l->var.id == 1 &&
+              r->tag == VAR && r->var.vartag == BOUND && r->var.id == 0))
           throw InvalidProof("expected proof of uniqueness", ctx, this);
         asserteq(px0, px1); asserteq(px0, px2);
         return nodebinder(UNIQUE, x0, px0);
@@ -263,6 +264,7 @@ namespace Core {
 
       // Definition rules here
       using enum Expr::Tag;
+      using enum Expr::VarTag;
 
       case FDEF: {
         unsigned int id = ctx.addDef(name, TTerm);
