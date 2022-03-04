@@ -360,6 +360,7 @@ int main() {
     Expr* lhs = exists("y", forall("x", fv(P, bv(0), bv(1))));
     Expr* rhs = forall("x", exists("y", fv(P, bv(1), bv(0))));
 
+    // Provable
     tableau.addAntecedent(lhs);
     tableau.addSuccedent(rhs);
     cout << tableau.printState();
@@ -367,6 +368,7 @@ int main() {
     cout << tableau.printStats() << endl;
     tableau.clear();
 
+    // Not provable
     tableau.addAntecedent(rhs);
     tableau.addSuccedent(lhs);
     cout << tableau.printState();
@@ -374,6 +376,7 @@ int main() {
     cout << tableau.printStats() << endl;
     tableau.clear();
 
+    // Provable
     Expr* e = exists("x", forall("y", bin(fv(R, bv(1)), IMPLIES, fv(R, bv(0)))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -381,6 +384,7 @@ int main() {
     cout << tableau.printStats() << endl;
     tableau.clear();
 
+    // Provable
     e = bin(exists("y", exists("z", forall("x", bin(bin(fv(F, bv(0)), IMPLIES, fv(G, bv(2))), AND, bin(fv(G, bv(1)), IMPLIES, fv(F, bv(0))))))),
       IMPLIES, forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0))))));
     tableau.addSuccedent(e);
@@ -389,13 +393,91 @@ int main() {
     cout << tableau.printStats() << endl;
     tableau.clear();
 
+    // Provable
     Expr* exclusiveness = forall("x", forall("y", bin(fv(L, bv(1), bv(0)), IMPLIES, forall("z", bin(un(NOT, fv(eq, bv(0), bv(1))), IMPLIES, un(NOT, fv(L, bv(2), bv(0))))))));
     Expr* preference = forall("x", forall("y", forall("z", bin(fv(B, bv(2), bv(1), bv(0)), IMPLIES, bin(fv(L, bv(2), bv(0)), IMPLIES, fv(L, bv(2), bv(1)))))));
     Expr* shadowing = exists("y", bin(un(NOT, fv(eq, bv(0), fv(Q))), AND, forall("x", fv(B, bv(0), bv(1), fv(Q)))));
     Expr* goal = un(NOT, exists("x", fv(L, bv(0), fv(Q))));
+    // tableau.addAntecedent(e);
     tableau.addAntecedent(exclusiveness);
     tableau.addAntecedent(preference);
     tableau.addAntecedent(shadowing);
+    tableau.addSuccedent(goal);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+  }
+
+  {
+    using namespace Elab;
+    Allocator<Expr> pool;
+    Context ctx;
+    Tableau tableau(ctx);
+
+    unsigned int P = ctx.pushVar("P", {{ 1, SPROP }});
+    unsigned int Q = ctx.pushVar("Q", {{ 1, SPROP }});
+    unsigned int R = ctx.pushVar("R", {{ 1, SPROP }});
+    unsigned int f = ctx.pushVar("f", {{ 1, SVAR }});
+    unsigned int g = ctx.pushVar("g", {{ 1, SVAR }});
+    unsigned int a = ctx.pushVar("a", {{ 0, SVAR }});
+    unsigned int b = ctx.pushVar("b", {{ 0, SVAR }});
+    unsigned int rel = ctx.pushVar("R", {{ 2, SPROP }});
+    unsigned int le = ctx.pushVar("<=", {{ 2, SPROP }});
+
+    // Provable
+    Expr* e1 = bin(fv(P, fv(a)), OR, fv(Q, fv(b)));
+    Expr* e2 = forall("x", bin(fv(P, bv(0)), IMPLIES, fv(R, bv(0))));
+    Expr* e3 = forall("x", bin(fv(Q, bv(0)), IMPLIES, fv(R, fv(f, bv(0)))));
+    Expr* goal = exists("x", fv(R, bv(0)));
+    tableau.addAntecedent(e1);
+    tableau.addAntecedent(e2);
+    tableau.addAntecedent(e3);
+    tableau.addSuccedent(goal);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+
+    // Provable!
+    Expr* e = bin(
+      forall("x", bin(
+        bin(fv(P, fv(a)), AND, bin(fv(P, bv(0)), IMPLIES, exists("y", bin(fv(P, bv(0)), AND, fv(rel, bv(1), bv(0)))))),
+        IMPLIES,
+        exists("z", exists("w", bin(bin(fv(P, bv(1)), AND, fv(rel, bv(2), bv(0))), AND, fv(rel, bv(0), bv(1)))))
+      )),
+      IFF,
+      forall("x", bin(
+        bin(
+          bin(un(NOT, fv(P, fv(a))), OR, fv(P, bv(0))),
+          OR,
+          exists("z", exists("w", bin(bin(fv(P, bv(1)), AND, fv(rel, bv(2), bv(0))), AND, fv(rel, bv(0), bv(1)))))),
+        AND,
+        bin(
+          bin(un(NOT, fv(P, fv(a))), OR, un(NOT, exists("y", bin(fv(P, bv(0)), AND, fv(rel, bv(1), bv(0)))))),
+          OR,
+          exists("z", exists("w", bin(bin(fv(P, bv(1)), AND, fv(rel, bv(2), bv(0))), AND, fv(rel, bv(0), bv(1)))))
+        )
+      ))
+    );
+    tableau.addSuccedent(e);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+
+    // Provable!
+    e1 = forall("x", fv(le, bv(0), bv(0)));
+    e2 = forall("x", forall("y", forall("z", bin(bin(fv(le, bv(2), bv(1)), AND, fv(le, bv(1), bv(0))), IMPLIES, fv(le, bv(2), bv(0))))));
+    e3 = forall("x", forall("y", bin(fv(le, fv(f, bv(1)), bv(0)), IFF, fv(le, bv(1), fv(g, bv(0))))));
+    goal = bin(
+      forall("x", forall("y", bin(fv(le, bv(1), bv(0)), IMPLIES, fv(le, fv(f, bv(1)), fv(f, bv(0)))))),
+      AND,
+      forall("x", forall("y", bin(fv(le, bv(1), bv(0)), IMPLIES, fv(le, fv(g, bv(1)), fv(g, bv(0))))))
+    );
+    tableau.addAntecedent(e1);
+    tableau.addAntecedent(e2);
+    tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.search(16) << endl;

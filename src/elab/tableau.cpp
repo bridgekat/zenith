@@ -108,7 +108,8 @@ namespace Elab {
         } else {
           // Compare one by one, taking substitution into consideration
           // TODO: try optimise candidate selection...
-          //for (const Expr* q: p->cedents[Tableau::classify(RL, e)][RL])
+          //unsigned int j = Tableau::classify(RL, e);
+          //for (const Expr* q: p->cedents[j][RL])
           for (auto& [q, _]: p->hashset[RL])
             if (Procs::equalAfterSubs(e, q, p->subs)) {
               *closed = true;
@@ -205,7 +206,7 @@ namespace Elab {
               #ifdef SEMANTIC_BRANCHING
               WithAnte l(this, e->conn.l, &closed);
               #endif
-              if (!closed && !dfs(depth + 1)) return false;
+              if (!closed && !dfs(depth)) return false;
             }
             return true;
           }
@@ -239,7 +240,7 @@ namespace Elab {
               #ifdef SEMANTIC_BRANCHING
               WithAnte l(this, &mp, &closed);
               #endif
-              if (!closed && !dfs(depth + 1)) return false;
+              if (!closed && !dfs(depth)) return false;
             }
             return true;
           }
@@ -289,7 +290,7 @@ namespace Elab {
               #ifdef SEMANTIC_BRANCHING
               WithAnte l(this, &exi, &closed);
               #endif
-              if (!closed && !dfs(depth + 1)) return false;
+              if (!closed && !dfs(depth)) return false;
             }
             return true;
           }
@@ -363,7 +364,7 @@ namespace Elab {
               #ifdef SEMANTIC_BRANCHING
               WithSucc l(this, e->conn.l, &closed);
               #endif
-              if (!closed && !dfs(depth + 1)) return false;
+              if (!closed && !dfs(depth)) return false;
             }
             return true;
           }
@@ -381,7 +382,7 @@ namespace Elab {
               #ifdef SEMANTIC_BRANCHING
               WithAnte l(this, e->conn.l, &closed);
               #endif
-              if (!closed && !dfs(depth + 1)) return false;
+              if (!closed && !dfs(depth)) return false;
             }
             return true;
           }
