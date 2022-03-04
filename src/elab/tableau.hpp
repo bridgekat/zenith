@@ -60,7 +60,7 @@ namespace Elab {
     enum Type: unsigned int { ι, α, β, γ, δ, N }; // Tweak parameters here (1/3)
 
     Tableau(const Context& ctx) noexcept:
-      ctx(ctx), cedents(), indices{}, hashset(), numUniversal{}, numSkolem{}, subs() {}
+      pool(), ctx(ctx), cedents(), indices{}, hashset(), numUniversal{}, numSkolem{}, subs() {}
 
     void addAntecedent(const Expr* e) {
       auto it = hashset[L].insert(ExprHash(e));
@@ -75,18 +75,22 @@ namespace Elab {
     // TODO: initial check (the given proof state may already be closed)
 
     void clear() noexcept {
-      hashset[L].clear();
-      hashset[R].clear();
+      pool.clear();
       for (unsigned int i = 0; i < N; i++) {
         cedents[i][L].clear();
         cedents[i][R].clear();
+        indices[i][L] = 0;
+        indices[i][R] = 0;
       }
+      hashset[L].clear();
+      hashset[R].clear();
     }
 
     bool search(int maxDepth);
     string printStats();
 
   private:
+    Allocator<Expr> pool;
     const Context& ctx;                                    // For offset and `eq`
     vector<const Expr*> cedents[N][2];                     // For queue-like structures
     size_t indices[N][2];                                  // Head index of queues

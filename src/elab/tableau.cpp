@@ -178,12 +178,25 @@ namespace Elab {
             return true;
           }
           case FORALL: {
-            // TODO: delta
-            return dfs(maxDepth);
+            bool closed = false;
+            size_t id = numSkolem + ctx.size();
+            Expr newVar(FREE, id);
+            const Expr* body = e->binder.r->makeReplace(&newVar, pool);
+            WithValue n(&numSkolem, numSkolem + 1);
+            WithSucc l(this, body, &closed);
+            WithSucc r(this, e, &closed);
+            return closed || dfs(maxDepth);
           }
           case EXISTS: {
-            // TODO: gamma
-            return dfs(maxDepth);
+            // gamma
+            bool closed = false;
+            size_t id = numUniversal;
+            Expr newVar(UNDETERMINED, id);
+            const Expr* body = e->binder.r->makeReplace(&newVar, pool);
+            WithValue n(&numUniversal, numUniversal + 1);
+            WithSucc l(this, body, &closed);
+            WithSucc r(this, e, &closed);
+            return closed || dfs(maxDepth - Kγ);
           }
           case UNIQUE: {
             // beta
@@ -210,7 +223,7 @@ namespace Elab {
             return true;
           }
           case FORALL2: {
-            // TODO: delta
+            // TODO: second-order delta rule
             return dfs(maxDepth);
           }
           case EMPTY: case LAM:
@@ -287,14 +300,26 @@ namespace Elab {
             return closed || dfs(maxDepth);
           }
           case FORALL: {
+            // gamma
             bool closed = false;
-            WithAnte next(this, e, &closed);
-            
+            size_t id = numUniversal;
+            Expr newVar(UNDETERMINED, id);
+            const Expr* body = e->binder.r->makeReplace(&newVar, pool);
+            WithValue n(&numUniversal, numUniversal + 1);
+            WithAnte l(this, body, &closed);
+            WithAnte r(this, e, &closed);
             return closed || dfs(maxDepth - Kγ);
           }
           case EXISTS: {
-            // TODO: delta
-            return dfs(maxDepth);
+            // delta
+            bool closed = false;
+            size_t id = numSkolem + ctx.size();
+            Expr newVar(FREE, id);
+            const Expr* body = e->binder.r->makeReplace(&newVar, pool);
+            WithValue n(&numSkolem, numSkolem + 1);
+            WithAnte l(this, body, &closed);
+            WithAnte r(this, e, &closed);
+            return closed || dfs(maxDepth);
           }
           case UNIQUE: {
             // alpha

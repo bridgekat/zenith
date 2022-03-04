@@ -24,6 +24,13 @@ namespace Core {
     Allocator& operator=(Allocator&&) = default;
     ~Allocator() { for (T* p: blocks) delete[] p; }
 
+    // TODO: preserve allocated space?
+    void clear() noexcept {
+      for (T* p: blocks) delete[] p;
+      next = 0;
+      blocks.clear();
+    }
+
     T* pushBack(const T& obj) {
       if (next == 0) blocks.push_back(new T[bSize]);
       T* res = blocks.back() + next;
@@ -33,7 +40,7 @@ namespace Core {
       return res;
     }
 
-    std::size_t size() const {
+    std::size_t size() const noexcept {
       if (next == 0) return bSize * blocks.size();
       return bSize * (blocks.size() - 1) + next;
     }
