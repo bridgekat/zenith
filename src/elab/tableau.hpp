@@ -60,7 +60,7 @@ namespace Elab {
     enum Type: unsigned int { ι, α, β, γ, δ, N }; // Tweak parameters here (1/3)
 
     Tableau(const Context& ctx) noexcept:
-      pool(), ctx(ctx), cedents(), indices{}, hashset(), numUniversal{}, numSkolem{}, subs() {}
+      pool(), ctx(ctx), cedents(), hashset(), indices{}, numUniversal{}, numSkolem{}, subs() {}
 
     void addAntecedent(const Expr* e) {
       auto it = hashset[L].insert(ExprHash(e));
@@ -79,26 +79,24 @@ namespace Elab {
       for (unsigned int i = 0; i < N; i++) {
         cedents[i][L].clear();
         cedents[i][R].clear();
-        indices[i][L] = 0;
-        indices[i][R] = 0;
       }
       hashset[L].clear();
       hashset[R].clear();
     }
 
     bool search(int maxDepth);
+    string printState();
     string printStats();
 
   private:
     Allocator<Expr> pool;
     const Context& ctx;                                    // For offset and `eq`
     vector<const Expr*> cedents[N][2];                     // For queue-like structures
-    size_t indices[N][2];                                  // Head index of queues
     unordered_set<ExprHash, ExprHash::GetHash> hashset[2]; // For fast membership testing
 
     // Ephemeral states
-    // Number of new variables (for allocating new variable IDs)
-    size_t numUniversal, numSkolem;
+    size_t indices[N][2];                                  // Head index of queues
+    size_t numUniversal, numSkolem;                        // Number of new variables (for allocating new variable IDs)
     Procs::Subs subs;
 
     // Statistics

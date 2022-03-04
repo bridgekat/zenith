@@ -57,15 +57,19 @@ namespace Elab::Procs {
     });
   }
 
+  // Check if two expressions are syntactically equal (up to alpha-renaming) after applying a substitution.
+  // Probably faster than simply apply and check...
+  bool equalAfterSubs(const Expr* lhs, const Expr* rhs, const Subs& subs) noexcept;
+
   // Returns (lgg, substitution to get l, substitution to get r).
   // Pre: { l, r } is arity-consistent
-  tuple<Expr*, Subs, Subs> antiunify(const Expr* l, const Expr* r, Allocator<Expr>& pool);
+  tuple<Expr*, Subs, Subs> antiunify(const Expr* lhs, const Expr* rhs, Allocator<Expr>& pool);
 
   // All variables with `vartag == UNDETERMINED` are considered as undetermined first-order variables;
   //   others are just constants. Returns `nullopt` if unification failed.
   // Could take exponential time on certain cases.
   // Pre: the set of all expressions in `a` is arity-consistent
-  optional<Subs> unify(vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool);
+  optional<Subs> unify(vector<pair<const Expr*, const Expr*>> eqs, Allocator<Expr>& pool);
 
 }
 

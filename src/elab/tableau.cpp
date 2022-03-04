@@ -1,7 +1,21 @@
 #include <algorithm>
+#include <iostream>
 #include "tableau.hpp"
 
 namespace Elab {
+
+  using Procs::Subs;
+
+  // Simple case: disjoint
+  Subs simpleCompose(const Subs& a, const Subs& b) noexcept {
+    Subs res(std::max(a.size(), b.size()), nullptr);
+    for (size_t i = 0; i < res.size(); i++) {
+      bool af = i < a.size() && a[i], bf = i < b.size() && b[i];
+      if (af && bf) throw Unreachable();
+      res[i] = af ? a[i] : bf ? b[i] : nullptr;
+    }
+    return res;
+  }
 
   // Tweak parameters here (2/3)
   Tableau::Type Tableau::classify(Position antesucc, const Expr* e) noexcept {
@@ -62,26 +76,35 @@ namespace Elab {
   public:
     Tableau* const p;
     Tableau::Type i;
-    pair<unordered_set<ExprHash, ExprHash::GetHash>::iterator, bool> it;
+    ExprHash ehash;
+    bool inserted, reAdd;
 
-    WithCedent(Tableau* p, const Expr* e, bool* closed): p(p), i(Tableau::classify(LR, e)), it() {
-      ExprHash ehash = ExprHash(e);
-      it = p->hashset[LR].insert(ehash);
-      if (it.second) {
-        p->cedents[i][LR].push_back(e);
+    WithCedent(Tableau* p, const Expr* e, bool* closed, bool reAdd = false):
+        p(p), i(Tableau::classify(LR, e)), ehash(ExprHash(e)), inserted(false), reAdd(reAdd) {
+      inserted = p->hashset[LR].insert(ehash).second;
+      if (inserted) {
+        // Try hash set first
         if (p->hashset[RL].contains(ehash)) {
           *closed = true;
           p->closed++;
+        } else {
+          // Compare one by one, taking substitution into consideration
+          // TODO: try optimise candidate selection...
+          for (const Expr* q: p->cedents[Tableau::classify(RL, e)][RL])
+            if (Procs::equalAfterSubs(e, q, p->subs)) {
+              *closed = true;
+              p->closed++;
+              break;
+            }
         }
       }
+      if (inserted || reAdd) p->cedents[i][LR].push_back(e);
     }
     WithCedent(const WithCedent&) = delete;
     WithCedent& operator=(const WithCedent&) = delete;
     ~WithCedent() {
-      if (it.second) {
-        p->cedents[i][LR].pop_back();
-        p->hashset[LR].erase(it.first);
-      }
+      if (inserted || reAdd) p->cedents[i][LR].pop_back();
+      if (inserted) p->hashset[LR].erase(ehash);
     }
   };
 
@@ -101,7 +124,7 @@ namespace Elab {
     // Tweak parameters here (3/3)
     constexpr static unsigned int order[] = { α, δ, γ, ι, β };
     //const static unsigned int order[] = { α, δ, γ, ι, β };
-    constexpr static int Kι = 3; // One ι-expansion = how many β-expansions?
+    //constexpr static int Kι = 3; // One ι-expansion = how many β-expansions?
     constexpr static int Kγ = 1; // One γ-expansion = how many β-expansions?
 
     for (unsigned int i: order) {
@@ -115,10 +138,28 @@ namespace Elab {
         const Expr* e = succ[succi];
         WithValue iguard(&succi, succi + 1);
 
+        const Expr* es = Procs::applySubs(e, subs, pool);
+        std::cout << "F " << es->toString(ctx) << std::endl;
+
         switch (e->tag) {
           case VAR: {
-            // TODO: try unify and close branch?
-            return dfs(maxDepth - Kι);
+            // iota
+            if (dfs(maxDepth)) return true;
+            // Try unify and close branch (no need to check for other closures...)
+            // TODO: try optimise candidate selection...
+            const Expr* es = Procs::applySubs(e, subs, pool);
+            unsigned int j = classify(L, es);
+            for (const Expr* q: cedents[j][L]) {
+              auto res = Procs::unify({{ es, Procs::applySubs(q, subs, pool) }}, pool);
+              if (res.has_value()) {
+                // TODO: is this complete?
+                subs = simpleCompose(subs, res.value());
+                if (!Procs::equalAfterSubs(e, q, subs)) throw Unreachable();
+                closed++;
+                return true;
+              }
+            }
+            return false;
           }
           case TRUE:
             return true;
@@ -178,9 +219,12 @@ namespace Elab {
             return true;
           }
           case FORALL: {
+            // delta
             bool closed = false;
+            vector<Expr*> univ;
+            for (size_t j = 0; j < numUniversal; j++) univ.push_back(Expr::make(pool, UNDETERMINED, j));
             size_t id = numSkolem + ctx.size();
-            Expr newVar(FREE, id);
+            Expr newVar(FREE, id, univ);
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numSkolem, numSkolem + 1);
             WithSucc l(this, body, &closed);
@@ -195,7 +239,7 @@ namespace Elab {
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numUniversal, numUniversal + 1);
             WithSucc l(this, body, &closed);
-            WithSucc r(this, e, &closed);
+            // WithSucc r(this, e, &closed, true); // Re-add
             return closed || dfs(maxDepth - Kγ);
           }
           case UNIQUE: {
@@ -237,10 +281,28 @@ namespace Elab {
         const Expr* e = ante[antei];
         WithValue iguard(&antei, antei + 1);
 
+        const Expr* es = Procs::applySubs(e, subs, pool);
+        std::cout << "T " << es->toString(ctx) << std::endl;
+
         switch (e->tag) {
           case VAR: {
-            // TODO: try unify and close branch?
-            return dfs(maxDepth - Kι);
+            // iota
+            if (dfs(maxDepth)) return true;
+            // Try unify and close branch (no need to check for other closures...)
+            // TODO: try optimise candidate selection...
+            const Expr* es = Procs::applySubs(e, subs, pool);
+            unsigned int j = classify(R, es);
+            for (const Expr* q: cedents[j][R]) {
+              auto res = Procs::unify({{ es, Procs::applySubs(q, subs, pool) }}, pool);
+              if (res.has_value()) {
+                // TODO: is this complete?
+                subs = simpleCompose(subs, res.value());
+                if (!Procs::equalAfterSubs(e, q, subs)) throw Unreachable();
+                closed++;
+                return true;
+              }
+            }
+            return false;
           }
           case TRUE:
             return dfs(maxDepth);
@@ -307,14 +369,16 @@ namespace Elab {
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numUniversal, numUniversal + 1);
             WithAnte l(this, body, &closed);
-            WithAnte r(this, e, &closed);
+            // WithAnte r(this, e, &closed, true); // Re-add
             return closed || dfs(maxDepth - Kγ);
           }
           case EXISTS: {
             // delta
             bool closed = false;
+            vector<Expr*> univ;
+            for (size_t j = 0; j < numUniversal; j++) univ.push_back(Expr::make(pool, UNDETERMINED, j));
             size_t id = numSkolem + ctx.size();
-            Expr newVar(FREE, id);
+            Expr newVar(FREE, id, univ);
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numSkolem, numSkolem + 1);
             WithAnte l(this, body, &closed);
@@ -352,6 +416,10 @@ namespace Elab {
   }
 
   bool Tableau::search(int maxDepth) {
+    for (unsigned int i = 0; i < N; i++) {
+      indices[i][L] = 0;
+      indices[i][R] = 0;
+    }
     numUniversal = numSkolem = 0;
     subs.clear();
     maxDepthReached = maxDepth;
@@ -360,6 +428,17 @@ namespace Elab {
     closed = 0;
     bool res = dfs(maxDepth);
     maxDepthReached = maxDepth - maxDepthReached;
+    return res;
+  }
+
+  string Tableau::printState() {
+    string res;
+    res += "+------------------------------------\n";
+    for (unsigned int i = 0; i < N; i++) for (const Expr* e: cedents[i][L])
+      res += "| " + e->toString(ctx) + "\n";
+    for (unsigned int i = 0; i < N; i++) for (const Expr* e: cedents[i][R])
+      res += "| ⊢ " + e->toString(ctx) + "\n";
+    res += "+------------------------------------\n";
     return res;
   }
 

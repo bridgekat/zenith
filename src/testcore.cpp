@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <initializer_list>
 #include "core.hpp"
@@ -27,8 +28,8 @@ int main() {
   #define bv(id, ...) N(BOUND,        id, std::initializer_list<Expr*>{__VA_ARGS__})
   #define uv(id, ...) N(UNDETERMINED, id, std::initializer_list<Expr*>{__VA_ARGS__})
 
-  #define T                   N(TRUE)
-  #define F                   N(FALSE)
+  #define TT                  N(TRUE)
+  #define FF                  N(FALSE)
   #define un(tag, a)          N(tag, a)
   #define bin(a, tag, b)      N(tag, a, b)
   #define forall(s, a)        N(FORALL, s, 0, SVAR, a)
@@ -54,12 +55,12 @@ int main() {
     unsigned int subset = ctx.addDef("subset", {{ 2, SPROP }, { 1, SVAR }});
     unsigned int issc = ctx.addDef("is_subclass", {{ 1, SPROP }, { 1, SPROP }, { 0, SPROP }});
 
-    Expr* y = lam("x", fv(subset, lam("y", lam("z", T)), bv(0)));
+    Expr* y = lam("x", fv(subset, lam("y", lam("z", TT)), bv(0)));
 
     cout << y->toString(ctx) << endl;
     cout << showType(y->checkType(ctx)) << endl;
 
-    Expr* z = fv(issc, lam("x", F), lam("x", T));
+    Expr* z = fv(issc, lam("x", FF), lam("x", TT));
 
     cout << z->toString(ctx) << endl;
     cout << showType(z->checkType(ctx)) << endl;
@@ -105,7 +106,7 @@ int main() {
                    Proof::make(ps, Proof::NOT_I, Proof::make(ps, i + 3))), // +4
         Decl::make(ds, "t4", nullptr /* p or not p */,
                    Proof::make(ps, Proof::OR_R, Proof::make(ps, fv(i + 0)), Proof::make(ps, i + 4))), // +5
-        Decl::make(ds, "t5", F,
+        Decl::make(ds, "t5", FF,
                    Proof::make(ps, Proof::NOT_E, Proof::make(ps, i + 1), Proof::make(ps, i + 5))), // +6
         Decl::make(ds, Decl::POP),
         // +0: p : SPROP
@@ -252,7 +253,8 @@ int main() {
     cout << e->conn.l->conn.r->conn.l->hash() << endl;
     */
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search(16) << endl;
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(32) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -263,18 +265,19 @@ int main() {
     cout << e->conn.r->conn.l->hash() << endl;
     */
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search(16) << endl;
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(32) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
     // ¬(p ↔ ¬p)
     e = un(NOT, bin(fv(p), IFF, un(NOT, fv(p))));
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search(16) << endl;
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(32) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
     cout << endl;
-
   }
 
   {
@@ -317,6 +320,10 @@ int main() {
     cout << applySubs(rhs, subs, pool)->toString(ctx) << endl;
     cout << endl;
 
+    // false false true
+    cout << (*lhs == *rhs) << " " << equalAfterSubs(lhs, rhs, Subs()) << " " << equalAfterSubs(lhs, rhs, subs) << endl;
+    cout << endl;
+
     const Expr* lhs2 = fv(eq, fv(f, fv(x), fv(g, fv(x), fv(y))), fv(h, fv(z), fv(y)));
     const Expr* rhs2 = fv(eq, fv(z), fv(h, fv(f, fv(u), fv(v)), fv(f, fv(a), fv(b))));
 
@@ -334,6 +341,67 @@ int main() {
     }
     cout << applySubs(rhs2, rsub, pool)->toString(ctx) << endl;
     cout << endl;
+  }
+
+  {
+    using namespace Elab;
+    Allocator<Expr> pool;
+    Context ctx;
+    Tableau tableau(ctx);
+
+    unsigned int eq = ctx.eq;
+    unsigned int P = ctx.addDef("P", {{ 2, SPROP }});
+    unsigned int R = ctx.addDef("R", {{ 1, SPROP }});
+    unsigned int F = ctx.addDef("F", {{ 1, SPROP }});
+    unsigned int G = ctx.addDef("G", {{ 1, SPROP }});
+    unsigned int L = ctx.addDef("Loves", {{ 2, SPROP }});
+    unsigned int B = ctx.addDef("BetterThan", {{ 3, SPROP }});
+    unsigned int Q = ctx.addDef("QZR", TTerm);
+
+    Expr* lhs = exists("y", forall("x", fv(P, bv(0), bv(1))));
+    Expr* rhs = forall("x", exists("y", fv(P, bv(1), bv(0))));
+
+    tableau.addAntecedent(lhs);
+    tableau.addSuccedent(rhs);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+
+    tableau.addAntecedent(rhs);
+    tableau.addSuccedent(lhs);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+
+    Expr* e = exists("x", forall("y", bin(fv(R, bv(1)), IMPLIES, fv(R, bv(0)))));
+    tableau.addSuccedent(e);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+
+    e = bin(exists("y", exists("z", forall("x", bin(bin(fv(F, bv(0)), IMPLIES, fv(G, bv(2))), AND, bin(fv(G, bv(1)), IMPLIES, fv(F, bv(0))))))),
+      IMPLIES, forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0))))));
+    tableau.addSuccedent(e);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+
+    Expr* exclusiveness = forall("x", forall("y", bin(fv(L, bv(1), bv(0)), IMPLIES, forall("z", bin(un(NOT, fv(eq, bv(1), bv(0))), IMPLIES, un(NOT, fv(L, bv(2), bv(0))))))));
+    Expr* preference = forall("x", forall("y", forall("z", bin(fv(B, bv(2), bv(1), bv(0)), IMPLIES, bin(fv(L, bv(2), bv(0)), IMPLIES, fv(L, bv(2), bv(1)))))));
+    Expr* shadowing = exists("y", bin(un(NOT, fv(eq, bv(0), fv(Q))), AND, forall("x", fv(B, bv(0), bv(1), fv(Q)))));
+    Expr* goal = un(NOT, exists("x", fv(L, bv(0), fv(Q))));
+    tableau.addAntecedent(exclusiveness);
+    tableau.addAntecedent(preference);
+    tableau.addAntecedent(shadowing);
+    tableau.addSuccedent(goal);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
   }
 
   return 0;

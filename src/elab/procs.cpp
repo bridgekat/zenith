@@ -80,6 +80,42 @@ namespace Elab::Procs {
     throw NotImplemented();
   }
 
+  bool equalAfterSubs(const Expr* lhs, const Expr* rhs, const Subs& subs) noexcept {
+    using enum Expr::Tag;
+    using enum Expr::VarTag;
+    // Check if an undetermined variable has been replaced
+    if (lhs->tag == VAR && lhs->var.vartag == UNDETERMINED && lhs->var.id < subs.size() && subs[lhs->var.id])
+      return equalAfterSubs(subs[lhs->var.id], rhs, subs);
+    if (rhs->tag == VAR && rhs->var.vartag == UNDETERMINED && rhs->var.id < subs.size() && subs[rhs->var.id])
+      return equalAfterSubs(lhs, subs[rhs->var.id], subs);
+    // Normal comparison (refer to the implementation of `Expr::operator==`)
+    if (lhs->tag != rhs->tag) return false;
+    switch (lhs->tag) {
+      case EMPTY: return true;
+      case VAR: {
+        if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) return false;
+        const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
+        for (; plhs && prhs; plhs = plhs->s, prhs = prhs->s) {
+          if (!equalAfterSubs(plhs, prhs, subs)) return false;
+        }
+        if (plhs || prhs) return false;
+        return true;
+      }
+      case TRUE: case FALSE:
+        return true;
+      case NOT:
+        return equalAfterSubs(lhs->conn.l, rhs->conn.l, subs);
+      case AND: case OR: case IMPLIES: case IFF:
+        return equalAfterSubs(lhs->conn.l, rhs->conn.l, subs) &&
+               equalAfterSubs(lhs->conn.r, rhs->conn.r, subs);
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+        return lhs->binder.arity == rhs->binder.arity &&
+               lhs->binder.sort  == rhs->binder.sort  &&
+               equalAfterSubs(lhs->binder.r, rhs->binder.r, subs);
+    }
+    throw NotImplemented();
+  }
+
   // A simple anti-unification algorithm.
   // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
   class Antiunifier {
@@ -148,8 +184,8 @@ namespace Elab::Procs {
     }
   };
 
-  tuple<Expr*, Subs, Subs> antiunify(const Expr* l, const Expr* r, Allocator<Expr>& pool) {
-    return Antiunifier()(&pool, l, r);
+  tuple<Expr*, Subs, Subs> antiunify(const Expr* lhs, const Expr* rhs, Allocator<Expr>& pool) {
+    return Antiunifier()(&pool, lhs, rhs);
   }
 
   // The Robinson's unification algorithm (could take exponential time for certain cases.)

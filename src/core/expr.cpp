@@ -28,7 +28,7 @@ namespace Core {
     throw NotImplemented();
   }
 
-  void Expr::attachChildren(const std::initializer_list<Expr*>& nodes) noexcept {
+  void Expr::attachChildren(const vector<Expr*>& nodes) noexcept {
     if (tag != VAR) return;
     Expr* last = nullptr;
     for (Expr* q: nodes) {
