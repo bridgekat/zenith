@@ -2,6 +2,9 @@
 #include <iostream>
 #include "tableau.hpp"
 
+#define SEMANTIC_BRANCHING
+
+
 namespace Elab {
 
   using Procs::Subs;
@@ -15,6 +18,19 @@ namespace Elab {
       res[i] = af ? a[i] : bf ? b[i] : nullptr;
     }
     return res;
+  }
+
+  string typeToString(unsigned int t) noexcept {
+    using enum Tableau::Type;
+    switch (t) {
+      case ι: return "ι";
+      case α: return "α";
+      case β: return "β";
+      case γ: return "γ";
+      case δ: return "δ";
+      case γre: return "γre";
+    }
+    return "?";
   }
 
   // Tweak parameters here (2/3)
@@ -81,19 +97,23 @@ namespace Elab {
 
     WithCedent(Tableau* p, const Expr* e, bool* closed, bool reAdd = false):
         p(p), i(Tableau::classify(LR, e)), ehash(ExprHash(e)), inserted(false), reAdd(reAdd) {
+      if (reAdd) i = Tableau::Type::γre; // TODO: make least priority
       inserted = p->hashset[LR].insert(ehash).second;
       if (inserted) {
         // Try hash set first
         if (p->hashset[RL].contains(ehash)) {
           *closed = true;
           p->closed++;
+          std::cout << "Branch closed" << std::endl;
         } else {
           // Compare one by one, taking substitution into consideration
           // TODO: try optimise candidate selection...
-          for (const Expr* q: p->cedents[Tableau::classify(RL, e)][RL])
+          //for (const Expr* q: p->cedents[Tableau::classify(RL, e)][RL])
+          for (auto& [q, _]: p->hashset[RL])
             if (Procs::equalAfterSubs(e, q, p->subs)) {
               *closed = true;
               p->closed++;
+              std::cout << "Branch closed" << std::endl;
               break;
             }
         }
@@ -113,19 +133,18 @@ namespace Elab {
 
   // Pre: all elements of `ante`, `succ`, `anteSet` and `succSet` are valid, well-formed formulas
   // All states will be unmodified/restored
-  bool Tableau::dfs(int maxDepth) {
-    if (maxDepth <= 0) {
-      maxDepthReached = 0;
+  bool Tableau::dfs(size_t depth) {
+    if (depth >= maxDepth) {
+      maxDepthReached = maxDepth;
       return false;
     }
-    maxDepthReached = std::min(maxDepthReached, maxDepth);
+    maxDepthReached = std::max(maxDepthReached, depth);
     invocations++;
 
     // Tweak parameters here (3/3)
-    constexpr static unsigned int order[] = { α, δ, γ, ι, β };
-    //const static unsigned int order[] = { α, δ, γ, ι, β };
+    constexpr static unsigned int order[] = { α, δ, γ, ι, β, γre };
     //constexpr static int Kι = 3; // One ι-expansion = how many β-expansions?
-    constexpr static int Kγ = 1; // One γ-expansion = how many β-expansions?
+    //constexpr static int Kγ = 1; // One γ-expansion = how many β-expansions?
 
     for (unsigned int i: order) {
       using enum Expr::Tag;
@@ -139,50 +158,54 @@ namespace Elab {
         WithValue iguard(&succi, succi + 1);
 
         const Expr* es = Procs::applySubs(e, subs, pool);
-        std::cout << "F " << es->toString(ctx) << std::endl;
+        std::cout << string(depth * 2, ' ') << "F (" << typeToString(i) << ") " << es->toString(ctx) << std::endl;
 
         switch (e->tag) {
           case VAR: {
             // iota
-            if (dfs(maxDepth)) return true;
             // Try unify and close branch (no need to check for other closures...)
             // TODO: try optimise candidate selection...
             const Expr* es = Procs::applySubs(e, subs, pool);
-            unsigned int j = classify(L, es);
-            for (const Expr* q: cedents[j][L]) {
+            //unsigned int j = classify(L, es);
+            //for (const Expr* q: cedents[j][L]) {
+            for (auto& [q, _]: hashset[L]) {
               auto res = Procs::unify({{ es, Procs::applySubs(q, subs, pool) }}, pool);
               if (res.has_value()) {
                 // TODO: is this complete?
                 subs = simpleCompose(subs, res.value());
                 if (!Procs::equalAfterSubs(e, q, subs)) throw Unreachable();
                 closed++;
+                std::cout << "Branch closed" << std::endl;
                 return true;
               }
             }
-            return false;
+            return dfs(depth);
           }
           case TRUE:
+            std::cout << "Branch closed" << std::endl;
             return true;
           case FALSE:
-            return dfs(maxDepth);
+            return dfs(depth);
           case NOT: {
             bool closed = false;
             WithAnte n(this, e->conn.l, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case AND: {
             // beta
             {
               bool closed = false;
               WithSucc l(this, e->conn.l, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              if (!closed && !dfs(depth + 1)) return false;
             }
             branches++;
             {
               bool closed = false;
-              WithAnte l(this, e->conn.l, &closed); // Optimization
               WithSucc r(this, e->conn.r, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              #ifdef SEMANTIC_BRANCHING
+              WithAnte l(this, e->conn.l, &closed);
+              #endif
+              if (!closed && !dfs(depth + 1)) return false;
             }
             return true;
           }
@@ -191,14 +214,14 @@ namespace Elab {
             bool closed = false;
             WithSucc l(this, e->conn.l, &closed);
             WithSucc r(this, e->conn.r, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case IMPLIES: {
             // alpha
             bool closed = false;
             WithAnte l(this, e->conn.l, &closed);
             WithSucc r(this, e->conn.r, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case IFF: {
             // beta
@@ -207,14 +230,16 @@ namespace Elab {
             {
               bool closed = false;
               WithSucc l(this, &mp, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              if (!closed && !dfs(depth + 1)) return false;
             }
             branches++;
             {
               bool closed = false;
-              WithAnte l(this, &mp, &closed); // Optimization
               WithSucc r(this, &mpr, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              #ifdef SEMANTIC_BRANCHING
+              WithAnte l(this, &mp, &closed);
+              #endif
+              if (!closed && !dfs(depth + 1)) return false;
             }
             return true;
           }
@@ -229,7 +254,7 @@ namespace Elab {
             WithValue n(&numSkolem, numSkolem + 1);
             WithSucc l(this, body, &closed);
             WithSucc r(this, e, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case EXISTS: {
             // gamma
@@ -239,8 +264,8 @@ namespace Elab {
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numUniversal, numUniversal + 1);
             WithSucc l(this, body, &closed);
-            // WithSucc r(this, e, &closed, true); // Re-add
-            return closed || dfs(maxDepth - Kγ);
+            WithSucc r(this, e, &closed, true); // Re-add
+            return closed || dfs(i == γre ? depth + 1 : depth);
           }
           case UNIQUE: {
             // beta
@@ -248,7 +273,7 @@ namespace Elab {
             {
               bool closed = false;
               WithSucc l(this, &exi, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              if (!closed && !dfs(depth + 1)) return false;
             }
             Expr x(BOUND, 1), x_(BOUND, 0);
             Expr eq(FREE, ctx.eq, { &x, &x_ });
@@ -260,18 +285,20 @@ namespace Elab {
             branches++;
             {
               bool closed = false;
-              WithAnte l(this, &exi, &closed); // Optimization
               WithSucc r(this, &no2, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              #ifdef SEMANTIC_BRANCHING
+              WithAnte l(this, &exi, &closed);
+              #endif
+              if (!closed && !dfs(depth + 1)) return false;
             }
             return true;
           }
           case FORALL2: {
             // TODO: second-order delta rule
-            return dfs(maxDepth);
+            return dfs(depth);
           }
           case EMPTY: case LAM:
-            return dfs(maxDepth);
+            return dfs(depth);
         }
         throw NotImplemented();
       }
@@ -282,57 +309,61 @@ namespace Elab {
         WithValue iguard(&antei, antei + 1);
 
         const Expr* es = Procs::applySubs(e, subs, pool);
-        std::cout << "T " << es->toString(ctx) << std::endl;
+        std::cout << string(depth * 2, ' ') << "T (" << typeToString(i) << ") " << es->toString(ctx) << std::endl;
 
         switch (e->tag) {
           case VAR: {
             // iota
-            if (dfs(maxDepth)) return true;
             // Try unify and close branch (no need to check for other closures...)
             // TODO: try optimise candidate selection...
             const Expr* es = Procs::applySubs(e, subs, pool);
-            unsigned int j = classify(R, es);
-            for (const Expr* q: cedents[j][R]) {
+            //unsigned int j = classify(R, es);
+            //for (const Expr* q: cedents[j][R]) {
+            for (auto& [q, _]: hashset[R]) {
               auto res = Procs::unify({{ es, Procs::applySubs(q, subs, pool) }}, pool);
               if (res.has_value()) {
                 // TODO: is this complete?
                 subs = simpleCompose(subs, res.value());
                 if (!Procs::equalAfterSubs(e, q, subs)) throw Unreachable();
                 closed++;
+                std::cout << "Branch closed" << std::endl;
                 return true;
               }
             }
-            return false;
+            return dfs(depth);
           }
           case TRUE:
-            return dfs(maxDepth);
+            return dfs(depth);
           case FALSE:
+            std::cout << "Branch closed" << std::endl;
             return true;
           case NOT: {
             bool closed = false;
             WithSucc n(this, e->conn.l, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case AND: {
             // alpha
             bool closed = false;
             WithAnte l(this, e->conn.l, &closed);
             WithAnte r(this, e->conn.r, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case OR: {
             // beta
             {
               bool closed = false;
               WithAnte l(this, e->conn.l, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              if (!closed && !dfs(depth + 1)) return false;
             }
             branches++;
             {
               bool closed = false;
-              WithSucc l(this, e->conn.l, &closed); // Optimization
               WithAnte r(this, e->conn.r, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              #ifdef SEMANTIC_BRANCHING
+              WithSucc l(this, e->conn.l, &closed);
+              #endif
+              if (!closed && !dfs(depth + 1)) return false;
             }
             return true;
           }
@@ -341,14 +372,16 @@ namespace Elab {
             {
               bool closed = false;
               WithSucc n(this, e->conn.l, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              if (!closed && !dfs(depth + 1)) return false;
             }
             branches++;
             {
               bool closed = false;
-              WithAnte l(this, e->conn.l, &closed); // Optimization
               WithAnte r(this, e->conn.r, &closed);
-              if (!closed && !dfs(maxDepth - 1)) return false;
+              #ifdef SEMANTIC_BRANCHING
+              WithAnte l(this, e->conn.l, &closed);
+              #endif
+              if (!closed && !dfs(depth + 1)) return false;
             }
             return true;
           }
@@ -359,7 +392,7 @@ namespace Elab {
             bool closed = false;
             WithAnte l(this, &mp, &closed);
             WithAnte r(this, &mpr, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case FORALL: {
             // gamma
@@ -369,8 +402,8 @@ namespace Elab {
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numUniversal, numUniversal + 1);
             WithAnte l(this, body, &closed);
-            // WithAnte r(this, e, &closed, true); // Re-add
-            return closed || dfs(maxDepth - Kγ);
+            WithAnte r(this, e, &closed, true); // Re-add
+            return closed || dfs(i == γre ? depth + 1 : depth);
           }
           case EXISTS: {
             // delta
@@ -383,7 +416,7 @@ namespace Elab {
             WithValue n(&numSkolem, numSkolem + 1);
             WithAnte l(this, body, &closed);
             WithAnte r(this, e, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case UNIQUE: {
             // alpha
@@ -398,14 +431,14 @@ namespace Elab {
             bool closed = false;
             WithAnte l(this, &exi, &closed);
             WithAnte r(this, &no2, &closed);
-            return closed || dfs(maxDepth);
+            return closed || dfs(depth);
           }
           case FORALL2: {
             // "φ" rule is not supported yet...
-            return dfs(maxDepth);
+            return dfs(depth);
           }
           case EMPTY: case LAM:
-            return dfs(maxDepth);
+            return dfs(depth);
         }
         throw NotImplemented();
       }
@@ -415,20 +448,19 @@ namespace Elab {
     return false;
   }
 
-  bool Tableau::search(int maxDepth) {
+  bool Tableau::search(size_t maxDepth) {
     for (unsigned int i = 0; i < N; i++) {
       indices[i][L] = 0;
       indices[i][R] = 0;
     }
     numUniversal = numSkolem = 0;
     subs.clear();
-    maxDepthReached = maxDepth;
+    maxDepthReached = 0;
     invocations = 0;
     branches = 1;
     closed = 0;
-    bool res = dfs(maxDepth);
-    maxDepthReached = maxDepth - maxDepthReached;
-    return res;
+    this->maxDepth = maxDepth;
+    return dfs(0);
   }
 
   string Tableau::printState() {
@@ -438,6 +470,23 @@ namespace Elab {
       res += "| " + e->toString(ctx) + "\n";
     for (unsigned int i = 0; i < N; i++) for (const Expr* e: cedents[i][R])
       res += "| ⊢ " + e->toString(ctx) + "\n";
+    res += "+------------------------------------\n";
+    return res;
+  }
+
+  string Tableau::printStateDebug() {
+    string res;
+    res += "+------------------------------------\n";
+    for (unsigned int i = 0; i < N; i++) {
+      res += "| (" + typeToString(i) + ") " + std::to_string(indices[i][L]) + "\n";
+      for (const Expr* e: cedents[i][L])
+        res += "| " + e->toString(ctx) + "\n";
+    }
+    for (unsigned int i = 0; i < N; i++) {
+      res += "| (" + typeToString(i) + ") " + std::to_string(indices[i][R]) + "\n";
+      for (const Expr* e: cedents[i][R])
+        res += "| ⊢ " + e->toString(ctx) + "\n";
+    }
     res += "+------------------------------------\n";
     return res;
   }

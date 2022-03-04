@@ -277,7 +277,6 @@ int main() {
     cout << std::boolalpha << tableau.search(32) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
-    cout << endl;
   }
 
   {
@@ -378,7 +377,7 @@ int main() {
     Expr* e = exists("x", forall("y", bin(fv(R, bv(1)), IMPLIES, fv(R, bv(0)))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << std::boolalpha << tableau.search(16) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -386,11 +385,11 @@ int main() {
       IMPLIES, forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0))))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << std::boolalpha << tableau.search(16) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
-    Expr* exclusiveness = forall("x", forall("y", bin(fv(L, bv(1), bv(0)), IMPLIES, forall("z", bin(un(NOT, fv(eq, bv(1), bv(0))), IMPLIES, un(NOT, fv(L, bv(2), bv(0))))))));
+    Expr* exclusiveness = forall("x", forall("y", bin(fv(L, bv(1), bv(0)), IMPLIES, forall("z", bin(un(NOT, fv(eq, bv(0), bv(1))), IMPLIES, un(NOT, fv(L, bv(2), bv(0))))))));
     Expr* preference = forall("x", forall("y", forall("z", bin(fv(B, bv(2), bv(1), bv(0)), IMPLIES, bin(fv(L, bv(2), bv(0)), IMPLIES, fv(L, bv(2), bv(1)))))));
     Expr* shadowing = exists("y", bin(un(NOT, fv(eq, bv(0), fv(Q))), AND, forall("x", fv(B, bv(0), bv(1), fv(Q)))));
     Expr* goal = un(NOT, exists("x", fv(L, bv(0), fv(Q))));
@@ -399,7 +398,7 @@ int main() {
     tableau.addAntecedent(shadowing);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << std::boolalpha << tableau.search(16) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }

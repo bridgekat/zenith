@@ -57,10 +57,10 @@ namespace Elab {
     // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ" (existential).
     // (TODO: "ε" (equational) and "φ" (second-order universal))
     enum Position: unsigned int { L, R };
-    enum Type: unsigned int { ι, α, β, γ, δ, N }; // Tweak parameters here (1/3)
+    enum Type: unsigned int { ι, α, β, γ, γre, δ, N }; // Tweak parameters here (1/3)
 
     Tableau(const Context& ctx) noexcept:
-      pool(), ctx(ctx), cedents(), hashset(), indices{}, numUniversal{}, numSkolem{}, subs() {}
+      pool(), ctx(ctx), cedents(), hashset(), maxDepth{}, indices{}, numUniversal{}, numSkolem{}, subs() {}
 
     void addAntecedent(const Expr* e) {
       auto it = hashset[L].insert(ExprHash(e));
@@ -84,8 +84,9 @@ namespace Elab {
       hashset[R].clear();
     }
 
-    bool search(int maxDepth);
+    bool search(size_t maxDepth);
     string printState();
+    string printStateDebug();
     string printStats();
 
   private:
@@ -95,19 +96,19 @@ namespace Elab {
     unordered_set<ExprHash, ExprHash::GetHash> hashset[2]; // For fast membership testing
 
     // Ephemeral states
+    size_t maxDepth;
     size_t indices[N][2];                                  // Head index of queues
     size_t numUniversal, numSkolem;                        // Number of new variables (for allocating new variable IDs)
     Procs::Subs subs;
 
     // Statistics
-    int maxDepthReached = 0;
-    size_t invocations = 0, branches = 0, closed = 0;
+    size_t maxDepthReached = 0, invocations = 0, branches = 0, closed = 0;
 
     template <Position LR, Position RL>
     friend class WithCedent;
 
     static Type classify(Position antesucc, const Expr* e) noexcept;
-    bool dfs(int maxDepth);
+    bool dfs(size_t depth);
   };
 
 }
