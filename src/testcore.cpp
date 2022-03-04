@@ -225,7 +225,18 @@ int main() {
     unsigned int r = ctx.pushVar("r", {{ 0, SPROP }});
     unsigned int s = ctx.pushVar("s", {{ 0, SPROP }});
 
-    Expr* e = forallpred("phi", 2, forall("x", exists("y", forall("a", bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
+    Expr* e = bin(bin(fv(p), IFF, fv(q)), IFF, un(NOT, bin(fv(r), IMPLIES, fv(s))));
+    Expr* nnf = Elab::Procs::toNNF(e, ctx, pool);
+    cout << e->toString(ctx) << endl;
+    cout << nnf->toString(ctx) << endl;
+    Elab::Procs::foreachValuation({ p, q, r, s }, [&e, &nnf] (const vector<bool>& fvmap) {
+      cout << Elab::Procs::propValue(e, fvmap);
+      cout << Elab::Procs::propValue(nnf, fvmap);
+    });
+    cout << endl;
+    cout << endl;
+
+    e = forallpred("phi", 2, forall("x", exists("y", forall("a", bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
     /*
     cout << e->hash() << endl;
     cout << e->binder.r->hash() << endl;
@@ -241,7 +252,8 @@ int main() {
     cout << e->conn.l->conn.r->conn.l->hash() << endl;
     */
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search() << endl;
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search(16) << endl;
+    cout << tableau.printStats() << endl;
     tableau.clear();
 
     e = bin(fv(p), OR, un(NOT, fv(p)));
@@ -251,27 +263,18 @@ int main() {
     cout << e->conn.r->conn.l->hash() << endl;
     */
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search() << endl;
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search(16) << endl;
+    cout << tableau.printStats() << endl;
     tableau.clear();
 
     // ¬(p ↔ ¬p)
     e = un(NOT, bin(fv(p), IFF, un(NOT, fv(p))));
     tableau.addSuccedent(e);
-    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search() << endl;
+    cout << "Is \"" << e->toString(ctx) << "\" provable? " << tableau.search(16) << endl;
+    cout << tableau.printStats() << endl;
     tableau.clear();
     cout << endl;
 
-    cout << "Conversion to negation normal form:" << endl;
-    e = bin(bin(fv(p), IFF, fv(q)), IFF, un(NOT, bin(fv(r), IMPLIES, fv(s))));
-    Expr* nnf = Elab::Procs::toNNF(e, ctx, pool);
-    cout << e->toString(ctx) << endl;
-    cout << nnf->toString(ctx) << endl;
-    Elab::Procs::foreachValuation({ p, q, r, s }, [&e, &nnf] (const vector<bool>& fvmap) {
-      cout << Elab::Procs::propValue(e, fvmap);
-      cout << Elab::Procs::propValue(nnf, fvmap);
-    });
-    cout << endl;
-    cout << endl;
   }
 
   {

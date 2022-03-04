@@ -34,6 +34,7 @@ namespace Elab {
   };
 
   // Method of analytic tableaux (aka. sequent calculus) for classical logic
+  // (LOTS OF TEMPORARY CODE NOW!)
 
   // For an introduction, see:
   // - https://en.wikipedia.org/wiki/Method_of_analytic_tableaux
@@ -54,12 +55,12 @@ namespace Elab {
     // Antecedents in `cedents[...][L]` and `hashset[L]`
     // Succedents in `cedents[...][R]` and `hashset[R]`
     // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ" (existential).
+    // (TODO: "ε" (equational) and "φ" (second-order universal))
     enum Position: unsigned int { L, R };
     enum Type: unsigned int { ι, α, β, γ, δ, N }; // Tweak parameters here (1/3)
-    enum VarTag: unsigned char { UNIVERSAL, SKOLEM };
 
     Tableau(const Context& ctx) noexcept:
-      ctx(ctx), cedents(), indices{}, hashset(), vars(), subs() {}
+      ctx(ctx), cedents(), indices{}, hashset(), numUniversal{}, numSkolem{}, subs() {}
 
     void addAntecedent(const Expr* e) {
       auto it = hashset[L].insert(ExprHash(e));
@@ -82,7 +83,8 @@ namespace Elab {
       }
     }
 
-    bool search();
+    bool search(int maxDepth);
+    string printStats();
 
   private:
     const Context& ctx;                                    // For offset and `eq`
@@ -90,17 +92,20 @@ namespace Elab {
     size_t indices[N][2];                                  // Head index of queues
     unordered_set<ExprHash, ExprHash::GetHash> hashset[2]; // For fast membership testing
 
-    vector<VarTag> vars;
+    // Ephemeral states
+    // Number of new variables (for allocating new variable IDs)
+    size_t numUniversal, numSkolem;
     Procs::Subs subs;
+
+    // Statistics
+    int maxDepthReached = 0;
+    size_t invocations = 0, branches = 0, closed = 0;
 
     template <Position LR, Position RL>
     friend class WithCedent;
 
-    template <VarTag VT>
-    friend class WithVar;
-
     static Type classify(Position antesucc, const Expr* e) noexcept;
-    bool dfs();
+    bool dfs(int maxDepth);
   };
 
 }

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "tableau.hpp"
 
 namespace Elab {
@@ -19,7 +20,8 @@ namespace Elab {
           case FORALL:  return γ;
           case EXISTS:  return δ;
           case UNIQUE:  return α;
-          case EMPTY: case FORALL2: case LAM: return α;
+          case FORALL2: return α; // Change to return φ; when ready
+          case EMPTY: case LAM: return α;
         }
         break;
       case R:
@@ -35,7 +37,8 @@ namespace Elab {
           case FORALL:  return δ;
           case EXISTS:  return γ;
           case UNIQUE:  return β;
-          case EMPTY: case FORALL2: case LAM: return α;
+          case FORALL2: return δ;
+          case EMPTY: case LAM: return α;
         }
         break;
     }
@@ -66,7 +69,10 @@ namespace Elab {
       it = p->hashset[LR].insert(ehash);
       if (it.second) {
         p->cedents[i][LR].push_back(e);
-        if (p->hashset[RL].contains(ehash)) *closed = true;
+        if (p->hashset[RL].contains(ehash)) {
+          *closed = true;
+          p->closed++;
+        }
       }
     }
     WithCedent(const WithCedent&) = delete;
@@ -82,25 +88,21 @@ namespace Elab {
   using WithAnte = WithCedent<Tableau::Position::L, Tableau::Position::R>;
   using WithSucc = WithCedent<Tableau::Position::R, Tableau::Position::L>;
 
-  // Scope guard for "insert variables, recurse, and remove them"
-  template <Tableau::VarTag VT>
-  class WithVar {
-  public:
-    Tableau* const p;
-    const size_t id;
-
-    WithVar(Tableau* p): p(p), id(p->ctx.size() + p->vars.size()) { p->vars.push_back(VT); }
-    WithVar(const WithVar&) = delete;
-    WithVar& operator=(const WithVar&) = delete;
-    ~WithVar() { p->vars.pop_back(); }
-  };
-
   // Pre: all elements of `ante`, `succ`, `anteSet` and `succSet` are valid, well-formed formulas
   // All states will be unmodified/restored
-  bool Tableau::dfs() {
+  bool Tableau::dfs(int maxDepth) {
+    if (maxDepth <= 0) {
+      maxDepthReached = 0;
+      return false;
+    }
+    maxDepthReached = std::min(maxDepthReached, maxDepth);
+    invocations++;
 
     // Tweak parameters here (3/3)
-    const static unsigned int order[] = { α, δ, γ, ι, β };
+    constexpr static unsigned int order[] = { α, δ, γ, ι, β };
+    //const static unsigned int order[] = { α, δ, γ, ι, β };
+    constexpr static int Kι = 3; // One ι-expansion = how many β-expansions?
+    constexpr static int Kγ = 1; // One γ-expansion = how many β-expansions?
 
     for (unsigned int i: order) {
       using enum Expr::Tag;
@@ -116,29 +118,30 @@ namespace Elab {
         switch (e->tag) {
           case VAR: {
             // TODO: try unify and close branch?
-            return dfs();
+            return dfs(maxDepth - Kι);
           }
           case TRUE:
             return true;
           case FALSE:
-            return dfs();
+            return dfs(maxDepth);
           case NOT: {
             bool closed = false;
             WithAnte n(this, e->conn.l, &closed);
-            return closed || dfs();
+            return closed || dfs(maxDepth);
           }
           case AND: {
             // beta
             {
               bool closed = false;
               WithSucc l(this, e->conn.l, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
+            branches++;
             {
               bool closed = false;
               WithAnte l(this, e->conn.l, &closed); // Optimization
               WithSucc r(this, e->conn.r, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
             return true;
           }
@@ -147,14 +150,14 @@ namespace Elab {
             bool closed = false;
             WithSucc l(this, e->conn.l, &closed);
             WithSucc r(this, e->conn.r, &closed);
-            return closed || dfs();
+            return closed || dfs(maxDepth);
           }
           case IMPLIES: {
             // alpha
             bool closed = false;
             WithAnte l(this, e->conn.l, &closed);
             WithSucc r(this, e->conn.r, &closed);
-            return closed || dfs();
+            return closed || dfs(maxDepth);
           }
           case IFF: {
             // beta
@@ -163,23 +166,24 @@ namespace Elab {
             {
               bool closed = false;
               WithSucc l(this, &mp, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
+            branches++;
             {
               bool closed = false;
               WithAnte l(this, &mp, &closed); // Optimization
               WithSucc r(this, &mpr, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
             return true;
           }
           case FORALL: {
             // TODO: delta
-            return dfs();
+            return dfs(maxDepth);
           }
           case EXISTS: {
             // TODO: gamma
-            return dfs();
+            return dfs(maxDepth);
           }
           case UNIQUE: {
             // beta
@@ -187,7 +191,7 @@ namespace Elab {
             {
               bool closed = false;
               WithSucc l(this, &exi, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
             Expr x(BOUND, 1), x_(BOUND, 0);
             Expr eq(FREE, ctx.eq, { &x, &x_ });
@@ -196,20 +200,21 @@ namespace Elab {
             Expr b(IMPLIES, e->binder.r, &c);
             Expr a(FORALL, e->bv, e->binder.arity, e->binder.sort, &b);
             Expr no2 = a;
+            branches++;
             {
               bool closed = false;
               WithAnte l(this, &exi, &closed); // Optimization
               WithSucc r(this, &no2, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
             return true;
           }
           case FORALL2: {
-            // Second-order formulas are not supported yet...
-            return dfs();
+            // TODO: delta
+            return dfs(maxDepth);
           }
           case EMPTY: case LAM:
-            return dfs();
+            return dfs(maxDepth);
         }
         throw NotImplemented();
       }
@@ -222,36 +227,37 @@ namespace Elab {
         switch (e->tag) {
           case VAR: {
             // TODO: try unify and close branch?
-            return dfs();
+            return dfs(maxDepth - Kι);
           }
           case TRUE:
-            return dfs();
+            return dfs(maxDepth);
           case FALSE:
             return true;
           case NOT: {
             bool closed = false;
             WithSucc n(this, e->conn.l, &closed);
-            return closed || dfs();
+            return closed || dfs(maxDepth);
           }
           case AND: {
             // alpha
             bool closed = false;
             WithAnte l(this, e->conn.l, &closed);
             WithAnte r(this, e->conn.r, &closed);
-            return closed || dfs();
+            return closed || dfs(maxDepth);
           }
           case OR: {
             // beta
             {
               bool closed = false;
               WithAnte l(this, e->conn.l, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
+            branches++;
             {
               bool closed = false;
               WithSucc l(this, e->conn.l, &closed); // Optimization
               WithAnte r(this, e->conn.r, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
             return true;
           }
@@ -260,13 +266,14 @@ namespace Elab {
             {
               bool closed = false;
               WithSucc n(this, e->conn.l, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
+            branches++;
             {
               bool closed = false;
               WithAnte l(this, e->conn.l, &closed); // Optimization
               WithAnte r(this, e->conn.r, &closed);
-              if (!closed && !dfs()) return false;
+              if (!closed && !dfs(maxDepth - 1)) return false;
             }
             return true;
           }
@@ -277,15 +284,17 @@ namespace Elab {
             bool closed = false;
             WithAnte l(this, &mp, &closed);
             WithAnte r(this, &mpr, &closed);
-            return closed || dfs();
+            return closed || dfs(maxDepth);
           }
           case FORALL: {
-            // TODO: gamma
-            return dfs();
+            bool closed = false;
+            WithAnte next(this, e, &closed);
+            
+            return closed || dfs(maxDepth - Kγ);
           }
           case EXISTS: {
             // TODO: delta
-            return dfs();
+            return dfs(maxDepth);
           }
           case UNIQUE: {
             // alpha
@@ -300,14 +309,14 @@ namespace Elab {
             bool closed = false;
             WithAnte l(this, &exi, &closed);
             WithAnte r(this, &no2, &closed);
-            return closed || dfs();
+            return closed || dfs(maxDepth);
           }
           case FORALL2: {
-            // Second-order formulas are not supported yet...
-            return dfs();
+            // "φ" rule is not supported yet...
+            return dfs(maxDepth);
           }
           case EMPTY: case LAM:
-            return dfs();
+            return dfs(maxDepth);
         }
         throw NotImplemented();
       }
@@ -317,10 +326,27 @@ namespace Elab {
     return false;
   }
 
-  bool Tableau::search() {
+  bool Tableau::search(int maxDepth) {
+    numUniversal = numSkolem = 0;
     subs.clear();
-    vars.clear();
-    return dfs();
+    maxDepthReached = maxDepth;
+    invocations = 0;
+    branches = 1;
+    closed = 0;
+    bool res = dfs(maxDepth);
+    maxDepthReached = maxDepth - maxDepthReached;
+    return res;
+  }
+
+  string Tableau::printStats() {
+    string res;
+    res += "+------------------------------------\n";
+    res += "| Number of DFS invocations: " + std::to_string(invocations) + "\n";
+    res += "| Maximum beta-depth: " + std::to_string(maxDepthReached) + "\n";
+    res += "| Total number of opened branches: " + std::to_string(branches) + "\n";
+    res += "| Total number of closed branches: " + std::to_string(closed) + "\n";
+    res += "+------------------------------------\n";
+    return res;
   }
 
 }
