@@ -116,6 +116,15 @@ namespace Elab::Procs {
     throw NotImplemented();
   }
 
+  string showSubs(const Subs& subs, const Context& ctx) {
+    using enum Expr::VarTag;
+    string res;
+    for (size_t i = 0; i < subs.size(); i++) if (subs[i]) {
+      res += Expr(UNDETERMINED, i).toString(ctx) + " -> " + subs[i]->toString(ctx) + "\n";
+    }
+    return res;
+  }
+
   // A simple anti-unification algorithm.
   // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
   class Antiunifier {

@@ -39,13 +39,17 @@ namespace Elab {
   // For an introduction, see:
   // - https://en.wikipedia.org/wiki/Method_of_analytic_tableaux
   // - https://en.wikipedia.org/wiki/Sequent_calculus#The_system_LK
+  // - https://www.wolfgangschwarz.net/trees/
+  //   (Also contains implementation tips)
 
   // For implementation-related things, see:
   // - https://www21.in.tum.de/teaching/sar/SS20/2.pdf
   // - https://moodle.risc.jku.at/pluginfile.php/10562/mod_resource/content/12/07-fol3.pdf
-  // - https://www.wolfgangschwarz.net/trees/
+  //   (Free-variable tableau, but uses backtracking...)
   // - https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.216.388&rep=rep1&type=pdf
   //   (Also contains several completeness proofs)
+  // - https://publikationen.bibliothek.kit.edu/4572003/3209
+  //   (Free-variable tableau without backtracking!)
 
   // For translation of LK (tableaux) to NK (natural deduction), see:
   // - http://ceur-ws.org/Vol-2162/paper-03.pdf
@@ -60,7 +64,7 @@ namespace Elab {
     enum Type: unsigned int { ι, α, β, γ, γre, δ, N }; // Tweak parameters here (1/3)
 
     Tableau(const Context& ctx) noexcept:
-      pool(), ctx(ctx), cedents(), hashset(), maxDepth{}, indices{}, numUniversal{}, numSkolem{}, subs() {}
+      pool(), ctx(ctx), cedents(), hashset(), maxDepth{}, indices{}, numUniversal{}, numSkolem{} {}
 
     void addAntecedent(const Expr* e) {
       auto it = hashset[L].insert(ExprHash(e));
@@ -99,16 +103,15 @@ namespace Elab {
     size_t maxDepth;
     size_t indices[N][2];                                  // Head index of queues
     size_t numUniversal, numSkolem;                        // Number of new variables (for allocating new variable IDs)
-    Procs::Subs subs;
 
     // Statistics
-    size_t maxDepthReached = 0, invocations = 0, branches = 0, closed = 0;
+    size_t maxDepthReached = 0, invocations = 0, branches = 0;
 
     template <Position LR, Position RL>
     friend class WithCedent;
 
     static Type classify(Position antesucc, const Expr* e) noexcept;
-    bool dfs(size_t depth);
+    vector<Procs::Subs> dfs(size_t depth);
   };
 
 }

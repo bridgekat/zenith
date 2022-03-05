@@ -245,6 +245,8 @@ int main() {
     cout << e->binder.r->binder.r->binder.r->binder.r->hash() << endl;
     cout << e->binder.r->binder.r->binder.r->binder.r->conn.l->hash() << endl;
     */
+
+    cout << "(Not provable)" << endl;
     e = un(NOT, bin(fv(p), OR, un(NOT, fv(p))));
     /*
     cout << e->hash() << endl;
@@ -254,10 +256,11 @@ int main() {
     */
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
+    cout << "(Provable)" << endl;
     e = bin(fv(p), OR, un(NOT, fv(p)));
     /*
     cout << e->hash() << endl;
@@ -266,15 +269,16 @@ int main() {
     */
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
     // ¬(p ↔ ¬p)
+    cout << "(Provable)" << endl;
     e = un(NOT, bin(fv(p), IFF, un(NOT, fv(p))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(32) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }
@@ -312,9 +316,7 @@ int main() {
     cout << lhs->toString(ctx) << endl;
     cout << rhs->toString(ctx) << endl;
     Subs subs = unify({{ lhs, rhs }}, pool).value();
-    for (size_t i = 0; i < subs.size(); i++) if (subs[i]) {
-      cout << Expr(UNDETERMINED, i).toString(ctx) << " -> " << subs[i]->toString(ctx) << endl;
-    }
+    cout << showSubs(subs, ctx);
     cout << applySubs(lhs, subs, pool)->toString(ctx) << endl;
     cout << applySubs(rhs, subs, pool)->toString(ctx) << endl;
     cout << endl;
@@ -329,15 +331,9 @@ int main() {
     cout << "First-order anti-unification:" << endl;
     auto [tmpl, lsub, rsub] = antiunify(lhs2, rhs2, pool);
     cout << "Template: " << tmpl->toString(ctx) << endl;
-    cout << "LHS substitution:" << endl;
-    for (size_t i = 0; i < lsub.size(); i++) if (subs[i]) {
-      cout << Expr(UNDETERMINED, i).toString(ctx) << " -> " << lsub[i]->toString(ctx) << endl;
-    }
+    cout << "LHS substitution:" << endl << showSubs(lsub, ctx);
     cout << applySubs(lhs2, lsub, pool)->toString(ctx) << endl;
-    cout << "RHS substitution:" << endl;
-    for (size_t i = 0; i < rsub.size(); i++) if (subs[i]) {
-      cout << Expr(UNDETERMINED, i).toString(ctx) << " -> " << rsub[i]->toString(ctx) << endl;
-    }
+    cout << "RHS substitution:" << endl << showSubs(rsub, ctx);
     cout << applySubs(rhs2, rsub, pool)->toString(ctx) << endl;
     cout << endl;
   }
@@ -360,40 +356,40 @@ int main() {
     Expr* lhs = exists("y", forall("x", fv(P, bv(0), bv(1))));
     Expr* rhs = forall("x", exists("y", fv(P, bv(1), bv(0))));
 
-    // Provable
+    cout << "(Provable)" << endl;
     tableau.addAntecedent(lhs);
     tableau.addSuccedent(rhs);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
-    // Not provable
+    cout << "(Not provable)" << endl;
     tableau.addAntecedent(rhs);
     tableau.addSuccedent(lhs);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
-    // Provable
+    cout << "(Provable)" << endl;
     Expr* e = exists("x", forall("y", bin(fv(R, bv(1)), IMPLIES, fv(R, bv(0)))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
-    // Provable
+    cout << "(Provable)" << endl;
     e = bin(exists("y", exists("z", forall("x", bin(bin(fv(F, bv(0)), IMPLIES, fv(G, bv(2))), AND, bin(fv(G, bv(1)), IMPLIES, fv(F, bv(0))))))),
       IMPLIES, forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0))))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
-    // Provable
+    cout << "(Provable)" << endl;
     Expr* exclusiveness = forall("x", forall("y", bin(fv(L, bv(1), bv(0)), IMPLIES, forall("z", bin(un(NOT, fv(eq, bv(0), bv(1))), IMPLIES, un(NOT, fv(L, bv(2), bv(0))))))));
     Expr* preference = forall("x", forall("y", forall("z", bin(fv(B, bv(2), bv(1), bv(0)), IMPLIES, bin(fv(L, bv(2), bv(0)), IMPLIES, fv(L, bv(2), bv(1)))))));
     Expr* shadowing = exists("y", bin(un(NOT, fv(eq, bv(0), fv(Q))), AND, forall("x", fv(B, bv(0), bv(1), fv(Q)))));
@@ -404,7 +400,7 @@ int main() {
     tableau.addAntecedent(shadowing);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }
@@ -425,7 +421,7 @@ int main() {
     unsigned int rel = ctx.pushVar("R", {{ 2, SPROP }});
     unsigned int le = ctx.pushVar("<=", {{ 2, SPROP }});
 
-    // Provable
+    cout << "(Provable)" << endl;
     Expr* e1 = bin(fv(P, fv(a)), OR, fv(Q, fv(b)));
     Expr* e2 = forall("x", bin(fv(P, bv(0)), IMPLIES, fv(R, bv(0))));
     Expr* e3 = forall("x", bin(fv(Q, bv(0)), IMPLIES, fv(R, fv(f, bv(0)))));
@@ -435,11 +431,11 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
-    // Provable!
+    cout << "(Provable!)" << endl;
     Expr* e = bin(
       forall("x", bin(
         bin(fv(P, fv(a)), AND, bin(fv(P, bv(0)), IMPLIES, exists("y", bin(fv(P, bv(0)), AND, fv(rel, bv(1), bv(0)))))),
@@ -462,11 +458,11 @@ int main() {
     );
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
-    // Provable!
+    cout << "(Provable!)" << endl;
     e1 = forall("x", fv(le, bv(0), bv(0)));
     e2 = forall("x", forall("y", forall("z", bin(bin(fv(le, bv(2), bv(1)), AND, fv(le, bv(1), bv(0))), IMPLIES, fv(le, bv(2), bv(0))))));
     e3 = forall("x", forall("y", bin(fv(le, fv(f, bv(1)), bv(0)), IFF, fv(le, bv(1), fv(g, bv(0))))));
@@ -480,7 +476,21 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(16) << endl;
+    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+
+    cout << "(Not provable!)" << endl;
+    e1 = forall("x", bin(fv(Q, bv(0)), OR, un(NOT, fv(P, bv(0)))));
+    //e2 = forall("y", fv(Q, bv(0)));
+    e3 = fv(P, fv(a));
+    goal = fv(Q, fv(b));
+    tableau.addAntecedent(e1);
+    //tableau.addAntecedent(e2);
+    tableau.addAntecedent(e3);
+    tableau.addSuccedent(goal);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.search(10) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }

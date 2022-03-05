@@ -57,6 +57,8 @@ namespace Elab::Procs {
     });
   }
 
+  string showSubs(const Subs& subs, const Context& ctx);
+
   // Check if two expressions are syntactically equal (up to alpha-renaming) after applying a substitution.
   // Probably faster than simply apply and check...
   bool equalAfterSubs(const Expr* lhs, const Expr* rhs, const Subs& subs) noexcept;
