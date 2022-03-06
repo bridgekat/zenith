@@ -256,7 +256,7 @@ int main() {
     */
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -269,7 +269,7 @@ int main() {
     */
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -278,7 +278,7 @@ int main() {
     e = un(NOT, bin(fv(p), IFF, un(NOT, fv(p))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }
@@ -360,7 +360,7 @@ int main() {
     tableau.addAntecedent(lhs);
     tableau.addSuccedent(rhs);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -368,7 +368,7 @@ int main() {
     tableau.addAntecedent(rhs);
     tableau.addSuccedent(lhs);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -376,7 +376,7 @@ int main() {
     Expr* e = exists("x", forall("y", bin(fv(R, bv(1)), IMPLIES, fv(R, bv(0)))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -385,7 +385,7 @@ int main() {
       IMPLIES, forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0))))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -400,7 +400,7 @@ int main() {
     tableau.addAntecedent(shadowing);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }
@@ -431,7 +431,7 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -458,7 +458,7 @@ int main() {
     );
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -476,7 +476,7 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -490,7 +490,7 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.search(10) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }

@@ -3,8 +3,9 @@
 #include "tableau.hpp"
 
 #define SEMANTIC_BRANCHING
-#define OUTPUT_TRACE
-// #define OUTPUT_ON_CLOSURE
+// #define PRINT_TRACE
+// #define PRINT_CLOSURES
+// #define PRINT_INSTANTIATIONS
 
 
 namespace Elab {
@@ -25,6 +26,9 @@ namespace Elab {
   // TODO: deduplicate?
   vector<Subs> restrictClosers(vector<Subs> cl, size_t n) {
     for (auto& curr: cl) {
+#ifdef PRINT_INSTANTIATIONS
+      // TODO: output here?
+#endif
       if (curr.size() > n) curr.resize(n);
       while (!curr.empty() && !curr.back()) curr.pop_back();
       if (curr.empty()) return {{}}; // Shortcut
@@ -84,7 +88,7 @@ namespace Elab {
     // Shortcut
     bool af = false, bf = false;
     for (auto& a: as) if (a.empty()) af = true;
-    for (auto& b: as) if (b.empty()) bf = true;
+    for (auto& b: bs) if (b.empty()) bf = true;
     if (af && bf) return vector<Subs>{{}};
     else if (af) return bs;
     else if (bf) return as;
@@ -179,7 +183,7 @@ namespace Elab {
       if (inserted) {
         if (p->hashset[RL].contains(ehash)) {
           *closed = true;
-#ifdef OUTPUT_ON_CLOSURE
+#ifdef PRINT_CLOSURES
           std::cout << "+------------------------------------" << std::endl;
           std::cout << "| Branch closed with:" << std::endl;
           std::cout << "| " << e->toString(p->ctx) << std::endl;
@@ -210,7 +214,7 @@ namespace Elab {
 
     if (depth >= maxDepth) {
       maxDepthReached = maxDepth;
-      return {};
+      return fail;
     }
     maxDepthReached = std::max(maxDepthReached, depth);
     invocations++;
@@ -230,8 +234,8 @@ namespace Elab {
         const Expr* e = succ[succi];
         WithValue iguard(&succi, succi + 1);
 
-#ifdef OUTPUT_TRACE
-        std::cout << string(depth * 2, ' ') << "F (" << typeToString(i) << ") " << e->toString(ctx) << std::endl;
+#ifdef PRINT_TRACE
+        std::cout << string(depth * 2, ' ') << "R (" << typeToString(i) << ") " << e->toString(ctx) << std::endl;
 #endif
 
         switch (e->tag) {
@@ -245,7 +249,7 @@ namespace Elab {
               if (unifier.has_value()) {
                 if (!Procs::equalAfterSubs(e, q, unifier.value())) throw Unreachable();
                 res.push_back(normalizeSubs(unifier.value(), pool));
-#ifdef OUTPUT_ON_CLOSURE
+#ifdef PRINT_CLOSURES
                 std::cout << "+------------------------------------" << std::endl;
                 std::cout << "| Branch can be closed with:" << std::endl;
                 std::cout << "| " << Procs::applySubs(e, unifier.value(), pool)->toString(ctx) << std::endl;
@@ -253,10 +257,11 @@ namespace Elab {
 #endif
               }
             }
+            maxCloserSize = std::max(maxCloserSize, res.size());
             return res;
           }
           case TRUE:
-#ifdef OUTPUT_ON_CLOSURE
+#ifdef PRINT_CLOSURES
             std::cout << "Branch closed with true at succedent" << std::endl;
 #endif
             return success_unconditional;
@@ -274,6 +279,7 @@ namespace Elab {
               bool closed = false;
               WithSucc l(this, e->conn.l, &closed);
               lcl = closed? success_unconditional : dfs(depth + 1);
+              if (lcl.empty()) return fail;
             }
             branches++;
             {
@@ -283,8 +289,11 @@ namespace Elab {
               WithAnte l(this, e->conn.l, &closed);
 #endif
               rcl = closed? success_unconditional : dfs(depth + 1);
+              if (rcl.empty()) return fail;
             }
-            return intersectClosers(lcl, rcl, pool);
+            auto res = intersectClosers(lcl, rcl, pool);
+            maxCloserSize = std::max(maxCloserSize, res.size());
+            return res;
           }
           case OR: {
             // alpha
@@ -303,23 +312,27 @@ namespace Elab {
           case IFF: {
             // beta
             vector<Subs> lcl, rcl;
-            Expr mp(IMPLIES, e->conn.l, e->conn.r);
-            Expr mpr(IMPLIES, e->conn.r, e->conn.l);
+            const Expr* mp = Expr::make(pool, IMPLIES, e->conn.l, e->conn.r);
+            const Expr* mpr = Expr::make(pool, IMPLIES, e->conn.r, e->conn.l);
             {
               bool closed = false;
-              WithSucc l(this, &mp, &closed);
+              WithSucc l(this, mp, &closed);
               lcl = closed? success_unconditional : dfs(depth + 1);
+              if (lcl.empty()) return fail;
             }
             branches++;
             {
               bool closed = false;
-              WithSucc r(this, &mpr, &closed);
+              WithSucc r(this, mpr, &closed);
 #ifdef SEMANTIC_BRANCHING
-              WithAnte l(this, &mp, &closed);
+              WithAnte l(this, mp, &closed);
 #endif
               rcl = closed? success_unconditional : dfs(depth + 1);
+              if (rcl.empty()) return fail;
             }
-            return intersectClosers(lcl, rcl, pool);
+            auto res = intersectClosers(lcl, rcl, pool);
+            maxCloserSize = std::max(maxCloserSize, res.size());
+            return res;
           }
           case FORALL: {
             // delta
@@ -327,7 +340,7 @@ namespace Elab {
             vector<Expr*> univ;
             for (size_t j = 0; j < numUniversal; j++) univ.push_back(Expr::make(pool, UNDETERMINED, j));
             size_t id = numSkolem + ctx.size();
-            Expr newVar(FREE, id, univ);
+            Expr newVar(FREE, id, univ); // Disposable (will be copied to `pool` on the next line)
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numSkolem, numSkolem + 1);
             WithSucc l(this, body, &closed);
@@ -338,7 +351,7 @@ namespace Elab {
             // gamma
             bool closed = false;
             size_t id = numUniversal;
-            Expr newVar(UNDETERMINED, id);
+            Expr newVar(UNDETERMINED, id); // Disposable (will be copied to `pool` on the next line)
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numUniversal, numUniversal + 1);
             WithSucc l(this, body, &closed);
@@ -349,29 +362,32 @@ namespace Elab {
           case UNIQUE: {
             // beta
             vector<Subs> lcl, rcl;
-            Expr exi(EXISTS, e->bv, e->binder.arity, e->binder.sort, e->binder.r);
+            const Expr* exi = Expr::make(pool, EXISTS, e->bv, e->binder.arity, e->binder.sort, e->binder.r);
             {
               bool closed = false;
-              WithSucc l(this, &exi, &closed);
+              WithSucc l(this, exi, &closed);
               lcl = closed? success_unconditional : dfs(depth + 1);
+              if (lcl.empty()) return fail;
             }
-            Expr x(BOUND, 1), x_(BOUND, 0);
-            Expr eq(FREE, ctx.eq, { &x, &x_ });
-            Expr d(IMPLIES, e->binder.r, &eq);
-            Expr c(FORALL, e->bv + "'", e->binder.arity, e->binder.sort, &d);
-            Expr b(IMPLIES, e->binder.r, &c);
-            Expr a(FORALL, e->bv, e->binder.arity, e->binder.sort, &b);
-            Expr no2 = a;
+            const Expr* no2 =
+              Expr::make(pool, FORALL, e->bv, e->binder.arity, e->binder.sort,
+              Expr::make(pool, IMPLIES, e->binder.r,
+              Expr::make(pool, FORALL, e->bv + "'", e->binder.arity, e->binder.sort,
+              Expr::make(pool, IMPLIES, e->binder.r,
+              Expr::make(pool, FREE, ctx.eq, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) })))));
             branches++;
             {
               bool closed = false;
-              WithSucc r(this, &no2, &closed);
+              WithSucc r(this, no2, &closed);
 #ifdef SEMANTIC_BRANCHING
-              WithAnte l(this, &exi, &closed);
+              WithAnte l(this, exi, &closed);
 #endif
               rcl = closed? success_unconditional : dfs(depth + 1);
+              if (rcl.empty()) return fail;
             }
-            return intersectClosers(lcl, rcl, pool);
+            auto res = intersectClosers(lcl, rcl, pool);
+            maxCloserSize = std::max(maxCloserSize, res.size());
+            return res;
           }
           case FORALL2: {
             // TODO: second-order delta rule
@@ -388,8 +404,8 @@ namespace Elab {
         const Expr* e = ante[antei];
         WithValue iguard(&antei, antei + 1);
 
-#ifdef OUTPUT_TRACE
-        std::cout << string(depth * 2, ' ') << "T (" << typeToString(i) << ") " << e->toString(ctx) << std::endl;
+#ifdef PRINT_TRACE
+        std::cout << string(depth * 2, ' ') << "L (" << typeToString(i) << ") " << e->toString(ctx) << std::endl;
 #endif
 
         switch (e->tag) {
@@ -403,7 +419,7 @@ namespace Elab {
               if (unifier.has_value()) {
                 if (!Procs::equalAfterSubs(e, q, unifier.value())) throw Unreachable();
                 res.push_back(normalizeSubs(unifier.value(), pool));
-#ifdef OUTPUT_ON_CLOSURE
+#ifdef PRINT_CLOSURES
                 std::cout << "+------------------------------------" << std::endl;
                 std::cout << "| Branch can be closed with:" << std::endl;
                 std::cout << "| " << Procs::applySubs(e, unifier.value(), pool)->toString(ctx) << std::endl;
@@ -411,12 +427,13 @@ namespace Elab {
 #endif
               }
             }
+            maxCloserSize = std::max(maxCloserSize, res.size());
             return res;
           }
           case TRUE:
             return dfs(depth);
           case FALSE:
-#ifdef OUTPUT_ON_CLOSURE
+#ifdef PRINT_CLOSURES
             std::cout << "Branch closed with false at antecedent" << std::endl;
 #endif
             return success_unconditional;
@@ -439,6 +456,7 @@ namespace Elab {
               bool closed = false;
               WithAnte l(this, e->conn.l, &closed);
               lcl = closed? success_unconditional : dfs(depth + 1);
+              if (lcl.empty()) return fail;
             }
             branches++;
             {
@@ -448,8 +466,11 @@ namespace Elab {
               WithSucc l(this, e->conn.l, &closed);
 #endif
               rcl = closed? success_unconditional : dfs(depth + 1);
+              if (rcl.empty()) return fail;
             }
-            return intersectClosers(lcl, rcl, pool);
+            auto res = intersectClosers(lcl, rcl, pool);
+            maxCloserSize = std::max(maxCloserSize, res.size());
+            return res;
           }
           case IMPLIES: {
             // beta
@@ -458,6 +479,7 @@ namespace Elab {
               bool closed = false;
               WithSucc n(this, e->conn.l, &closed);
               lcl = closed? success_unconditional : dfs(depth + 1);
+              if (lcl.empty()) return fail;
             }
             branches++;
             {
@@ -467,23 +489,26 @@ namespace Elab {
               WithAnte l(this, e->conn.l, &closed);
 #endif
               rcl = closed? success_unconditional : dfs(depth + 1);
+              if (rcl.empty()) return fail;
             }
-            return intersectClosers(lcl, rcl, pool);
+            auto res = intersectClosers(lcl, rcl, pool);
+            maxCloserSize = std::max(maxCloserSize, res.size());
+            return res;
           }
           case IFF: {
             // alpha
-            Expr mp(IMPLIES, e->conn.l, e->conn.r);
-            Expr mpr(IMPLIES, e->conn.r, e->conn.l);
+            const Expr* mp = Expr::make(pool, IMPLIES, e->conn.l, e->conn.r);
+            const Expr* mpr = Expr::make(pool, IMPLIES, e->conn.r, e->conn.l);
             bool closed = false;
-            WithAnte l(this, &mp, &closed);
-            WithAnte r(this, &mpr, &closed);
+            WithAnte l(this, mp, &closed);
+            WithAnte r(this, mpr, &closed);
             return closed? success_unconditional : dfs(depth);
           }
           case FORALL: {
             // gamma
             bool closed = false;
             size_t id = numUniversal;
-            Expr newVar(UNDETERMINED, id);
+            Expr newVar(UNDETERMINED, id); // Disposable (will be copied to `pool` on the next line)
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numUniversal, numUniversal + 1);
             WithAnte l(this, body, &closed);
@@ -497,7 +522,7 @@ namespace Elab {
             vector<Expr*> univ;
             for (size_t j = 0; j < numUniversal; j++) univ.push_back(Expr::make(pool, UNDETERMINED, j));
             size_t id = numSkolem + ctx.size();
-            Expr newVar(FREE, id, univ);
+            Expr newVar(FREE, id, univ); // Disposable (will be copied to `pool` on the next line)
             const Expr* body = e->binder.r->makeReplace(&newVar, pool);
             WithValue n(&numSkolem, numSkolem + 1);
             WithAnte l(this, body, &closed);
@@ -506,17 +531,16 @@ namespace Elab {
           }
           case UNIQUE: {
             // alpha
-            Expr exi(EXISTS, e->bv, e->binder.arity, e->binder.sort, e->binder.r);
-            Expr x(BOUND, 1), x_(BOUND, 0);
-            Expr eq(FREE, ctx.eq, { &x, &x_ });
-            Expr d(IMPLIES, e->binder.r, &eq);
-            Expr c(FORALL, e->bv + "'", e->binder.arity, e->binder.sort, &d);
-            Expr b(IMPLIES, e->binder.r, &c);
-            Expr a(FORALL, e->bv, e->binder.arity, e->binder.sort, &b);
-            Expr no2 = a;
+            const Expr* exi = Expr::make(pool, EXISTS, e->bv, e->binder.arity, e->binder.sort, e->binder.r);
+            const Expr* no2 =
+              Expr::make(pool, FORALL, e->bv, e->binder.arity, e->binder.sort,
+              Expr::make(pool, IMPLIES, e->binder.r,
+              Expr::make(pool, FORALL, e->bv + "'", e->binder.arity, e->binder.sort,
+              Expr::make(pool, IMPLIES, e->binder.r,
+              Expr::make(pool, FREE, ctx.eq, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) })))));
             bool closed = false;
-            WithAnte l(this, &exi, &closed);
-            WithAnte r(this, &no2, &closed);
+            WithAnte l(this, exi, &closed);
+            WithAnte r(this, no2, &closed);
             return closed? success_unconditional : dfs(depth);
           }
           case FORALL2: {
@@ -537,6 +561,7 @@ namespace Elab {
   }
 
   bool Tableau::search(size_t maxDepth) {
+    pool.clear();
     for (unsigned int i = 0; i < N; i++) {
       indices[i][L] = 0;
       indices[i][R] = 0;
@@ -545,10 +570,26 @@ namespace Elab {
     maxDepthReached = 0;
     invocations = 0;
     branches = 1;
+    maxCloserSize = 0;
     this->maxDepth = maxDepth;
     auto res = dfs(0);
-    std::cout << res.size() << std::endl;
+#ifdef PRINT_INSTANTIATIONS
+    for (auto& subs: res) {
+      std::cout << "Possible instantiation:" << std::endl;
+      std::cout << Procs::showSubs(subs, ctx);
+    }
+#endif
     return !res.empty();
+  }
+
+  bool Tableau::iterativeDeepening(size_t maxDepth, size_t step) {
+    // Try with smaller depths
+    for (size_t i = 1; i < maxDepth; i += step) {
+      std::cout << "Current depth: " << i << std::endl;
+      if (search(i)) return true;
+    }
+    // Try with maximum depth
+    return search(maxDepth);
   }
 
   string Tableau::printState() {
@@ -585,6 +626,7 @@ namespace Elab {
     res += "| Number of DFS invocations: " + std::to_string(invocations) + "\n";
     res += "| Maximum beta-depth: " + std::to_string(maxDepthReached) + "\n";
     res += "| Total number of branches: " + std::to_string(branches) + "\n";
+    res += "| Maximum size of closer sets: " + std::to_string(maxCloserSize) + "\n";
     res += "+------------------------------------\n";
     return res;
   }

@@ -89,6 +89,7 @@ namespace Elab {
     }
 
     bool search(size_t maxDepth);
+    bool iterativeDeepening(size_t maxDepth, size_t step);
     string printState();
     string printStateDebug();
     string printStats();
@@ -105,7 +106,7 @@ namespace Elab {
     size_t numUniversal, numSkolem;                        // Number of new variables (for allocating new variable IDs)
 
     // Statistics
-    size_t maxDepthReached = 0, invocations = 0, branches = 0;
+    size_t maxDepthReached = 0, invocations = 0, branches = 0, maxCloserSize = 0;
 
     template <Position LR, Position RL>
     friend class WithCedent;
