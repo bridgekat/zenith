@@ -431,7 +431,7 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -458,7 +458,7 @@ int main() {
     );
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -476,7 +476,7 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -490,7 +490,7 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }

@@ -63,29 +63,37 @@ namespace Elab {
     enum Position: unsigned int { L, R };
     enum Type: unsigned int { ι, α, β, γ, γre, δ, N }; // Tweak parameters here (1/3)
 
+    struct Branch {
+      vector<const Expr*> cedents[N][2];
+      unordered_set<ExprHash, ExprHash::GetHash> hashset[2];
+      size_t indices[N][2];
+      size_t numUniversalAbove;
+    };
+
     Tableau(const Context& ctx) noexcept:
-      pool(), ctx(ctx), cedents(), hashset(), maxDepth{}, indices{}, numUniversal{}, numSkolem{} {}
+      pools(), ctx(ctx), branch{}, cont(), numUniversal{}, numSkolem{}, maxDepth{} {}
 
     void addAntecedent(const Expr* e) {
-      auto it = hashset[L].insert(ExprHash(e));
-      if (it.second) cedents[classify(L, e)][L].push_back(e);
+      auto it = branch.hashset[L].insert(ExprHash(e));
+      if (it.second) branch.cedents[classify(L, e)][L].push_back(e);
     }
 
     void addSuccedent(const Expr* e) {
-      auto it = hashset[R].insert(ExprHash(e));
-      if (it.second) cedents[classify(R, e)][R].push_back(e);
+      auto it = branch.hashset[R].insert(ExprHash(e));
+      if (it.second) branch.cedents[classify(R, e)][R].push_back(e);
     }
 
     // TODO: initial check (the given proof state may already be closed)
 
     void clear() noexcept {
-      pool.clear();
+      pools.clear();
+      pools.emplace_back();
       for (unsigned int i = 0; i < N; i++) {
-        cedents[i][L].clear();
-        cedents[i][R].clear();
+        branch.cedents[i][L].clear();
+        branch.cedents[i][R].clear();
       }
-      hashset[L].clear();
-      hashset[R].clear();
+      branch.hashset[L].clear();
+      branch.hashset[R].clear();
     }
 
     bool search(size_t maxDepth);
@@ -95,24 +103,22 @@ namespace Elab {
     string printStats();
 
   private:
-    Allocator<Expr> pool;
-    const Context& ctx;                                    // For offset and `eq`
-    vector<const Expr*> cedents[N][2];                     // For queue-like structures
-    unordered_set<ExprHash, ExprHash::GetHash> hashset[2]; // For fast membership testing
+    vector<Allocator<Expr>> pools;
+    const Context& ctx;
 
-    // Ephemeral states
-    size_t maxDepth;
-    size_t indices[N][2];                                  // Head index of queues
-    size_t numUniversal, numSkolem;                        // Number of new variables (for allocating new variable IDs)
+    Branch branch; // Current branch
+    vector<Branch> cont;
+    size_t numUniversal, numSkolem, maxDepth;
 
     // Statistics
-    size_t maxDepthReached = 0, invocations = 0, branches = 0, maxCloserSize = 0;
+    size_t maxDepthReached = 0, invocations = 0, branches = 0, backtrackPoints = 0;
 
     template <Position LR, Position RL>
     friend class WithCedent;
 
     static Type classify(Position antesucc, const Expr* e) noexcept;
-    vector<Procs::Subs> dfs(size_t depth);
+    void applySubs(const Procs::Subs& subs);
+    bool dfs(size_t depth);
   };
 
 }
