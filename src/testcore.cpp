@@ -336,6 +336,15 @@ int main() {
     cout << "RHS substitution:" << endl << showSubs(rsub, ctx);
     cout << applySubs(rhs2, rsub, pool)->toString(ctx) << endl;
     cout << endl;
+
+    // Extra tests
+    lhs = fv(f, uv(X), uv(Y));
+    rhs = fv(f, uv(Y), uv(X));
+    subs = unify({{ lhs, rhs }}, pool).value();
+    cout << showSubs(subs, ctx);
+    cout << applySubs(lhs, subs, pool)->toString(ctx) << endl;
+    cout << applySubs(rhs, subs, pool)->toString(ctx) << endl;
+    cout << endl;
   }
 
   {
@@ -394,7 +403,6 @@ int main() {
     Expr* preference = forall("x", forall("y", forall("z", bin(fv(B, bv(2), bv(1), bv(0)), IMPLIES, bin(fv(L, bv(2), bv(0)), IMPLIES, fv(L, bv(2), bv(1)))))));
     Expr* shadowing = exists("y", bin(un(NOT, fv(eq, bv(0), fv(Q))), AND, forall("x", fv(B, bv(0), bv(1), fv(Q)))));
     Expr* goal = un(NOT, exists("x", fv(L, bv(0), fv(Q))));
-    // tableau.addAntecedent(e);
     tableau.addAntecedent(exclusiveness);
     tableau.addAntecedent(preference);
     tableau.addAntecedent(shadowing);
@@ -431,7 +439,7 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
+    //cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -458,7 +466,7 @@ int main() {
     );
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
+    //cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -471,12 +479,18 @@ int main() {
       AND,
       forall("x", forall("y", bin(fv(le, bv(1), bv(0)), IMPLIES, fv(le, fv(g, bv(1)), fv(g, bv(0))))))
     );
+    /*
+    tableau.addAntecedent(Procs::toNNF(e1, ctx, pool));
+    tableau.addAntecedent(Procs::toNNF(e2, ctx, pool));
+    tableau.addAntecedent(Procs::toNNF(e3, ctx, pool));
+    tableau.addSuccedent(Procs::toNNF(goal, ctx, pool));
+    */
     tableau.addAntecedent(e1);
     tableau.addAntecedent(e2);
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
+    //cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -490,7 +504,31 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
+    //cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+  }
+
+  {
+    using namespace Elab;
+    Allocator<Expr> pool;
+    Context ctx;
+    Tableau tableau(ctx);
+
+    unsigned int F = ctx.pushVar("F", {{ 1, SVAR }});
+    unsigned int G = ctx.pushVar("G", {{ 1, SVAR }});
+
+    // ∃y∃z∀x((Fx→Gy)∧(Gz→Fx))→∀x∃y(Fx↔Gy)
+    cout << "(Provable)" << endl;
+    Expr* e = bin(
+      exists("y", exists("z", forall("x", bin(bin(fv(F, bv(0)), IMPLIES, fv(G, bv(2))), AND, bin(fv(G, bv(1)), IMPLIES, fv(F, bv(0))))))),
+      IMPLIES,
+      forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0)))))
+    );
+    //tableau.addSuccedent(Procs::toNNF(e, ctx, pool));
+    tableau.addSuccedent(e);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }

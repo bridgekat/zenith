@@ -274,4 +274,24 @@ namespace Core {
     throw NotImplemented();
   }
 
+  bool Expr::isGround() const noexcept {
+    switch (tag) {
+      case EMPTY:
+        return true;
+      case VAR:
+        if (var.vartag == UNDETERMINED) return false;
+        for (const Expr* p = var.c; p; p = p->s) if (!p->isGround()) return false;
+        return true;
+      case TRUE: case FALSE:
+        return true;
+      case NOT:
+        return !conn.l || conn.l->isGround();
+      case AND: case OR: case IMPLIES: case IFF:
+        return (!conn.l || conn.l->isGround()) && (!conn.r || conn.r->isGround());
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
+        return !binder.r || binder.r->isGround();
+    }
+    throw NotImplemented();
+  }
+
 }

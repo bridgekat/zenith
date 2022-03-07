@@ -111,6 +111,9 @@ namespace Core {
     // Pre: all nonzero pointers are valid
     bool occurs(VarTag vartag, unsigned int id) const noexcept;
 
+    // Check if the formula does not contain undetermined variables
+    bool isGround() const noexcept;
+
     // Modification (deep copying whole expression)
     // Pre: all nonzero pointers are valid
     // n = (number of binders on top of current node)

@@ -21,7 +21,8 @@ module FOLPlus
     assumption, andIntro, andLeft, andRight, orLeft, orRight, orElim, impliesIntro, impliesElim,
     notIntro, notElim, iffIntro, iffLeft, iffRight, trueIntro, falseElim, raa, eqIntro, eqElim,
     forallIntro, forallElim, existsIntro, existsElim, uniqueIntro, uniqueLeft, uniqueRight,
-    forallFuncIntro, forallFuncElim, funcDef, predDef, funcDDef, funcIDef ) where
+    forallFuncIntro, forallFuncElim, funcDef, predDef, funcDDef, funcIDef,
+    updateVars, makeReplace ) where
 
 import Data.List
 import Data.Maybe

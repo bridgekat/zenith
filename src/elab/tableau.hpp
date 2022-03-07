@@ -113,11 +113,11 @@ namespace Elab {
     // Statistics
     size_t maxDepthReached = 0, invocations = 0, branches = 0, backtrackPoints = 0;
 
-    template <Position LR, Position RL>
     friend class WithCedent;
 
+    static Position invert(Position pos) noexcept { return (pos == L)? R : L; };
     static Type classify(Position antesucc, const Expr* e) noexcept;
-    void applySubs(const Procs::Subs& subs);
+    bool applySubs(const Procs::Subs& subs);
     bool dfs(size_t depth);
   };
 
