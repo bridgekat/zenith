@@ -67,20 +67,39 @@ namespace Elab {
       vector<const Expr*> cedents[N][2];
       unordered_set<ExprHash, ExprHash::GetHash> hashset[2];
       size_t indices[N][2];
-      size_t numUniversalAbove;
+      vector<bool> betaUsed[2];
+      size_t depth, numUniversal;
+
+      size_t numCedents; // DEBUG CODE
+      vector<size_t> timestamps[N][2]; // DEBUG CODE
+      vector<size_t> numUniversals[N][2]; // DEBUG CODE
+
+      auto operator<=>(const Branch& r) const noexcept = default;
     };
 
     Tableau(const Context& ctx) noexcept:
-      pools(), ctx(ctx), branch{}, cont(), numUniversal{}, numSkolem{}, maxDepth{} {}
+      pools(), ctx(ctx), branch{}, cont(), numSkolem{}, maxDepth{}, maxTabDepth{} {}
 
     void addAntecedent(const Expr* e) {
       auto it = branch.hashset[L].insert(ExprHash(e));
-      if (it.second) branch.cedents[classify(L, e)][L].push_back(e);
+      if (it.second) {
+        unsigned int i = classify(L, e);
+        branch.cedents[i][L].push_back(e);
+        branch.timestamps[i][L].push_back(branch.numCedents++);
+        branch.numUniversals[i][L].push_back(0);
+        if (i == β) branch.betaUsed[L].push_back(false);
+      }
     }
 
     void addSuccedent(const Expr* e) {
       auto it = branch.hashset[R].insert(ExprHash(e));
-      if (it.second) branch.cedents[classify(R, e)][R].push_back(e);
+      if (it.second) {
+        unsigned int i = classify(R, e);
+        branch.cedents[i][R].push_back(e);
+        branch.timestamps[i][R].push_back(branch.numCedents++);
+        branch.numUniversals[i][R].push_back(0);
+        if (i == β) branch.betaUsed[R].push_back(false);
+      }
     }
 
     // TODO: initial check (the given proof state may already be closed)
@@ -91,13 +110,24 @@ namespace Elab {
       for (unsigned int i = 0; i < N; i++) {
         branch.cedents[i][L].clear();
         branch.cedents[i][R].clear();
+        branch.indices[i][L] = 0;
+        branch.indices[i][R] = 0;
+        branch.timestamps[i][L].clear();
+        branch.timestamps[i][R].clear();
+        branch.numUniversals[i][L].clear();
+        branch.numUniversals[i][R].clear();
       }
       branch.hashset[L].clear();
       branch.hashset[R].clear();
+      branch.betaUsed[L].clear();
+      branch.betaUsed[R].clear();
+      branch.depth = 0;
+      branch.numUniversal = 0;
+      branch.numCedents = 0;
     }
 
-    bool search(size_t maxDepth);
-    bool iterativeDeepening(size_t maxDepth, size_t step);
+    bool search(size_t maxDepth, size_t maxTabDepth);
+    bool iterativeDeepening(size_t maxTabDepth, size_t step);
     string printState();
     string printStateDebug();
     string printStats();
@@ -107,8 +137,10 @@ namespace Elab {
     const Context& ctx;
 
     Branch branch; // Current branch
-    vector<Branch> cont;
-    size_t numUniversal, numSkolem, maxDepth;
+
+    // Ephemeral states
+    vector<Branch> cont; // Other branches (to the right of current)
+    size_t numSkolem, maxDepth, maxTabDepth;
 
     // Statistics
     size_t maxDepthReached = 0, invocations = 0, branches = 0, backtrackPoints = 0;
@@ -117,8 +149,12 @@ namespace Elab {
 
     static Position invert(Position pos) noexcept { return (pos == L)? R : L; };
     static Type classify(Position antesucc, const Expr* e) noexcept;
-    bool applySubs(const Procs::Subs& subs);
+    void applySubs(const Procs::Subs& subs, bool assertNoChange);
     bool dfs(size_t depth);
+
+    void checkBranch(const Branch& b);
+    void check();
+    void debughtml(const string& filename);
   };
 
 }

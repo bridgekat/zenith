@@ -256,7 +256,7 @@ int main() {
     */
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -269,7 +269,7 @@ int main() {
     */
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -278,7 +278,7 @@ int main() {
     e = un(NOT, bin(fv(p), IFF, un(NOT, fv(p))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }
@@ -369,7 +369,7 @@ int main() {
     tableau.addAntecedent(lhs);
     tableau.addSuccedent(rhs);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -377,7 +377,7 @@ int main() {
     tableau.addAntecedent(rhs);
     tableau.addSuccedent(lhs);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -385,7 +385,7 @@ int main() {
     Expr* e = exists("x", forall("y", bin(fv(R, bv(1)), IMPLIES, fv(R, bv(0)))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -394,7 +394,7 @@ int main() {
       IMPLIES, forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0))))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -408,7 +408,7 @@ int main() {
     tableau.addAntecedent(shadowing);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }
@@ -439,9 +439,24 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    //cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
+
+    // This one is taking too long
+    /*
+    cout << "(Not provable)" << endl;
+    e1 = forall("x", bin(fv(Q, bv(0)), OR, un(NOT, fv(P, bv(0)))));
+    e2 = fv(P, fv(a));
+    goal = fv(Q, fv(b));
+    tableau.addAntecedent(e1);
+    tableau.addAntecedent(e2);
+    tableau.addSuccedent(goal);
+    cout << tableau.printState();
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
+    cout << tableau.printStats() << endl;
+    tableau.clear();
+    */
 
     cout << "(Provable!)" << endl;
     Expr* e = bin(
@@ -466,7 +481,7 @@ int main() {
     );
     tableau.addSuccedent(e);
     cout << tableau.printState();
-    //cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
+    cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
 
@@ -490,45 +505,8 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     cout << tableau.printState();
-    //cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
-    cout << tableau.printStats() << endl;
-    tableau.clear();
-
-    cout << "(Not provable!)" << endl;
-    e1 = forall("x", bin(fv(Q, bv(0)), OR, un(NOT, fv(P, bv(0)))));
-    //e2 = forall("y", fv(Q, bv(0)));
-    e3 = fv(P, fv(a));
-    goal = fv(Q, fv(b));
-    tableau.addAntecedent(e1);
-    //tableau.addAntecedent(e2);
-    tableau.addAntecedent(e3);
-    tableau.addSuccedent(goal);
-    cout << tableau.printState();
-    //cout << std::boolalpha << tableau.iterativeDeepening(31, 2) << endl;
-    cout << tableau.printStats() << endl;
-    tableau.clear();
-  }
-
-  {
-    using namespace Elab;
-    Allocator<Expr> pool;
-    Context ctx;
-    Tableau tableau(ctx);
-
-    unsigned int F = ctx.pushVar("F", {{ 1, SVAR }});
-    unsigned int G = ctx.pushVar("G", {{ 1, SVAR }});
-
-    // ∃y∃z∀x((Fx→Gy)∧(Gz→Fx))→∀x∃y(Fx↔Gy)
-    cout << "(Provable)" << endl;
-    Expr* e = bin(
-      exists("y", exists("z", forall("x", bin(bin(fv(F, bv(0)), IMPLIES, fv(G, bv(2))), AND, bin(fv(G, bv(1)), IMPLIES, fv(F, bv(0))))))),
-      IMPLIES,
-      forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0)))))
-    );
-    //tableau.addSuccedent(Procs::toNNF(e, ctx, pool));
-    tableau.addSuccedent(e);
-    cout << tableau.printState();
-    cout << std::boolalpha << tableau.iterativeDeepening(16, 1) << endl;
+    // cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
+    cout << std::boolalpha << tableau.search(24, 11) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
   }

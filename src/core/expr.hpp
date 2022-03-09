@@ -111,8 +111,14 @@ namespace Core {
     // Pre: all nonzero pointers are valid
     bool occurs(VarTag vartag, unsigned int id) const noexcept;
 
+    // DEBUG CODE
+    size_t numUndetermined() const noexcept;
+
     // Check if the formula does not contain undetermined variables
     bool isGround() const noexcept;
+
+    // Returns the number of symbols of the formula
+    size_t size() const noexcept;
 
     // Modification (deep copying whole expression)
     // Pre: all nonzero pointers are valid

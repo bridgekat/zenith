@@ -274,6 +274,27 @@ namespace Core {
     throw NotImplemented();
   }
 
+  size_t Expr::numUndetermined() const noexcept {
+    switch (tag) {
+      case EMPTY:
+        return 0;
+      case VAR: {
+        size_t res = (var.vartag == UNDETERMINED)? (var.id + 1) : 0;
+        for (const Expr* p = var.c; p; p = p->s) res = std::max(res, p->numUndetermined());
+        return res;
+      }
+      case TRUE: case FALSE:
+        return 0;
+      case NOT:
+        return conn.l? conn.l->numUndetermined() : 0;
+      case AND: case OR: case IMPLIES: case IFF:
+        return std::max(conn.l? conn.l->numUndetermined() : 0, conn.r? conn.r->numUndetermined() : 0);
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
+        return binder.r? binder.r->numUndetermined() : 0;
+    }
+    throw NotImplemented();
+  }
+
   bool Expr::isGround() const noexcept {
     switch (tag) {
       case EMPTY:
@@ -290,6 +311,27 @@ namespace Core {
         return (!conn.l || conn.l->isGround()) && (!conn.r || conn.r->isGround());
       case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
         return !binder.r || binder.r->isGround();
+    }
+    throw NotImplemented();
+  }
+
+  size_t Expr::size() const noexcept {
+    switch (tag) {
+      case EMPTY:
+        return 1;
+      case VAR: {
+        size_t res = 1;
+        for (const Expr* p = var.c; p; p = p->s) res += p->size();
+        return res;
+      }
+      case TRUE: case FALSE:
+        return 1;
+      case NOT:
+        return 1 + (conn.l? conn.l->size() : 0);
+      case AND: case OR: case IMPLIES: case IFF:
+        return 1 + (conn.l? conn.l->size() : 0) + (conn.r? conn.r->size() : 0);
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
+        return 1 + (binder.r? binder.r->size() : 0);
     }
     throw NotImplemented();
   }
