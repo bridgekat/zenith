@@ -20,6 +20,7 @@ namespace Parsing {
       auto operator<=>(const Symbol&) const = default;
     };
     // Nonterminal symbol production rule
+    // Rules with smaller indices have higher priority (TODO)
     struct Rule {
       TokenID lhs;
       vector<Symbol> rhs;

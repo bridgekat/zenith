@@ -23,30 +23,41 @@ namespace Parsing {
   typedef unsigned int TokenID;
   struct Token {
     TokenID id;
+    size_t startPos, endPos;
     string lexeme;
     std::strong_ordering operator<=>(const Token&) const = default;
   };
 
-  class NFALexer {
+  // A common (abstract) base class for lexers.
+  class Lexer {
+  public:
+    virtual ~Lexer() = default;
+    virtual optional<pair<size_t, TokenID>> run(const string& s) const = 0;
+
+    void setRest(const string& s) { pos = 0; rest = s; }
+    Lexer& operator<<(const string& s) { rest += s; return *this; }
+
+    const string& getRest() const noexcept { return rest; }
+    bool eof() const noexcept { return rest.empty(); }
+
+    optional<Token> getNextToken();
+    void ignoreNextCodepoint();
+
+  protected:
+    size_t pos;
+    string rest;
+
+    Lexer(): pos(0), rest() {};
+  };
+
+  // Implementation based on NFA. You may add patterns after construction.
+  class NFALexer: public Lexer {
   public:
     typedef unsigned int State;
     typedef pair<State, State> NFA;
 
-    // The transition & accepting state table
-    struct Entry {
-      vector<pair<unsigned char, State>> tr;
-      optional<TokenID> ac;
-      Entry(): tr(), ac() {}
-    };
-    vector<Entry> table;
-
-    // The initial state
-    State initial;
-    // The string that is being scanned
-    string rest;
-
     // Create initial state
-    NFALexer(): table(), initial(0), rest() { table.emplace_back(); }
+    NFALexer(): Lexer(), table(), initial(0) { table.emplace_back(); }
 
     #define node(x) State x = table.size(); table.emplace_back()
     #define trans(s, c, t) table[s].tr.emplace_back(c, t)
@@ -59,15 +70,9 @@ namespace Parsing {
     }
 
     // Returns longest match in the form of (length, token)
-    optional<pair<size_t, TokenID>> run(const string& s) const;
+    optional<pair<size_t, TokenID>> run(const string& s) const override;
 
-    // getNextToken from rest
-    bool eof() const { return rest.empty(); }
-    NFALexer& operator<<(const string& s) { rest += s; return *this; }
-    optional<Token> getNextToken();
-    void ignoreNextCodepoint();
-
-    // Some useful NFA constructors
+    // Some useful pattern constructors (equivalent to regexes)
     NFA epsilon() {
       node(s); node(t); trans(s, 0, t);
       return { s, t };
@@ -112,7 +117,7 @@ namespace Parsing {
       trans(a.second, 0, a.first); trans(s, 0, t);
       return { s, t };
     }
-
+    NFA plus(NFA a)   { return concat2(a, star(a)); }
     NFA any()         { return range(0x01, 0xFF); }
     NFA utf8segment() { return range(0x80, 0xFF); }
     NFA except(const initializer_list<unsigned char>& ls) {
@@ -122,16 +127,48 @@ namespace Parsing {
       for (unsigned int i = 0x01; i <= 0xFF; i++) if (f[i]) trans(s, i, t);
       return { s, t };
     }
-    NFA plus(NFA a) { return concat2(a, star(a)); }
 
     #undef node
     #undef trans
+
+    size_t size() { return table.size(); }
+
+  private:
+    // The transition & accepting state table
+    struct Entry {
+      vector<pair<unsigned char, State>> tr;
+      optional<TokenID> ac;
+      Entry(): tr(), ac() {}
+    };
+    vector<Entry> table;
+
+    // The initial state
+    State initial;
+
+    friend class PowersetConstruction;
   };
 
-  class DFALexer {
+  // Implementation based on DFA. Could only be constructed from an `NFALexer`.
+  class DFALexer: public Lexer {
   public:
     typedef unsigned int State;
 
+    // Create DFA from NFA
+    explicit DFALexer(const NFALexer& nfa);
+
+    // Optimize DFA
+    void optimize();
+    // Returns longest match in the form of (length, token)
+    optional<pair<size_t, TokenID>> run(const string& s) const override;
+
+    size_t size() { return table.size(); }
+
+    // Convert lexer DFA to TextMate grammar JSON (based on regular expressions)
+    // Following: https://macromates.com/manual/en/regular_expressions (only a simple subset is used)
+    // (Not implemented)
+    string toTextMateGrammar() const;
+
+  private:
     // The transition & accepting state table
     struct Entry {
       bool has[0x100];
@@ -143,29 +180,9 @@ namespace Parsing {
 
     // The initial state
     State initial;
-    // The string that is being scanned
-    string rest;
 
-    // Create initial state
-    DFALexer(): table(), initial(0), rest() { table.emplace_back(); }
-    // Create DFA from NFA
-    explicit DFALexer(const NFALexer& nfa);
-
-    // Optimize DFA
-    void optimize();
-    // Returns longest match in the form of (length, token)
-    optional<pair<size_t, TokenID>> run(const string& s) const;
-
-    // getNextToken from rest
-    bool eof() const { return rest.empty(); }
-    DFALexer& operator<<(const string& s) { rest += s; return *this; }
-    optional<Token> getNextToken();
-    void ignoreNextCodepoint();
-
-    // Convert lexer DFA to TextMate grammar JSON (based on regular expressions)
-    // Following: https://macromates.com/manual/en/regular_expressions (only a simple subset is used)
-    // (Not implemented)
-    string toTextMateGrammar() const;
+    friend class PowersetConstruction;
+    friend class PartitionRefinement;
   };
 
 }

@@ -6,7 +6,7 @@
 #include <fstream>
 #include <sstream>
 #include "core/base.hpp"
-#include "parsing/parser.hpp"
+#include "parsing/language.hpp"
 
 using std::pair, std::string, std::vector;
 using std::optional, std::make_optional, std::nullopt;
@@ -21,14 +21,14 @@ public:
   enum ETokenID: TokenID {
     BLANK = 0, LINE_COMMENT, BLOCK_COMMENT, DIRECTIVE,
     NATURAL, STRING,
-    OP_COMMA, OP_SEMICOLON, OP_LBRACE, OP_RBRACE, OP_RRARROW,
+    OP_COMMA, OP_SEMICOLON, OP_LBRACE, OP_RBRACE, OP_RRARROW, OP_SLASH,
     KW_ANY, KW_ANYFUNC, KW_ANYPRED, KW_ASSUME, KW_NAME, KW_PROOF,
     OPERATOR, IDENTIFIER,
   };
   inline static const vector<string> tNames = {
     "blank", "line-comment", "block-comment", "directive",
     "natural", "string",
-    ",", ";", "{", "}", "=>",
+    ",", ";", "{", "}", "=>", "/",
     "any", "anyfunc", "anypred", "assume", "name", "proof",
     "operator", "identifier",
   };
@@ -55,6 +55,7 @@ public:
       { OP_LBRACE,    "{"  },
       { OP_RBRACE,    "}"  },
       { OP_RRARROW,   "=>" },
+      { OP_SLASH,     "/"  },
     };
     for (const auto& [id, lexeme]: op) addPattern(id, word(lexeme));
     vector<pair<TokenID, string>> kw = {
@@ -67,7 +68,7 @@ public:
     };
     for (const auto& [id, lexeme]: kw) addPattern(id, word(lexeme));
     addPattern(OPERATOR,
-      alt({ ch({ '=', '+', '-', '*', '/', '\\', '%', '&', '(', ')', ':', '?', '[', ']', '^', '|', '<', '>' }),
+      alt({ ch({ '=', '+', '-', '*', '\\', '%', '&', '(', ')', ':', '?', '[', ']', '^', '|', '<', '>' }),
             word("->"), word("<->"), word("↑") }));
     addPattern(IDENTIFIER,
       concat(
@@ -88,13 +89,13 @@ int main() {
   TestLexer nfa;
   DFALexer test(nfa);
 
-  cout << nfa.table.size() << endl;
-  cout << test.table.size() << endl;
+  cout << nfa.size() << endl;
+  cout << test.size() << endl;
   test.optimize();
-  cout << test.table.size() << endl;
+  cout << test.size() << endl;
   cout << endl;
 
-  std::ifstream in("test1.txt");
+  std::ifstream in("notes/test.mu");
   test << readFile(in);
   in.close();
 
@@ -112,7 +113,7 @@ int main() {
     auto next = test.getNextToken();
     if (!next) {
       cout << "Parse error at: "
-           << test.rest.substr(0, cutoff(test.rest, 20))
+           << test.getRest().substr(0, cutoff(test.getRest(), 20))
            << "...: no prefix matches known patterns "
               "(most probably due to unsupported ASCII character combinations. "
               "Is file encoded in UTF-8 and your syntax correct?)" << endl;
@@ -135,13 +136,17 @@ int main() {
     ASSERTION, OPT_NAME, OPT_PROOF,
     ASSUME, ASSUMPTIONS, ASSUMPTION,
     ANY, VARS, VAR,
+    ANYFUNC, FUNCS, FUNC,
+    ANYPRED, PREDS, PRED,
     EXPR, IDENTS, IDENT, // TEMP CODE
   };
   vector<string> nNames = {
     "decl-list", "decl", "block",
     "assertion", "opt-name", "opt-proof",
     "assume", "assumption-list", "assumption",
-    "any", "vars", "var",
+    "any", "var-list", "var",
+    "anyfunc", "func-list", "func",
+    "anypred", "pred-list", "pred",
     "expr", "ident-list", "ident", // TEMP CODE
   };
 
@@ -152,7 +157,7 @@ int main() {
   #define n(id_) { false, Nonterminal::id_ }
   #define rule(sym_, ...) parser.rules.push_back({ sym_, { __VA_ARGS__ } });
 
-  rule(DECLS, n(DECL)); // TODO: support empty rule
+  rule(DECLS);
   rule(DECLS, n(DECLS), n(DECL));
 
   rule(DECL, n(BLOCK));
@@ -160,6 +165,8 @@ int main() {
   rule(DECL, n(ASSERTION));
   rule(DECL, n(ASSUME));
   rule(DECL, n(ANY));
+  rule(DECL, n(ANYFUNC));
+  rule(DECL, n(ANYPRED));
 
   rule(BLOCK, term(OP_LBRACE), n(DECLS), term(OP_RBRACE));
 
@@ -180,6 +187,18 @@ int main() {
   rule(VARS, n(VARS), term(OP_COMMA), n(VAR));
   rule(VARS, n(VARS), term(OP_COMMA)); // Optional commas anywhere!
   rule(VAR, term(IDENTIFIER));
+
+  rule(ANYFUNC, term(KW_ANYFUNC), n(FUNCS), n(DECL));
+  rule(FUNCS, n(FUNC));
+  rule(FUNCS, n(FUNCS), term(OP_COMMA), n(FUNC));
+  rule(FUNCS, n(FUNCS), term(OP_COMMA));
+  rule(FUNC, term(IDENTIFIER), term(OP_SLASH), term(NATURAL));
+
+  rule(ANYPRED, term(KW_ANYPRED), n(PREDS), n(DECL));
+  rule(PREDS, n(PRED));
+  rule(PREDS, n(PREDS), term(OP_COMMA), n(PRED));
+  rule(PREDS, n(PREDS), term(OP_COMMA));
+  rule(PRED, term(IDENTIFIER), term(OP_SLASH), term(NATURAL));
 
   rule(EXPR, n(IDENTS));
   rule(IDENTS, n(IDENT));

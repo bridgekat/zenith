@@ -6,18 +6,31 @@
 
 namespace Parsing {
 
-  string cutFirstCodepoint(const string& s) {
-    if (s.empty()) return s;
+  optional<Token> Lexer::getNextToken() {
+    auto opt = run(rest);
+    if (!opt) return nullopt;
+    auto [len, id] = opt.value();
+    Token res{ id, pos, pos + len, rest.substr(0, len) };
+    pos += len;
+    rest = rest.substr(len);
+    return res;
+  }
+
+  size_t cutFirstCodepoint(const string& s) {
+    if (s.empty()) return 0;
     size_t pos = 1;
     for (; pos < s.size(); pos++) {
       unsigned char c = s[pos];
       if ((c & 0b11000000) != 0b10000000) break;
     }
-    return s.substr(pos);
+    return pos;
   }
 
-  void NFALexer::ignoreNextCodepoint() { rest = cutFirstCodepoint(rest); }
-  void DFALexer::ignoreNextCodepoint() { rest = cutFirstCodepoint(rest); }
+  void Lexer::ignoreNextCodepoint() {
+    size_t len = cutFirstCodepoint(rest);
+    pos += len;
+    rest = rest.substr(len);
+  }
 
   // Directly run NFA
   optional<pair<size_t, TokenID>> NFALexer::run(const string& str) const {
@@ -66,15 +79,6 @@ namespace Parsing {
       // Exit if no more possible matches
       if (s.empty()) break;
     }
-    return res;
-  }
-
-  optional<Token> NFALexer::getNextToken() {
-    auto opt = run(rest);
-    if (!opt) return nullopt;
-    auto [len, id] = opt.value();
-    Token res{ id, rest.substr(0, len) };
-    rest = rest.substr(len);
     return res;
   }
 
@@ -168,7 +172,7 @@ namespace Parsing {
     #undef clearv
   };
 
-  DFALexer::DFALexer(const NFALexer& nfa): table(), initial(0), rest() {
+  DFALexer::DFALexer(const NFALexer& nfa): Lexer(), table(), initial(0) {
     PowersetConstruction(&nfa, this)();
   }
 
@@ -395,15 +399,6 @@ namespace Parsing {
       auto curr = table[s].ac;
       if (curr) res = { i + 1, curr.value() };
     }
-    return res;
-  }
-
-  optional<Token> DFALexer::getNextToken() {
-    auto opt = run(rest);
-    if (!opt) return nullopt;
-    auto [len, id] = opt.value();
-    Token res{ id, rest.substr(0, len) };
-    rest = rest.substr(len);
     return res;
   }
 
