@@ -10,7 +10,12 @@ namespace Parsing {
     auto opt = run(rest);
     if (!opt) return nullopt;
     auto [len, id] = opt.value();
-    Token res{ id, pos, pos + len, rest.substr(0, len) };
+    Token res{
+      nullptr, nullptr,
+      id,
+      rest.substr(0, len), nullopt,
+      pos, pos + len
+    };
     pos += len;
     rest = rest.substr(len);
     return res;
@@ -33,8 +38,8 @@ namespace Parsing {
   }
 
   // Directly run NFA
-  optional<pair<size_t, TokenID>> NFALexer::run(const string& str) const {
-    optional<pair<size_t, TokenID>> res = nullopt;
+  optional<pair<size_t, Symbol>> NFALexer::run(const string& str) const {
+    optional<pair<size_t, Symbol>> res = nullopt;
     vector<State> s;
     vector<bool> v(table.size(), false);
 
@@ -70,7 +75,7 @@ namespace Parsing {
       s.swap(t);
       // Update result if reaches accepting state
       // Patterns with smaller IDs have higher priority
-      optional<TokenID> curr = nullopt;
+      optional<Symbol> curr = nullopt;
       for (State x: s) if (table[x].ac) {
         if (!curr || curr.value() > table[x].ac.value()) curr = table[x].ac;
       }
@@ -121,7 +126,7 @@ namespace Parsing {
     // Invariant: all elements of v[] are false
     void dfs(DFALexer::State x, const vector<NFALexer::State>& s) {
       // Check if `s` contains accepting states
-      optional<TokenID> curr;
+      optional<Symbol> curr;
       for (auto ns: s) {
         auto opt = nfa->table[ns].ac;
         if (opt && (!curr || curr.value() > opt.value())) curr = opt;
@@ -240,7 +245,7 @@ namespace Parsing {
       size_t dead = table.size();
       table.emplace_back();
       size_t n = table.size();
-      TokenID numTokens = 0;
+      Symbol numTokens = 0;
       for (size_t i = 0; i < n; i++) {
         if (table[i].ac) numTokens = std::max(numTokens, table[i].ac.value() + 1);
         // Other states now have transitions to the dead state
@@ -388,8 +393,8 @@ namespace Parsing {
   }
 
   // Run DFA
-  optional<pair<size_t, TokenID>> DFALexer::run(const string& str) const {
-    optional<pair<size_t, TokenID>> res = nullopt;
+  optional<pair<size_t, Symbol>> DFALexer::run(const string& str) const {
+    optional<pair<size_t, Symbol>> res = nullopt;
     State s = initial;
     for (size_t i = 0; i < str.size(); i++) {
       unsigned char c = str[i];

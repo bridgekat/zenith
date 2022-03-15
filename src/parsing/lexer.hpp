@@ -20,19 +20,26 @@ namespace Parsing {
   using std::string;
 
 
-  typedef unsigned int TokenID;
-  struct Token {
-    TokenID id;
-    size_t startPos, endPos;
-    string lexeme;
-    std::strong_ordering operator<=>(const Token&) const = default;
+  // Symbol ID
+  using Symbol = unsigned int;
+
+  // Parse tree node
+  struct ParseTree {
+    ParseTree* s, * c;
+    Symbol id;
+    optional<string> lexeme;    // Terminal symbols (tokens) only
+    optional<size_t> ruleIndex; // Nonterminal symbols only
+    size_t startPos, endPos;    // Measured in characters: [startPos, endPos)
   };
+
+  // Also used as lexer token
+  using Token = ParseTree;
 
   // A common (abstract) base class for lexers.
   class Lexer {
   public:
     virtual ~Lexer() = default;
-    virtual optional<pair<size_t, TokenID>> run(const string& s) const = 0;
+    virtual optional<pair<size_t, Symbol>> run(const string& s) const = 0;
 
     void setRest(const string& s) { pos = 0; rest = s; }
     Lexer& operator<<(const string& s) { rest += s; return *this; }
@@ -63,14 +70,14 @@ namespace Parsing {
     #define trans(s, c, t) table[s].tr.emplace_back(c, t)
 
     // Add pattern (mark accepting state)
-    void addPattern(TokenID id, NFA nfa) {
+    void addPattern(Symbol id, NFA nfa) {
       trans(initial, 0, nfa.first);
       auto& o = table[nfa.second].ac;
       if (!o.has_value()) o = id;
     }
 
     // Returns longest match in the form of (length, token)
-    optional<pair<size_t, TokenID>> run(const string& s) const override;
+    optional<pair<size_t, Symbol>> run(const string& s) const override;
 
     // Some useful pattern constructors (equivalent to regexes)
     NFA epsilon() {
@@ -137,7 +144,7 @@ namespace Parsing {
     // The transition & accepting state table
     struct Entry {
       vector<pair<unsigned char, State>> tr;
-      optional<TokenID> ac;
+      optional<Symbol> ac;
       Entry(): tr(), ac() {}
     };
     vector<Entry> table;
@@ -159,7 +166,7 @@ namespace Parsing {
     // Optimize DFA
     void optimize();
     // Returns longest match in the form of (length, token)
-    optional<pair<size_t, TokenID>> run(const string& s) const override;
+    optional<pair<size_t, Symbol>> run(const string& s) const override;
 
     size_t size() { return table.size(); }
 
@@ -173,7 +180,7 @@ namespace Parsing {
     struct Entry {
       bool has[0x100];
       State tr[0x100];
-      optional<TokenID> ac;
+      optional<Symbol> ac;
       Entry(): has{}, tr{}, ac(nullopt) {}
     };
     vector<Entry> table;
