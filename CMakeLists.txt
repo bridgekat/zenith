@@ -64,6 +64,8 @@ endif ()
 add_executable (testparsing
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
+  src/parsing/language.cpp
+  src/parsing/languages/apimu.cpp
   src/testparsing.cpp)
 target_default_compile_options  (testparsing)
 target_include_directories      (testparsing PRIVATE src)

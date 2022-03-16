@@ -133,7 +133,7 @@ namespace Parsing {
           }
           // If `sym` is nullable, we could skip it (empty completion)
           if (nullable[sym].has_value()) {
-            State ss{ pos, s.ruleIndex, s.rulePos + 1 };
+            State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
             if (!mp.contains(ss)) {
               mp[ss] = dpa.size();
               dpa[pos].emplace_back(ss, Location{ pos, i }, monostate(), false);
@@ -314,7 +314,7 @@ namespace Parsing {
     string res = std::to_string(s.startPos) + ", " + names.at(rules[s.ruleIndex].lhs) + " ::= ";
     for (size_t i = 0; i < rules[s.ruleIndex].rhs.size(); i++) {
       if (i == s.rulePos) res += "|";
-      res += "<" + names.at(rules[s.ruleIndex].rhs[i]) + ">";
+      res += names.at(rules[s.ruleIndex].rhs[i]);
     }
     if (s.rulePos == rules[s.ruleIndex].rhs.size()) res += "|";
     return res;

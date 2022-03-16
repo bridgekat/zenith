@@ -11,8 +11,10 @@ any x, y, z {
 #ai search_simple // Analytic tableaux & simple unifier activated
 any x, y, z {
   assume x = y, y = z {
+    /*
     => x = z by eq.trans; // Use `by` to provide hints to the AI
     => x = z by "transitivity of equality"; // Use of complex names is also supported (fuzzy matching, and you can search by this)
+    */
   }
 }
 
@@ -47,12 +49,12 @@ anypred r/2 {
 // Also, there is no second-order `exists`...
 any x {
   assume x = x {
-    anyfunc f/2, anypred p/1, any a b => p (f a b) <-> p (f a b);
+    anyfunc f/2, anypred p/1, any a, b => p (f a b) <-> p (f a b);
     #ls // ? : forallfunc f/2, forallpred p/1, forall a, b, p (f a b) <-> p (f a b)
   }
   #ls // (the above ? vanishes)
 
-  anyfunc f/2, anypred p/1, any a b => p (f a b) <-> p (f a b);
+  anyfunc f/2, anypred p/1, any a, b => p (f a b) <-> p (f a b);
   #ls // ? : forallfunc f/2, forallpred p/1, forall a, b, p (f a b) <-> p (f a b)
 }
 #ls // ? : forallfunc x/0, f/2, forallpred p/1, forall a, b, p (f a b) <-> p (f a b)
@@ -121,7 +123,7 @@ any x, y assume x = y {
 
 
 
-
+/*
 // Summary
 // Context: contains four types of things:
 Individual variables        ι
@@ -154,5 +156,5 @@ def := :: :<-> idef :: undef
 
 // Auxiliary keywords (some are used to guide AI, some are used to guide human readers)
 => by name namespace private public
-
+*/
 

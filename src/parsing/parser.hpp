@@ -31,10 +31,11 @@ namespace Parsing {
     Symbol start;
 
     EarleyParser(): rules(), start(0), str(), nullable(), dpa() {}
+    virtual ~EarleyParser() = default;
 
     ParseTree* parse(const vector<Token>& str, Core::Allocator<ParseTree>& pool);
 
-  // private:
+  protected:
     // DP (dynamic programming) state
     struct State {
       size_t startPos, ruleIndex, rulePos;
