@@ -33,6 +33,7 @@ namespace Server {
   // For discussions on non-blocking `cin`, see: https://stackoverflow.com/questions/16592357/non-blocking-stdgetline-exit-if-no-input
   // The following code uses blocking input, which is enough for the current purpose.
   optional<string> JSONRPC2Server::readNextPacket() {
+
     // `std::getline()` and then trim trailing "\r\n"
     // ("\r\n" is used as EOL in LSP 3.16 header part)
     auto getline = [this] () {
@@ -77,6 +78,7 @@ namespace Server {
   }
 
   void JSONRPC2Server::startListen() {
+
     // Start the listener thread (`inThread`)
     // For an example of using `std::jthread`, see: https://en.cppreference.com/w/cpp/thread/stop_token
     inThread = std::jthread([this] (std::stop_token stopToken) {
@@ -101,9 +103,11 @@ namespace Server {
         else { sendError(INVALID_REQUEST, "ill-formed JSON request, expected array or object"); continue; }
       }
     });
+
   }
 
   void JSONRPC2Server::handleRequest(const json& j) {
+
     // Check if the the version number is present and correct
     if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0")
       throw Core::NotImplemented("only JSON-RPC 2.0 is supported");
@@ -137,17 +141,40 @@ namespace Server {
               srv->sendResult(id, res);
             } catch (const JSONRPC2Exception& e) {
               srv->sendError(id, e.code, e.what());
+            } catch (const std::exception& e) {
+              // Using LSP methods to log the error
+              srv->callNotification("window/logMessage", {
+                {"type", 1},
+                {"message", e.what()}
+              });
             }
           };
           handler(this, id, it->second, params);
         } else {
-          sendError(id, METHOD_NOT_FOUND, "method \"" + string(j["method"]) + "\"not found");
+          sendError(id, METHOD_NOT_FOUND, "method \"" + string(j["method"]) + "\" not found");
         }
       } else {
         // Request: notification call
         auto it = notifications.find(j["method"]);
         if (it != notifications.end()) {
-          it->second(this, params);
+          auto handler = [] (JSONRPC2Server* srv, std::function<Coroutine<void>(JSONRPC2Server*, json)> func, const json& params) -> Coroutine<void> {
+            try {
+              co_await func(srv, params);
+            } catch (const JSONRPC2Exception& e) {
+              // Using LSP methods to log the error
+              srv->callNotification("window/logMessage", {
+                {"type", 1},
+                {"message", e.what()}
+              });
+            } catch (const std::exception& e) {
+              // Using LSP methods to log the error
+              srv->callNotification("window/logMessage", {
+                {"type", 1},
+                {"message", e.what()}
+              });
+            }
+          };
+          handler(this, it->second, params);
         }
       }
 
@@ -179,6 +206,7 @@ namespace Server {
     } else {
       throw Core::NotImplemented("unknown JSON-RPC message type");
     }
+
   }
 
   void JSONRPC2Server::send(const json& j) {

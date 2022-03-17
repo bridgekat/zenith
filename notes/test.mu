@@ -1,3 +1,4 @@
+
 #ai none // Proof terms only
 any x, y, z {
   assume x = y name h1, y = z name h2 {
@@ -24,7 +25,6 @@ any x, y, z {
     => x = z;
   }
 }
-
 
 // One might as well use metavariables...
 anypred r/2 {

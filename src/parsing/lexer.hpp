@@ -35,6 +35,13 @@ namespace Parsing {
   // Also used as lexer token
   using Token = ParseTree;
 
+  // Error information
+  struct ParseErrorException: public std::runtime_error {
+    size_t startPos, endPos;
+    explicit ParseErrorException(size_t startPos, size_t endPos, const std::string& s = ""):
+      std::runtime_error(s), startPos(startPos), endPos(endPos) {}
+  };
+
   // A common (abstract) base class for lexers.
   class Lexer {
   public:
@@ -47,14 +54,16 @@ namespace Parsing {
     const string& getRest() const noexcept { return rest; }
     bool eof() const noexcept { return rest.empty(); }
 
-    optional<Token> getNextToken();
-    void ignoreNextCodepoint();
+    string ignoreNextCodepoint();
+    optional<Token> getNextToken(bool stopOnError = false);
+    vector<ParseErrorException> popErrors();
 
   protected:
     size_t pos;
     string rest;
+    vector<ParseErrorException> errors;
 
-    Lexer(): pos(0), rest() {};
+    Lexer(): pos(0), rest(), errors() {};
   };
 
   // Implementation based on NFA. You may add patterns after construction.

@@ -6,21 +6,6 @@
 
 namespace Parsing {
 
-  optional<Token> Lexer::getNextToken() {
-    auto opt = run(rest);
-    if (!opt) return nullopt;
-    auto [len, id] = opt.value();
-    Token res{
-      nullptr, nullptr,
-      id,
-      rest.substr(0, len), nullopt,
-      pos, pos + len
-    };
-    pos += len;
-    rest = rest.substr(len);
-    return res;
-  }
-
   size_t cutFirstCodepoint(const string& s) {
     if (s.empty()) return 0;
     size_t pos = 1;
@@ -31,10 +16,49 @@ namespace Parsing {
     return pos;
   }
 
-  void Lexer::ignoreNextCodepoint() {
+  string Lexer::ignoreNextCodepoint() {
     size_t len = cutFirstCodepoint(rest);
+    string res = rest.substr(0, len);
     pos += len;
     rest = rest.substr(len);
+    return res;
+  }
+
+  optional<Token> Lexer::getNextToken(bool stopOnError) {
+    string skipped;
+    while (!eof()) {
+      auto opt = run(rest);
+      if (opt) {
+        if (!skipped.empty()) {
+          errors.emplace_back(pos - skipped.size(), pos, skipped);
+        }
+        auto [len, id] = opt.value();
+        Token res{
+          nullptr, nullptr,
+          id,
+          rest.substr(0, len), nullopt,
+          pos, pos + len
+        };
+        pos += len;
+        rest = rest.substr(len);
+        return res;
+      }
+      // !opt
+      if (stopOnError) return nullopt;
+      // !opt && !stopOnError
+      skipped += ignoreNextCodepoint();
+    }
+    // eof()
+    if (!skipped.empty()) {
+      errors.emplace_back(pos - skipped.size(), pos, skipped);
+    }
+    return nullopt;
+  }
+
+  vector<ParseErrorException> Lexer::popErrors() {
+    vector<ParseErrorException> res;
+    res.swap(errors);
+    return res;
   }
 
   // Directly run NFA

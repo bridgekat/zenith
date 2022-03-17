@@ -304,7 +304,7 @@ namespace Parsing {
         return getParseTree({ n, i }, pool);
       }
     }
-    // Not found
+    // Not found (TODO: error recovery)
     return nullptr;
   }
 

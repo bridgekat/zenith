@@ -62,10 +62,13 @@ if (ipo_supprted)
 endif ()
 
 add_executable (testparsing
+  src/core/context.cpp
+  src/core/expr.cpp
+  src/core/proof.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/parsing/language.cpp
-  src/parsing/languages/apimu.cpp
+  src/mu.cpp
   src/testparsing.cpp)
 target_default_compile_options  (testparsing)
 target_include_directories      (testparsing PRIVATE src)
@@ -89,8 +92,16 @@ set (THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads)
 
 add_executable (testserver
+  src/core/context.cpp
+  src/core/expr.cpp
+  src/core/proof.cpp
+  src/parsing/lexer.cpp
+  src/parsing/parser.cpp
+  src/parsing/language.cpp
+  src/mu.cpp
   src/server/coroutine.cpp
   src/server/jsonrpc2.cpp
+  src/server/languageserver.cpp
   src/testserver.cpp)
 target_default_compile_options  (testserver)
 target_include_directories      (testserver PRIVATE src)

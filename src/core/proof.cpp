@@ -205,7 +205,7 @@ namespace Core {
     throw NotImplemented();
   }
 
-  void Decl::attachChildren(const std::initializer_list<Decl*>& nodes) {
+  void Decl::attachChildren(const vector<Decl*>& nodes) {
     if (tag != BLOCK) return;
     Decl* last = nullptr;
     for (Decl* node: nodes) {

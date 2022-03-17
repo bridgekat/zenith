@@ -106,7 +106,7 @@ namespace Core {
         case IDEF: idef.pf = nullptr; break;
       }
     }
-    Decl(const std::initializer_list<Decl*>& c): tag(BLOCK) { attachChildren(c); }
+    Decl(const vector<Decl*>& c): tag(BLOCK) { attachChildren(c); }
     Decl(const string& name, const Expr* e, const Proof* pf): tag(ASSERTION), name(name) { assertion.e = e; assertion.pf = pf; }
     Decl(const string& name, const Expr* e): tag(ASSUME), name(name) { assume.e = e; }
     Decl(const string& name, unsigned short arity, Sort sort): tag(ANY), name(name) { any.arity = arity; any.sort = sort; }
@@ -127,7 +127,7 @@ namespace Core {
     // Attach children (no-copy)
     // Each node may only be attached to **one** parent node at a time!
     // Pre: tag is BLOCK
-    void attachChildren(const std::initializer_list<Decl*>& nodes);
+    void attachChildren(const vector<Decl*>& nodes);
 
     // Checks declarations, side-effecting the context `ctx` (newly created expressions will be stored in `pool`)
     // Throws exception on failure

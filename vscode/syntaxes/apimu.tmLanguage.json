@@ -56,8 +56,8 @@
       "end": "\\*/"
     },
     {
-      "name": "meta.preprocessor.apimu",
-      "match": "#[^ /]*"
+      "name": "keyword.control.directive.apimu",
+      "match": "^[ \\t\\n\\v\\f\\r]*#[^ /]*"
     }
   ],
   "scopeName": "source.apimu"

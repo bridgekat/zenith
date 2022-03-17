@@ -71,7 +71,6 @@ namespace Server {
       void unhandled_exception() {
         *exptr = std::current_exception();
         if (then) then.resume();
-        else std::terminate();
       }
     };
 
@@ -81,7 +80,10 @@ namespace Server {
     ~Coroutine() = default;
 
     // A is suspended if B didn't complete
-    bool await_ready() const noexcept { return bool(*result); }
+    bool await_ready() const {
+      if (*exptr) std::rethrow_exception(*exptr);
+      return bool(*result);
+    }
     // B didn't complete, store the continuation of A (B.then := continuation of A)
     void await_suspend(std::coroutine_handle<> ka) { handle.promise().then = ka; }
     // B completed or A was resumed, retrieve result (gives B.result to the continuation of A).
@@ -139,7 +141,6 @@ namespace Server {
       void unhandled_exception() {
         *exptr = std::current_exception();
         if (then) then.resume();
-        else std::terminate();
       }
     };
 
@@ -147,7 +148,7 @@ namespace Server {
     Coroutine& operator=(Coroutine&& r) = default;
     ~Coroutine() = default;
 
-    bool await_ready() const noexcept { return *completed; }
+    bool await_ready() const { if (*exptr) std::rethrow_exception(*exptr); return *completed; }
     void await_suspend(std::coroutine_handle<> ka) { handle.promise().then = ka; }
     void await_resume() const { if (*exptr) std::rethrow_exception(*exptr); }
 

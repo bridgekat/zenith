@@ -26,13 +26,17 @@ namespace Server {
   // See: https://www.jsonrpc.org/specification
 
   struct JSONRPC2Exception: public std::runtime_error {
-    enum ErrorCode: short {
-      PARSE_ERROR      = -32700,
-      INVALID_REQUEST  = -32600,
-      METHOD_NOT_FOUND = -32601,
-      INVALID_PARAMS   = -32602,
-      INTERNAL_ERROR   = -32603,
-      SERVER_ERROR     = -32099 // -32099 ~ -32000, reserved for implementation-defined
+    enum ErrorCode: int {
+      PARSE_ERROR            = -32700,
+      INVALID_REQUEST        = -32600,
+      METHOD_NOT_FOUND       = -32601,
+      INVALID_PARAMS         = -32602,
+      INTERNAL_ERROR         = -32603,
+      // LSP-specific error codes
+      SERVER_NOT_INITIALIZED = -32002,
+      UNKNOWN_ERROR_CODE     = -32001,
+      CONTENT_MODIFIED       = -32801,
+      REQUEST_CANCELLED      = -32800
     };
     ErrorCode code;
     explicit JSONRPC2Exception(ErrorCode code, const string& s = ""):

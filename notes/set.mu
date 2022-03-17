@@ -13,13 +13,13 @@ Though written in a formal syntax, this file is informal (i.e. NOT verified by a
 
 
 anypred in/2 {
-  infix ∈ in;
+  #infix ∈ in
 
-  any x y def notin := (not x ∈ y);
-  infix ∉ notin;
+  any x, y def notin := (not x ∈ y);
+  #infix ∉ notin
 
-  any x y def subsetof := (forall z ∈ x, z ∈ y);
-  infix ⊆ subsetof;
+  any x, y def subsetof := (forall z ∈ x, z ∈ y);
+  #infix ⊆ subsetof
 
   // We can write "forall a ∈ x, ..." to mean "forall a, a ∈ x -> ..."
   //     or write "exists a ∈ x, ..." to mean "exists a, a ∈ x and ..."
@@ -192,11 +192,11 @@ anypred in/2 {
                   }
 
                   // The elaborator has special support for several set-theoretic notations:
-                  #el +subset_builder_fn subset // (TODO: the notation {a ∈ x | φ a})
-                  #el +singletonset_builder_fn singletonset // (TODO: the notation {x})
-                  #el +pairset_builder_fn pairset // (TODO: the notation {x, y} and {x})
-                  #el +listset_builder_fn singletonset pairset unionset // (TODO: the notations {a, b, c, d, e}, etc.)
-                  #el +binary_union_fn pairset unionset // (TODO: the notations (x ∪ y), etc.)
+                  #notation +subset_builder_fn subset // (TODO: the notation {a ∈ x | φ a})
+                  #notation +singletonset_builder_fn singletonset // (TODO: the notation {x})
+                  #notation +pairset_builder_fn pairset // (TODO: the notation {x, y} and {x})
+                  #notation +listset_builder_fn singletonset pairset unionset // (TODO: the notations {a, b, c, d, e}, etc.)
+                  #notation +binary_union_fn pairset unionset // (TODO: the notations (x ∪ y), etc.)
 
 
 /*

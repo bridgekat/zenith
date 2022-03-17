@@ -22,7 +22,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [x] [Parsing algorithms](src/parsing/) (almost completed)
     - [ ] Pretty-printer (WIP)
     - [ ] Customizable syntax
-    - [ ] Notation support
+    - [ ] Notation support (WIP)
   - [ ] Interactive proof-searching
     - [x] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
     - [ ] Translation between ND and SC (WIP)
@@ -33,8 +33,9 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [ ] Resolution-based methods (how to translate these to ND?)
   - [ ] Language server & VSCode extension (WIP)
     - [x] Boilerplate, IO, etc.
-    - [ ] Tracking document changes (WIP)
-    - [ ] Basic functionalities
+    - [x] Tracking document changes
+    - [ ] Checking (WIP)
+    - [ ] Modify source, fading, etc.
 - [ ] Mathematics
   - [x] PA
   - [x] [ZFC](notes/set.mu)
