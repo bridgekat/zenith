@@ -102,7 +102,7 @@ struct Diagnostic {
   optional<CodeDescription> codeDescription = nullopt;
   optional<vector<DiagnosticTag>> tags = nullopt;
   optional<vector<DiagnosticRelatedInformation>> relatedInformation = nullopt;
-  optional<string> source = "apimu.analyzer"; // Only server can send these
+  optional<string> source = "Mu analyzer"; // Only server can send these
 };
 void to_json   (json& j, const Diagnostic& o) { j = {}; to(range); opt_to(severity); opt_to(code); opt_to(codeDescription); opt_to(source); to(message); opt_to(tags); opt_to(relatedInformation); }
 void from_json (const json& j, Diagnostic& o) { o = {}; from(range); opt_from(severity); opt_from(code); opt_from(codeDescription); opt_from(source); from(message); opt_from(tags); opt_from(relatedInformation); }
@@ -148,15 +148,11 @@ void analyzeDocument(JSONRPC2Server* srv, const DocumentUri& uri) {
   vector<Diagnostic> res;
 
   Mu mu;
-  try {
-    mu.analyze(s);
-    auto lexerErrors = mu.popLexerErrors();
-    for (const auto& ex: lexerErrors) {
-      res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.what(), DiagnosticSeverity::WARNING);
-    }
-  } catch (Parsing::ParseErrorException& ex) {
-    res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.what(), DiagnosticSeverity::ERROR);
-  } catch (AnalyzeErrorException& ex) {
+  mu.analyze(s);
+  for (const auto& ex: mu.popParsingErrors()) {
+    res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.what(), DiagnosticSeverity::WARNING);
+  }
+  for (const auto& ex: mu.popAnalysisErrors()) {
     res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.what(), DiagnosticSeverity::ERROR);
   }
 
@@ -269,7 +265,7 @@ Coroutine<void> didChangeTextDocument(JSONRPC2Server* srv, const json& params) {
       d.setContent(change.text);
     }
   }
-  logMessage(srv, MessageType::LOG, "Current content:\n" + d.getContent());
+  // logMessage(srv, MessageType::LOG, "Current content:\n" + d.getContent());
   analyzeDocument(srv, doc.uri);
   co_return;
 }

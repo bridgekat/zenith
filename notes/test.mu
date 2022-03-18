@@ -12,10 +12,8 @@ any x, y, z {
 #ai search_simple // Analytic tableaux & simple unifier activated
 any x, y, z {
   assume x = y, y = z {
-    /*
     => x = z by eq.trans; // Use `by` to provide hints to the AI
     => x = z by "transitivity of equality"; // Use of complex names is also supported (fuzzy matching, and you can search by this)
-    */
   }
 }
 

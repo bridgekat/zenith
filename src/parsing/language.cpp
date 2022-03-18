@@ -8,6 +8,47 @@ namespace Parsing {
   using std::function;
 
 
+  vector<Language::ParsingErrorException> Language::popParsingErrors() {
+    vector<ParsingErrorException> res;
+    // See: https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
+    for (const auto& e: NFALexer::popErrors()) {
+      res.emplace_back(e.startPos, e.endPos, "Parsing error, unexpected characters: " + e.lexeme);
+    }
+    for (const auto& e: EarleyParser::popErrors()) {
+      string s = "Parsing error, expected either one of:\n";
+      bool first = true;
+      for (Symbol sym: e.expected) {
+        s += (first? "" : ", ") + symbols.at(sym).name + " (" + std::to_string(sym) + ")";
+        first = false;
+      }
+      s += "\ngot " + (e.got? "token " + symbols.at(*e.got).name + " (" + std::to_string(*e.got) + ")" : "EOF");
+      res.emplace_back(e.startPos, e.endPos, s);
+    }
+    return res;
+  }
+
+  Symbol Language::getSymbol(type_index tid) {
+    auto it = mp.find(tid);
+    if (it != mp.end()) return it->second;
+    Symbol sym = symbols.size();
+    symbols.emplace_back("", [sym] (const ParseTree* x) -> std::any {
+      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
+      throw Core::Unreachable("Language: no matching rule");
+    }, false);
+    mp[tid] = sym;
+    return sym;
+  }
+
+  void Language::setAsErrorSymbol(const string& name, Symbol sym, std::any val) {
+    if (errorSymbol) throw Core::Unreachable("Language: at most one error symbol can be set");
+    errorSymbol = sym;
+    symbols[sym].name = name;
+    symbols[sym].action = [sym, val] (const ParseTree* x) -> std::any {
+      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
+      return val;
+    };
+  }
+
   Symbol Language::addPatternImpl(const string& name, type_index tid, NFA pattern, bool discard, function<std::any(const string&)> action) {
 
     // Insert new symbol if not already present
@@ -27,24 +68,7 @@ namespace Parsing {
     return sym;
   }
 
-  Symbol Language::getSymbol(type_index tid) {
-    auto it = mp.find(tid);
-    if (it != mp.end()) return it->second;
-    Symbol sym = symbols.size();
-    symbols.emplace_back("", [sym] (const ParseTree* x) -> std::any {
-      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
-      throw Core::Unreachable("Language: no matching rule");
-    }, false);
-    mp[tid] = sym;
-    return sym;
-  }
-
-  Symbol Language::addRuleImpl(const string& name, std::type_index tid, const vector<std::type_index>& rhstid, std::function<std::any(const ParseTree*)> action) {
-
-    // Insert new symbol if not already present
-    Symbol lhs = getSymbol(tid);
-    vector<Symbol> rhs;
-    for (type_index tid: rhstid) rhs.push_back(getSymbol(tid));
+  Symbol Language::addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action) {
 
     // Update name
     symbols[lhs].name = "[" + name + "]";
@@ -84,48 +108,8 @@ namespace Parsing {
     }
 
     // Parse
-    this->start = start;
+    this->startSymbol = start;
     ParseTree* x = EarleyParser::parse(tokens, pool);
-
-    /*
-    using std::cout, std::endl;
-    using LinkedState = EarleyParser::LinkedState;
-    if (dpa.size() != tokens.size() + 1) throw Core::Unreachable();
-
-    vector<string> names;
-    for (const auto& e: symbols) names.push_back(e.name);
-    for (size_t pos = 0; pos <= tokens.size(); pos++) {
-      cout << "States at position " << pos << ":" << endl;
-      for (const LinkedState& ls: dpa[pos]) {
-        cout << showState(ls.state, names) << endl;
-      }
-      cout << endl;
-      if (pos < tokens.size()) cout << "Next token: " << names[tokens[pos].id] << endl;
-    }
-    */
-
-    if (!x) {
-      for (size_t i = 0; i < tokens.size(); i++) {
-        if (dpa[i + 1].empty()) {
-          string msg = "no possible parse tree candidates. Expected either one of: ";
-          bool first = true;
-          for (const auto& ls: dpa[i]) {
-            const auto& s = ls.state;
-            const Rule& rule = rules[s.ruleIndex];
-            if (s.rulePos < rule.rhs.size()) {
-              msg += (first? "" : ", ") + symbols[rule.rhs[s.rulePos]].name + " (" + std::to_string(rule.rhs[s.rulePos]) + ")";
-              first = false;
-            }
-          }
-          msg += "; got " + symbols[tokens[i].id].name + " (" + std::to_string(tokens[i].id) + ")";
-          throw ParseErrorException(toCharsStart(i), toCharsEnd(i), "Parsing failed: " + msg);
-        }
-      }
-      throw ParseErrorException(str.size(), str.size(), "Parsing failed, unexpected EOF");
-    }
-
-    // Get result
-    if (x->id != start) throw Core::Unreachable("Language: parsing completed with unexpected root node");
 
     return x;
   }

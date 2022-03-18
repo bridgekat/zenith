@@ -3,7 +3,6 @@
 #ifndef LEXER_HPP_
 #define LEXER_HPP_
 
-#include <initializer_list>
 #include <vector>
 #include <algorithm>
 #include <optional>
@@ -13,7 +12,6 @@
 
 namespace Parsing {
 
-  using std::initializer_list;
   using std::vector;
   using std::pair, std::make_pair;
   using std::optional, std::make_optional, std::nullopt;
@@ -35,33 +33,33 @@ namespace Parsing {
   // Also used as lexer token
   using Token = ParseTree;
 
-  // Error information
-  struct ParseErrorException: public std::runtime_error {
-    size_t startPos, endPos;
-    explicit ParseErrorException(size_t startPos, size_t endPos, const std::string& s = ""):
-      std::runtime_error(s), startPos(startPos), endPos(endPos) {}
-  };
-
   // A common (abstract) base class for lexers.
   class Lexer {
   public:
+    // Error information
+    struct ErrorInfo {
+      size_t startPos, endPos;
+      string lexeme;
+      ErrorInfo(size_t startPos, size_t endPos, const std::string& lexeme):
+        startPos(startPos), endPos(endPos), lexeme(lexeme) {}
+    };
+
     virtual ~Lexer() = default;
     virtual optional<pair<size_t, Symbol>> run(const string& s) const = 0;
 
     void setRest(const string& s) { pos = 0; rest = s; }
-    Lexer& operator<<(const string& s) { rest += s; return *this; }
-
     const string& getRest() const noexcept { return rest; }
     bool eof() const noexcept { return rest.empty(); }
 
-    string ignoreNextCodepoint();
-    optional<Token> getNextToken(bool stopOnError = false);
-    vector<ParseErrorException> popErrors();
+    // All errors will be logged
+    optional<Token> getNextToken();
+    // Get and clear error log
+    vector<ErrorInfo> popErrors();
 
   protected:
     size_t pos;
     string rest;
-    vector<ParseErrorException> errors;
+    vector<ErrorInfo> errors;
 
     Lexer(): pos(0), rest(), errors() {};
   };
@@ -93,7 +91,7 @@ namespace Parsing {
       node(s); node(t); trans(s, 0, t);
       return { s, t };
     }
-    NFA ch(const initializer_list<unsigned char>& ls) {
+    NFA ch(const vector<unsigned char>& ls) {
       node(s); node(t);
       for (auto c: ls) trans(s, c, t);
       return { s, t };
@@ -119,7 +117,7 @@ namespace Parsing {
       }
       return { s, t };
     }
-    NFA alt(const initializer_list<NFA>& ls) {
+    NFA alt(const vector<NFA>& ls) {
       node(s); node(t);
       for (auto a: ls) {
         trans(s, 0, a.first);
@@ -136,7 +134,7 @@ namespace Parsing {
     NFA plus(NFA a)   { return concat2(a, star(a)); }
     NFA any()         { return range(0x01, 0xFF); }
     NFA utf8segment() { return range(0x80, 0xFF); }
-    NFA except(const initializer_list<unsigned char>& ls) {
+    NFA except(const vector<unsigned char>& ls) {
       vector<bool> f(0x100, true);
       for (auto c: ls) f[c] = false;
       node(s); node(t);

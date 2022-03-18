@@ -1,4 +1,3 @@
-#include <iostream>
 #include <utility>
 #include <optional>
 #include <algorithm>
@@ -31,6 +30,23 @@ namespace Parsing {
     return str[pos].endPos;
   }
 
+  // For use in `run()` only
+  void EarleyParser::logError(size_t pos) {
+    if (dpa.size() != str.size() + 1 || pos >= dpa.size()) throw Core::Unreachable();
+
+    vector<Symbol> expected;
+    for (const LinkedState& ls: dpa[pos]) {
+      const State& s = ls.state;
+      const Rule& rule = rules[s.ruleIndex];
+      if (s.rulePos < rule.rhs.size()) expected.push_back(rule.rhs[s.rulePos]);
+    }
+    size_t len = std::unique(expected.begin(), expected.end()) - expected.begin();
+    expected.resize(len);
+
+    optional<Symbol> got = pos < str.size() ? make_optional(str[pos].id) : nullopt;
+    errors.emplace_back(toCharsStart(pos), toCharsEnd(pos), expected, got);
+  }
+
   // See: https://en.wikipedia.org/wiki/Earley_parser#The_algorithm (for an overview)
   // See: https://loup-vaillant.fr/tutorials/earley-parsing/ (for a simple way to deal with ε rules)
   // Other related information:
@@ -43,7 +59,7 @@ namespace Parsing {
     const size_t n = str.size(), m = rules.size();
 
     // Find the number `k` of symbols involved
-    Symbol k = start + 1;
+    Symbol k = startSymbol + 1;
     for (const auto& [lhs, rhs]: rules) {
       k = std::max(k, lhs + 1);
       for (Symbol sym: rhs) k = std::max(k, sym + 1);
@@ -56,7 +72,7 @@ namespace Parsing {
     bool updates = false;
     do {
       updates = false;
-      for (size_t i = 0; i < rules.size(); i++) {
+      for (size_t i = 0; i < m; i++) {
         Symbol lhs = rules[i].lhs;
         const auto& rhs = rules[i].rhs;
         if (!nullable[lhs].has_value()) {
@@ -102,10 +118,10 @@ namespace Parsing {
     vector<bool> isAdded(k);
 
     // Initial states
-    for (size_t i = firstRule[start]; i < m && rules[sorted[i]].lhs == start; i++) {
+    for (size_t i = firstRule[startSymbol]; i < m && rules[sorted[i]].lhs == startSymbol; i++) {
       State s{ 0, sorted[i], 0 };
-      mp[s] = dpa.size();
-      dpa[0].emplace_back(s, nullopt, monostate(), false);
+      mp[s] = dpa[0].size();
+      dpa[0].emplace_back(s, nullopt, monostate{}, false);
     }
 
     // Invariant: `mp` maps all elements of `states[pos]` to their indices
@@ -126,8 +142,8 @@ namespace Parsing {
             for (size_t j = firstRule[sym]; j < m && rules[sorted[j]].lhs == sym; j++) {
               State ss{ pos, sorted[j], 0 };
               if (!mp.contains(ss)) {
-                mp[ss] = dpa.size();
-                dpa[pos].emplace_back(ss, nullopt, monostate(), false);
+                mp[ss] = dpa[pos].size();
+                dpa[pos].emplace_back(ss, nullopt, monostate{}, false);
               }
             }
           }
@@ -135,10 +151,13 @@ namespace Parsing {
           if (nullable[sym].has_value()) {
             State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
             if (!mp.contains(ss)) {
-              mp[ss] = dpa.size();
-              dpa[pos].emplace_back(ss, Location{ pos, i }, monostate(), false);
+              mp[ss] = dpa[pos].size();
+              dpa[pos].emplace_back(ss, Location{ pos, i }, EmptyChild{}, false);
             } else {
-              std::cout << "Ambiguity detected" << std::endl; // TEMP CODE
+              // Ambiguity detected
+              LinkedState& ls = dpa[pos][mp[ss]];
+              ls.ambiguous = true;
+              // TODO: prefer child with production rule of smaller index
             }
           }
         } else {
@@ -153,10 +172,13 @@ namespace Parsing {
             if (t.rulePos < tderived.size() && tderived[t.rulePos] == lhs) {
               State tt{ t.startPos, t.ruleIndex, t.rulePos + 1 };
               if (!mp.contains(tt)) {
-                mp[tt] = dpa.size();
+                mp[tt] = dpa[pos].size();
                 dpa[pos].emplace_back(tt, Location{ s.startPos, j }, Location{ pos, i }, false);
               } else {
-                std::cout << "Ambiguity detected" << std::endl; // TEMP CODE
+                // Ambiguity detected
+                LinkedState& ls = dpa[pos][mp[tt]];
+                ls.ambiguous = true;
+                // TODO: prefer child with production rule of smaller index
               }
             }
           }
@@ -183,7 +205,40 @@ namespace Parsing {
         }
       }
 
+      // Simple error recovery (TODO: limit total number of errors?)
+      if (dpa[pos + 1].empty()) {
+        // To minimise ambiguity, we don't add multiple states with the same rule-index.
+        // This may be undesirable for rules with multiple error-symbols, but we keep it simple for now!
+        vector<bool> f(m, false);
+        for (size_t posj = pos + 1; posj --> 0;) { // [0, pos] decreasing, inclusive
+          for (size_t j = 0; j < dpa[posj].size(); j++) {
+            const State& s = dpa[posj][j].state;
+            const auto& derived = rules[s.ruleIndex].rhs;
+            if (s.rulePos < derived.size() && derived[s.rulePos] == errorSymbol && !f[s.ruleIndex]) {
+              f[s.ruleIndex] = true;
+              State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
+              // No need to check presence! `s.ruleIndex` is already unique.
+              mp[ss] = dpa[pos + 1].size();
+              dpa[pos + 1].emplace_back(ss, Location{ posj, j }, ErrorChild{}, false);
+            }
+          }
+        }
+        logError(pos);
+      }
+
     }
+
+    // Check if the start symbol completes at the end position
+    fin = nullopt;
+    for (size_t i = 0; i < dpa[n].size(); i++) {
+      const State& s = dpa[n][i].state;
+      const Rule& rule = rules[s.ruleIndex];
+      if (s.startPos == 0 && rule.lhs == startSymbol && s.rulePos == rule.rhs.size()) {
+        fin = { n, i };
+        break;
+      }
+    }
+    if (!fin) logError(n);
 
     /*
     * ===== A hand-wavey argument for correctness =====
@@ -248,6 +303,18 @@ namespace Parsing {
     return res;
   }
 
+  // Constructs a parse tree that represents a parsing error.
+  ParseTree* EarleyParser::errorParseTree(size_t startPos, size_t endPos, Core::Allocator<ParseTree>& pool) const {
+    assert(errorSymbol.has_value());
+    assert(endPos > 0);
+    return pool.pushBack(ParseTree{
+      nullptr, nullptr,
+      *errorSymbol,
+      nullopt, nullopt,
+      toCharsStart(startPos), toCharsEnd(endPos - 1)
+    });
+  }
+
   // Constructs a parse tree for a completed DP state.
   ParseTree* EarleyParser::getParseTree(Location loc, Core::Allocator<ParseTree>& pool) const {
     const LinkedState* curr = &dpa[loc.pos][loc.i];
@@ -272,7 +339,9 @@ namespace Parsing {
       ParseTree* child = visit(Matcher{
         [&] (Location cloc) { return getParseTree(cloc, pool); },
         [&] (Token tok) { return pool.pushBack(tok); },
-        [&] (monostate) { return nullParseTree(loc.pos, rule.rhs[i], pool); }
+        [&] (EmptyChild) { return nullParseTree(loc.pos, rule.rhs[i], pool); },
+        [&] (ErrorChild) { return errorParseTree(curr->prev->pos, loc.pos, pool); },
+        [&] (monostate) -> ParseTree* { assert(false); }
       }, curr->child);
       children.push_back(child);
 
@@ -292,23 +361,18 @@ namespace Parsing {
     return res;
   }
 
-  // Constructs a parse tree for the `start` symbol. If there are none, returns `nullptr`.
+  // Constructs a parse tree for the `startSymbol`. If there are none, returns `nullptr`.
   ParseTree* EarleyParser::getParseTree(Core::Allocator<ParseTree>& pool) const {
-    size_t n = str.size();
-    assert(dpa.size() == n + 1);
-    for (size_t i = 0; i < dpa[n].size(); i++) {
-      const State& s = dpa[n][i].state;
-      const Rule& rule = rules[s.ruleIndex];
-      if (s.startPos == 0 && rule.lhs == start && s.rulePos == rule.rhs.size()) {
-        // Found a successful parse
-        return getParseTree({ n, i }, pool);
-      }
-    }
-    // Not found (TODO: error recovery)
-    return nullptr;
+    return fin ? getParseTree(*fin, pool) : nullptr;
   }
 
   #undef assert
+
+  vector<EarleyParser::ErrorInfo> EarleyParser::popErrors() {
+    vector<ErrorInfo> res;
+    res.swap(errors);
+    return res;
+  }
 
   string EarleyParser::showState(const State& s, const vector<string>& names) const {
     string res = std::to_string(s.startPos) + ", " + names.at(rules[s.ruleIndex].lhs) + " ::= ";
@@ -317,6 +381,18 @@ namespace Parsing {
       res += names.at(rules[s.ruleIndex].rhs[i]);
     }
     if (s.rulePos == rules[s.ruleIndex].rhs.size()) res += "|";
+    return res;
+  }
+
+  string EarleyParser::showStates(const vector<string>& names) const {
+    if (dpa.size() != str.size() + 1) throw Core::Unreachable();
+    string res = "";
+    for (size_t pos = 0; pos <= str.size(); pos++) {
+      res += "States at position " + std::to_string(pos) + ":\n";
+      for (const LinkedState& ls: dpa[pos]) res += showState(ls.state, names) + "\n";
+      res += "\n";
+      if (pos < str.size()) res += "Next token: " + names.at(str[pos].id) + "\n";
+    }
     return res;
   }
 

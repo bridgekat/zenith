@@ -16,15 +16,7 @@ namespace Parsing {
     return pos;
   }
 
-  string Lexer::ignoreNextCodepoint() {
-    size_t len = cutFirstCodepoint(rest);
-    string res = rest.substr(0, len);
-    pos += len;
-    rest = rest.substr(len);
-    return res;
-  }
-
-  optional<Token> Lexer::getNextToken(bool stopOnError) {
+  optional<Token> Lexer::getNextToken() {
     string skipped;
     while (!eof()) {
       auto opt = run(rest);
@@ -44,9 +36,10 @@ namespace Parsing {
         return res;
       }
       // !opt
-      if (stopOnError) return nullopt;
-      // !opt && !stopOnError
-      skipped += ignoreNextCodepoint();
+      size_t len = cutFirstCodepoint(rest);
+      skipped += rest.substr(0, len);
+      pos += len;
+      rest = rest.substr(len);
     }
     // eof()
     if (!skipped.empty()) {
@@ -55,8 +48,8 @@ namespace Parsing {
     return nullopt;
   }
 
-  vector<ParseErrorException> Lexer::popErrors() {
-    vector<ParseErrorException> res;
+  vector<Lexer::ErrorInfo> Lexer::popErrors() {
+    vector<ErrorInfo> res;
     res.swap(errors);
     return res;
   }

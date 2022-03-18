@@ -51,6 +51,8 @@ symbol(Identifier) { string name; };
 
 // Nonterminal symbols
 
+symbol(Error) {};
+
 symbol(Var) { Core::Expr* e; };
 symbol(Vars) { vector<Core::Expr*> es; };
 
@@ -166,7 +168,7 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     if (opt.has_value()) {
       return { makeExprLoc(x, Core::Expr::FREE, opt.value()) };
     }
-    throw AnalyzeErrorException(x, "Undefined identifier: " + name);
+    throw AnalysisErrorException(x, "Undefined identifier: " + name);
   });
 
   // TODO: binders
@@ -195,18 +197,18 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     auto op = getChild<Prefix30>(x, 0);
     auto t = getChild<Term30>(x, 1);
     if (op.name == "not") return { makeExpr(Core::Expr::NOT, t.e) };
-    throw AnalyzeErrorException(x, "Unknown connective: " + op.name);
+    throw AnalysisErrorException(x, "Unknown connective: " + op.name);
   });
   addRule([]     (Term30&& t)                               -> Term20 { return { t.e }; });
-  addRuleFor<Term20, Term20, Infix20, Term40>([this] (const ParseTree* x) -> Term20 {
+  addRuleFor<Term20, Term20, Infix20, Term30>([this] (const ParseTree* x) -> Term20 {
     auto lhs = getChild<Term20>(x, 0);
     auto op = getChild<Infix20>(x, 1);
-    auto rhs = getChild<Term40>(x, 2);
+    auto rhs = getChild<Term30>(x, 2);
     if (op.name == "and") return { makeExpr(Core::Expr::AND, lhs.e, rhs.e) };
     if (op.name == "or") return { makeExpr(Core::Expr::OR, lhs.e, rhs.e) };
     if (op.name == "implies" || op.name == "->") return { makeExpr(Core::Expr::IMPLIES, lhs.e, rhs.e) };
     if (op.name == "iff" || op.name == "<->") return { makeExpr(Core::Expr::IFF, lhs.e, rhs.e) };
-    throw AnalyzeErrorException(x, "Unknown connective: " + op.name);
+    throw AnalysisErrorException(x, "Unknown connective: " + op.name);
   });
   addRule([]     (Term20&& t)                               -> Term { return { t.e }; });
   addRule([]     (OpLParen, Term&& t, OpRParen)             -> Var { return { t.e }; });
@@ -216,8 +218,8 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     try {
       auto t = e->checkType(ctx);
     } catch(Core::InvalidExpr& ex) {
-      // TODO: lookup in sourceMap
-      throw AnalyzeErrorException(x, ex.what());
+      // TODO: lookup in sourceMap (replace those `makeExpr` to `makeExprLoc` first)
+      throw AnalysisErrorException(x, ex.what());
     }
     return { e };
   });
@@ -234,7 +236,7 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     return {};
   });
 
-  addRule([]     (Identifier&& id, OpSlash, Natural&& n) -> NewFunc { return { id.name, n.data }; });
+  addRule([]     (Identifier&& id, OpSlash, Natural&& n) -> NewFunc { return { id.name, static_cast<unsigned short>(n.data) }; });
   addRule([]     (NewFunc&& f)                           -> NewFuncs { return { { { f.name, f.arity } } }; });
   addRule([]     (NewFuncs&& fs, OpComma)                -> NewFuncs { return fs; });
   addRule([]     (NewFuncs&& fs, OpComma, NewFunc&& f)   -> NewFuncs { fs.fs.emplace_back(f.name, f.arity); return fs; });
@@ -246,7 +248,7 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     return {};
   });
 
-  addRule([]     (Identifier&& id, OpSlash, Natural&& n) -> NewPred { return { id.name, n.data }; });
+  addRule([]     (Identifier&& id, OpSlash, Natural&& n) -> NewPred { return { id.name, static_cast<unsigned short>(n.data) }; });
   addRule([]     (NewPred&& p)                           -> NewPreds { return { { { p.name, p.arity } } }; });
   addRule([]     (NewPreds&& ps, OpComma)                -> NewPreds { return ps; });
   addRule([]     (NewPreds&& ps, OpComma, NewPred&& p)   -> NewPreds { ps.ps.emplace_back(p.name, p.arity); return ps; });
@@ -281,16 +283,27 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
 
   // To generate verifiable `Decl`s, complete these actions
   // Currently omitted for clarity
-  addRule([]     (Block&&)                     -> Decl { return {}; });
-  addRule([this] (Directive&&)                 -> Decl { return {}; });
-  addRule([]     (Assertion&&)                 -> Decl { return {}; });
-  addRule([]     (Assume&&)                    -> Decl { return {}; });
-  addRule([]     (Any&&)                       -> Decl { return {}; });
-  addRule([]     (AnyFunc&&)                   -> Decl { return {}; });
-  addRule([]     (AnyPred&&)                   -> Decl { return {}; });
-  addRule([this] (OpLBrace, Decls&&, OpRBrace) -> Block { return {}; });
-  addRule([]     ()                            -> Decls { return {}; });
-  addRule([]     (Decls&&, Decl&&)             -> Decls { return {}; });
+  addRule([]     (Block)                     -> Decl { return {}; });
+  addRule([]     (Assertion)                 -> Decl { return {}; });
+  addRule([]     (Assume)                    -> Decl { return {}; });
+  addRule([]     (Any)                       -> Decl { return {}; });
+  addRule([]     (AnyFunc)                   -> Decl { return {}; });
+  addRule([]     (AnyPred)                   -> Decl { return {}; });
+  addRule([]     (OpLBrace, Decls, OpRBrace) -> Block { return {}; });
+  addRule([]     ()                          -> Decls { return {}; });
+  addRuleFor<Decls, Decls, Decl>([this] (const ParseTree* x) -> Decls {
+    getChild<Decls>(x, 0);
+    try { getChild<Decl>(x, 1); } catch (AnalysisErrorException& ex) { errors.push_back(ex); }
+    return {};
+  });
+
+  // Error recovery rules
+  addRule([]     (OpLBrace, Error, OpRBrace)     -> Block { return {}; });
+  addRule([]     (OpRRArrow, Error, OpSemicolon) -> Assertion { return {}; });
+  addRule([]     (KwAssume, Error)               -> Assume { return {}; });
+  addRule([]     (KwAny, Error)                  -> Any { return {}; });
+  addRule([]     (KwAnyFunc, Error)              -> AnyFunc { return {}; });
+  addRule([]     (KwAnyPred, Error)              -> AnyPred { return {}; });
 
   #undef expr
   #undef proof
@@ -301,5 +314,12 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
 // =======================
 
 void Mu::analyze(const string& str) {
+  Language::setAsErrorSymbol<Error>();
   Language::parse<Decls>(str);
+}
+
+vector<Mu::AnalysisErrorException> Mu::popAnalysisErrors() {
+  vector<AnalysisErrorException> res;
+  res.swap(errors);
+  return res;
 }

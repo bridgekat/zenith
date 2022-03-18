@@ -27,15 +27,35 @@ namespace Parsing {
   // For more details see implementation (`parser.cpp`).
   class EarleyParser {
   public:
-    vector<Rule> rules;
-    Symbol start;
+    // Error information
+    struct ErrorInfo {
+      size_t startPos, endPos;
+      vector<Symbol> expected;
+      optional<Symbol> got;
+      ErrorInfo(size_t startPos, size_t endPos, const vector<Symbol>& expected, const optional<Symbol>& got):
+        startPos(startPos), endPos(endPos), expected(expected), got(got) {}
+    };
 
-    EarleyParser(): rules(), start(0), str(), nullable(), dpa() {}
+    // Production rules
+    vector<Rule> rules;
+    // Starting symbol
+    Symbol startSymbol;
+    // Optional symbol for erroneous substrings. Will be used for error recovery.
+    optional<Symbol> errorSymbol;
+
+    EarleyParser(): rules(), startSymbol(0), errorSymbol(), str(), nullable(), dpa(), fin(), errors() {}
     virtual ~EarleyParser() = default;
 
+    // Computes a possible parse tree. Returns `nullptr` if unable to recover from errors.
+    // All errors will be logged
     ParseTree* parse(const vector<Token>& str, Core::Allocator<ParseTree>& pool);
+    // Get and clear error log
+    vector<ErrorInfo> popErrors();
 
-  protected:
+    // Debug output
+    string showStates(const vector<string>& names) const;
+
+  private:
     // DP (dynamic programming) state
     struct State {
       size_t startPos, ruleIndex, rulePos;
@@ -43,23 +63,32 @@ namespace Parsing {
     };
     // Location in DP array
     struct Location { size_t pos, i; };
+    // Empty or error child
+    struct EmptyChild {};
+    struct ErrorChild {};
     // State with transition source links
     struct LinkedState {
       State state;
       optional<Location> prev;
-      variant<Location, Token, monostate> child;
-      bool ambiguous; // TODO: more information about ambiguity?
+      variant<Location, Token, EmptyChild, ErrorChild, monostate> child;
+      // TODO: store more information about ambiguity? (e.g. at least one alternative parse)
+      bool ambiguous;
     };
+
     // Ephemeral states
     vector<Token> str;
     vector<optional<size_t>> nullable;
     vector<vector<LinkedState>> dpa;
+    optional<Location> fin;
+    vector<ErrorInfo> errors;
 
     // The parsing algorithm
     size_t toCharsStart(size_t pos) const noexcept;
     size_t toCharsEnd(size_t pos) const noexcept;
+    void logError(size_t pos);
     void run();
     ParseTree* nullParseTree(size_t pos, Symbol id, Core::Allocator<ParseTree>& pool) const;
+    ParseTree* errorParseTree(size_t startPos, size_t endPos, Core::Allocator<ParseTree>& pool) const;
     ParseTree* getParseTree(Location loc, Core::Allocator<ParseTree>& pool) const;
     ParseTree* getParseTree(Core::Allocator<ParseTree>& pool) const;
 

@@ -9,6 +9,7 @@
 #include <functional>
 #include <any>
 #include <type_traits>
+#include <optional>
 #include "parser.hpp"
 
 
@@ -47,12 +48,20 @@ namespace Parsing {
 
   // Inherit from this class to create new languages.
   class Language: protected NFALexer, protected EarleyParser {
-  protected:
+  public:
+    struct ParsingErrorException: public std::runtime_error {
+      size_t startPos, endPos;
+      ParsingErrorException(size_t startPos, size_t endPos, const string& s):
+        std::runtime_error(s), startPos(startPos), endPos(endPos) {}
+    };
 
+    vector<ParsingErrorException> popParsingErrors();
+
+  protected:
     struct Entry {
       string name;
       std::function<std::any(const ParseTree*)> action;
-      bool discard; // Discard after scanning
+      bool discard; // Discard after scanning; for nonterminal symbols only
     };
 
     vector<Entry> symbols;
@@ -60,6 +69,16 @@ namespace Parsing {
     Core::Allocator<ParseTree> pool;
 
     Language(): NFALexer(), EarleyParser(), symbols(), mp(), pool() {}
+
+    // Get symbol index for type; insert new nonterminal symbol if not already present
+    template <typename T>
+    Symbol getSymbol() { return getSymbol(typeid(T)); }
+    Symbol getSymbol(std::type_index tid);
+
+    // Set as error symbol; can only be called at most once currently; do not add other rules to error symbols.
+    template <typename T>
+    void setAsErrorSymbol() { return setAsErrorSymbol(SymbolName<T>::get(), getSymbol<T>(), T{}); }
+    void setAsErrorSymbol(const string& name, Symbol sym, std::any val);
 
     // Add a terminal symbol with a pattern.
     // `addPattern` (*) -> `addPatternImpl`
@@ -87,13 +106,13 @@ namespace Parsing {
 
     // Add a production rule with a more customized semantic action function that directly operates on the parse tree.
     // This could give more freedom on the order of evaluation, but the template arguments must be provided explicitly.
-    // `addRuleRaw` (*) -> `addRuleImpl`
+    // `addRuleFor` (*) -> `addRuleImpl`
     template <typename ReturnType, typename... ParamTypes>
     Symbol addRuleFor(std::function<ReturnType(const ParseTree*)> action) {
       return addRuleImpl(
         SymbolName<ReturnType>::get(),
-        typeid(ReturnType),
-        vector<std::type_index>{ typeid(ParamTypes)... },
+        getSymbol<ReturnType>(),
+        vector<Symbol>{ getSymbol<ParamTypes>()... },
         action);
     }
 
@@ -125,12 +144,14 @@ namespace Parsing {
     // Parse with a given initial symbol (type).
     // `parse` (*) -> `parseImpl`
     template <typename ReturnType>
-    ReturnType parse(const string& str) {
+    std::optional<ReturnType> parse(const string& str) {
       std::type_index tid = typeid(ReturnType);
       auto it = mp.find(tid);
       if (it == mp.end()) throw Core::Unreachable("Language: unknown start symbol");
       Symbol start = it->second;
       ParseTree* x = parseImpl(str, start);
+      if (!x) return std::nullopt;
+      if (x->id != start) throw Core::Unreachable("Language: parsing completed with unexpected root node");
       return std::any_cast<ReturnType>(symbols[start].action(x));
     }
 
@@ -141,8 +162,8 @@ namespace Parsing {
     Symbol addRuleIndexed(const string& name, std::function<ReturnType(ParamTypes...)> action, std::index_sequence<Indices...>) {
       return addRuleImpl(
         name,
-        typeid(ReturnType),
-        vector<std::type_index>{ typeid(ParamTypes)... },
+        getSymbol<ReturnType>(),
+        vector<Symbol>{ getSymbol<ParamTypes>()... },
         [this, action] (const ParseTree* x) {
           vector<std::any> params;
           for (ParseTree* p = x->c; p; p = p->s) {
@@ -155,8 +176,7 @@ namespace Parsing {
 
     // Keep most of the code untemplated to avoid slowing down compilation
     Symbol addPatternImpl(const string& name, std::type_index tid, NFA pattern, bool discard, std::function<std::any(const string&)> action);
-    Symbol getSymbol(std::type_index tid);
-    Symbol addRuleImpl(const string& name, std::type_index tid, const vector<std::type_index>& rhstid, std::function<std::any(const ParseTree*)> action);
+    Symbol addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action);
     ParseTree* parseImpl(const string& str, Symbol start);
 
   };
