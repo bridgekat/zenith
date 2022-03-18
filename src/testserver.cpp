@@ -155,6 +155,9 @@ void analyzeDocument(JSONRPC2Server* srv, const DocumentUri& uri) {
   for (const auto& ex: mu.popAnalysisErrors()) {
     res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.what(), DiagnosticSeverity::ERROR);
   }
+  for (const auto& ex: mu.popAnalysisInfo()) {
+    res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.info, DiagnosticSeverity::INFORMATION);
+  }
 
   srv->callNotification("textDocument/publishDiagnostics", {
     {"uri", uri},
@@ -311,13 +314,15 @@ int main() {
   _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
+  /*
   // Set up logging
   stringstream ss;
   ss << "log_" << std::chrono::system_clock::now().time_since_epoch().count() << ".txt";
   std::ofstream log(ss.str());
+  */
 
   // Create server
-  Server::JSONRPC2Server srv(std::cin, std::cout, log);
+  Server::JSONRPC2Server srv(std::cin, std::cout /*, log */);
 
   // The registered functions will be executed in one single thread!
   // So don't do any blocking (e.g. wait, sleep, cin >> s)...
@@ -335,7 +340,7 @@ int main() {
   // Start the server thread and wait until it was shut down...
   srv.startListen();
   srv.waitForComplete();
-  log << "Server stopped." << std::endl;
+  // log << "Server stopped." << std::endl;
 
   return 0;
 }

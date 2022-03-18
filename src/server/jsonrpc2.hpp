@@ -50,8 +50,8 @@ namespace Server {
     struct RequestAwaiter;
 
     // While `inThread` is running, other threads should not read/write the `in`/`out`/`log` streams...
-    JSONRPC2Server(std::basic_istream<char>& in, std::basic_ostream<char>& out, std::basic_ostream<char>& log):
-      in(in), out(out), log(log), inThread(), methods(), notifications(), nextid(0), requests() {}
+    JSONRPC2Server(std::basic_istream<char>& in, std::basic_ostream<char>& out /*, std::basic_ostream<char>& log */):
+      in(in), out(out), /* log(log), */ inThread(), methods(), notifications(), nextid(0), requests() {}
 
     // These functions should only be called when `inThread` is not running.
     // See: https://stackoverflow.com/questions/33943601/check-if-stdthread-is-still-running
@@ -106,7 +106,7 @@ namespace Server {
   private:
     std::basic_istream<char>& in;
     std::basic_ostream<char>& out;
-    std::basic_ostream<char>& log;
+    // std::basic_ostream<char>& log;
     std::jthread inThread;
 
     unordered_map<string, std::function<Coroutine<json>(JSONRPC2Server*, json)>> methods;

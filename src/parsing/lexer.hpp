@@ -45,10 +45,8 @@ namespace Parsing {
     };
 
     virtual ~Lexer() = default;
-    virtual optional<pair<size_t, Symbol>> run(const string& s) const = 0;
 
-    void setRest(const string& s) { pos = 0; rest = s; }
-    const string& getRest() const noexcept { return rest; }
+    void setString(const string& s) { pos = 0; rest = s; }
     bool eof() const noexcept { return rest.empty(); }
 
     // All errors will be logged
@@ -57,11 +55,15 @@ namespace Parsing {
     vector<ErrorInfo> popErrors();
 
   protected:
+    Lexer(): pos(0), rest(), errors() {};
+
+  private:
     size_t pos;
     string rest;
     vector<ErrorInfo> errors;
 
-    Lexer(): pos(0), rest(), errors() {};
+    // Returns longest match in the form of (length, token)
+    virtual optional<pair<size_t, Symbol>> run(const string& s) const = 0;
   };
 
   // Implementation based on NFA. You may add patterns after construction.
@@ -82,9 +84,6 @@ namespace Parsing {
       auto& o = table[nfa.second].ac;
       if (!o.has_value()) o = id;
     }
-
-    // Returns longest match in the form of (length, token)
-    optional<pair<size_t, Symbol>> run(const string& s) const override;
 
     // Some useful pattern constructors (equivalent to regexes)
     NFA epsilon() {
@@ -145,7 +144,8 @@ namespace Parsing {
     #undef node
     #undef trans
 
-    size_t size() { return table.size(); }
+    // Returns the size of the table
+    size_t tableSize() { return table.size(); }
 
   private:
     // The transition & accepting state table
@@ -155,9 +155,11 @@ namespace Parsing {
       Entry(): tr(), ac() {}
     };
     vector<Entry> table;
-
     // The initial state
     State initial;
+
+    // Returns longest match in the form of (length, token)
+    optional<pair<size_t, Symbol>> run(const string& s) const override;
 
     friend class PowersetConstruction;
   };
@@ -172,10 +174,9 @@ namespace Parsing {
 
     // Optimize DFA
     void optimize();
-    // Returns longest match in the form of (length, token)
-    optional<pair<size_t, Symbol>> run(const string& s) const override;
 
-    size_t size() { return table.size(); }
+    // Returns the size of the table
+    size_t tableSize() { return table.size(); }
 
     // Convert lexer DFA to TextMate grammar JSON (based on regular expressions)
     // Following: https://macromates.com/manual/en/regular_expressions (only a simple subset is used)
@@ -188,12 +189,14 @@ namespace Parsing {
       bool has[0x100];
       State tr[0x100];
       optional<Symbol> ac;
-      Entry(): has{}, tr{}, ac(nullopt) {}
+      Entry(): has{}, tr{}, ac() {}
     };
     vector<Entry> table;
-
     // The initial state
     State initial;
+
+    // Returns longest match in the form of (length, token)
+    optional<pair<size_t, Symbol>> run(const string& s) const override;
 
     friend class PowersetConstruction;
     friend class PartitionRefinement;

@@ -55,7 +55,6 @@ symbol(Error) {};
 
 symbol(Var) { Core::Expr* e; };
 symbol(Vars) { vector<Core::Expr*> es; };
-
 symbol(Term100) { Core::Expr* e; };
 symbol(Term80) { Core::Expr* e; };
 symbol(Term60) { Core::Expr* e; };
@@ -64,8 +63,8 @@ symbol(Term30) { Core::Expr* e; };
 symbol(Term20) { Core::Expr* e; };
 symbol(Term) { Core::Expr* e; };
 
-symbol(Expr) { Core::Expr* e; };    // Assumed to be verified
-symbol(Proof) { Core::Proof* pf; }; // Assumed to be verified
+symbol(Expr) { Core::Expr* e; };                   // Assumed to be verified
+symbol(Proof) { Core::Expr* e; Core::Proof* pf; }; // Assumed to be verified
 
 symbol(NewVar) { string name; };
 symbol(NewVars) { vector<string> names; };
@@ -218,9 +217,10 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     try {
       auto t = e->checkType(ctx);
     } catch(Core::InvalidExpr& ex) {
-      // TODO: lookup in sourceMap (replace those `makeExpr` to `makeExprLoc` first)
+      // TODO: lookup in sourceMap (replace those `makeExpr` by `makeExprLoc` first)
       throw AnalysisErrorException(x, ex.what());
     }
+    info.emplace_back(x, e->toString(ctx) + ": wff"); // DEBUG CODE
     return { e };
   });
 
@@ -297,16 +297,28 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     return {};
   });
 
-  // Error recovery rules
+  // Error recovery rules (TODO: add more?)
   addRule([]     (OpLBrace, Error, OpRBrace)     -> Block { return {}; });
   addRule([]     (OpRRArrow, Error, OpSemicolon) -> Assertion { return {}; });
-  addRule([]     (KwAssume, Error)               -> Assume { return {}; });
-  addRule([]     (KwAny, Error)                  -> Any { return {}; });
-  addRule([]     (KwAnyFunc, Error)              -> AnyFunc { return {}; });
-  addRule([]     (KwAnyPred, Error)              -> AnyPred { return {}; });
+  addRule([]     (KwAssume, Error, Decl)         -> Assume { return {}; });
+  addRule([]     (KwAny, Error, Decl)            -> Any { return {}; });
+  addRule([]     (KwAnyFunc, Error, Decl)        -> AnyFunc { return {}; });
+  addRule([]     (KwAnyPred, Error, Decl)        -> AnyPred { return {}; });
+  addRule([]     (Error)                         -> Decl { return {}; });
 
   #undef expr
   #undef proof
+
+  /*
+  // Test ambiguity detection (use `=> $B $B $B;` to trigger)
+  struct A {};
+  struct B {};
+
+  addPattern([] (const string&) -> B { return {}; }, word("$B"));
+  addRule([] (A, A) -> A { return {}; });
+  addRule([] (B) -> A { return {}; });
+  addRule([] (A) -> Expr { return {}; });
+  */
 }
 
 // =======================
@@ -316,6 +328,12 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
 void Mu::analyze(const string& str) {
   Language::setAsErrorSymbol<Error>();
   Language::parse<Decls>(str);
+}
+
+vector<Mu::AnalysisInfo> Mu::popAnalysisInfo() {
+  vector<AnalysisInfo> res;
+  res.swap(info);
+  return res;
 }
 
 vector<Mu::AnalysisErrorException> Mu::popAnalysisErrors() {

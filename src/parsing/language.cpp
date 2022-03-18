@@ -15,13 +15,29 @@ namespace Parsing {
       res.emplace_back(e.startPos, e.endPos, "Parsing error, unexpected characters: " + e.lexeme);
     }
     for (const auto& e: EarleyParser::popErrors()) {
-      string s = "Parsing error, expected either one of:\n";
+      string s = "Parsing error, expected one of:\n";
       bool first = true;
-      for (Symbol sym: e.expected) {
-        s += (first? "" : ", ") + symbols.at(sym).name + " (" + std::to_string(sym) + ")";
+      for (Symbol sym: e.expected) if (sym != errorSymbol) {
+        string name = symbols.at(sym).name;
+        if (name.empty()) name = "(" + std::to_string(sym) + ")";
+        s += (first? "" : ", ") + name;
         first = false;
       }
-      s += "\ngot " + (e.got? "token " + symbols.at(*e.got).name + " (" + std::to_string(*e.got) + ")" : "EOF");
+      s += "\n";
+      if (e.got) {
+        string name = symbols.at(*e.got).name;
+        if (name.empty()) name = "(" + std::to_string(*e.got) + ")";
+        s += "got token " + name;
+      } else {
+        s += "but reached the end of file";
+      }
+      res.emplace_back(e.startPos, e.endPos, s);
+    }
+    for (const auto& e: EarleyParser::popAmbiguities()) {
+      string s = "Parsing error, ambiguity detected\n";
+      s += "(Alternative parse tree display has not been implemented yet."
+           " If you see this message, it is likely that the grammar is incorrect;"
+           " please contact zhanrong.qiao21@imperial.ac.uk for this issue.)";
       res.emplace_back(e.startPos, e.endPos, s);
     }
     return res;
@@ -94,8 +110,8 @@ namespace Parsing {
     // Scan (using NFA for debugging speed)
     // DFALexer dfa(*this);
     // dfa.optimize();
-    // dfa.setRest(str);
-    NFALexer::setRest(str);
+    // dfa.setString(str);
+    NFALexer::setString(str);
 
     vector<Token> tokens;
     // auto next = dfa.getNextToken();

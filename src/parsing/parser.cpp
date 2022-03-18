@@ -31,7 +31,7 @@ namespace Parsing {
   }
 
   // For use in `run()` only
-  void EarleyParser::logError(size_t pos) {
+  void EarleyParser::logError(size_t pos, size_t endPos) {
     if (dpa.size() != str.size() + 1 || pos >= dpa.size()) throw Core::Unreachable();
 
     vector<Symbol> expected;
@@ -40,11 +40,12 @@ namespace Parsing {
       const Rule& rule = rules[s.ruleIndex];
       if (s.rulePos < rule.rhs.size()) expected.push_back(rule.rhs[s.rulePos]);
     }
+    std::sort(expected.begin(), expected.end());
     size_t len = std::unique(expected.begin(), expected.end()) - expected.begin();
     expected.resize(len);
 
     optional<Symbol> got = pos < str.size() ? make_optional(str[pos].id) : nullopt;
-    errors.emplace_back(toCharsStart(pos), toCharsEnd(pos), expected, got);
+    errors.emplace_back(toCharsStart(pos), toCharsEnd(endPos), expected, got);
   }
 
   // See: https://en.wikipedia.org/wiki/Earley_parser#The_algorithm (for an overview)
@@ -57,6 +58,7 @@ namespace Parsing {
 
   void EarleyParser::run() {
     const size_t n = str.size(), m = rules.size();
+    error = false;
 
     // Find the number `k` of symbols involved
     Symbol k = startSymbol + 1;
@@ -117,6 +119,9 @@ namespace Parsing {
     vector<Symbol> added;
     vector<bool> isAdded(k);
 
+    // Consecutive errors are reported once
+    optional<size_t> errorPos = nullopt;
+
     // Initial states
     for (size_t i = firstRule[startSymbol]; i < m && rules[sorted[i]].lhs == startSymbol; i++) {
       State s{ 0, sorted[i], 0 };
@@ -147,7 +152,7 @@ namespace Parsing {
               }
             }
           }
-          // If `sym` is nullable, we could skip it (empty completion)
+          // Perform empty completion: if `sym` is nullable, we could skip it
           if (nullable[sym].has_value()) {
             State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
             if (!mp.contains(ss)) {
@@ -223,10 +228,18 @@ namespace Parsing {
             }
           }
         }
-        logError(pos);
+        // Mark the error
+        error = true;
+        if (!errorPos) errorPos = pos;
+      } else {
+        // End of consecutive errors
+        if (errorPos) logError(*errorPos, pos - 1);
+        errorPos = nullopt;
       }
-
     }
+    // End of consecutive errors
+    if (errorPos) logError(*errorPos, n - 1);
+    errorPos = nullopt;
 
     // Check if the start symbol completes at the end position
     fin = nullopt;
@@ -238,7 +251,11 @@ namespace Parsing {
         break;
       }
     }
-    if (!fin) logError(n);
+    if (!fin) {
+      // Mark the error
+      error = true;
+      logError(n, n);
+    }
 
     /*
     * ===== A hand-wavey argument for correctness =====
@@ -306,17 +323,17 @@ namespace Parsing {
   // Constructs a parse tree that represents a parsing error.
   ParseTree* EarleyParser::errorParseTree(size_t startPos, size_t endPos, Core::Allocator<ParseTree>& pool) const {
     assert(errorSymbol.has_value());
-    assert(endPos > 0);
     return pool.pushBack(ParseTree{
       nullptr, nullptr,
       *errorSymbol,
       nullopt, nullopt,
-      toCharsStart(startPos), toCharsEnd(endPos - 1)
+      toCharsStart(startPos),
+      endPos == 0 ? toCharsStart(0) : toCharsEnd(endPos - 1)
     });
   }
 
   // Constructs a parse tree for a completed DP state.
-  ParseTree* EarleyParser::getParseTree(Location loc, Core::Allocator<ParseTree>& pool) const {
+  ParseTree* EarleyParser::getParseTree(Location loc, Core::Allocator<ParseTree>& pool) {
     const LinkedState* curr = &dpa[loc.pos][loc.i];
     const Rule& rule = rules[curr->state.ruleIndex];
 
@@ -328,7 +345,8 @@ namespace Parsing {
       nullptr, nullptr,
       rule.lhs,
       nullopt, curr->state.ruleIndex,
-      toCharsStart(curr->state.startPos), (loc.pos == 0 ? toCharsStart(loc.pos) : toCharsEnd(loc.pos - 1))
+      toCharsStart(curr->state.startPos),
+      loc.pos == 0 ? toCharsStart(0) : toCharsEnd(loc.pos - 1)
     });
 
     // Follow links to construct a list of children (in reverse order)
@@ -336,6 +354,16 @@ namespace Parsing {
     for (size_t i = rule.rhs.size(); i --> 0;) {
       assert(curr->prev.has_value());
 
+      // Check for ambiguity (error recovery could introduce lots of ambiguities,
+      // so we only warn about ambiguities when there are no other parsing errors.)
+      if (!error && curr->ambiguous) {
+        ambiguities.emplace_back(
+          toCharsStart(curr->state.startPos),
+          loc.pos == 0 ? toCharsStart(0) : toCharsEnd(loc.pos - 1)
+        );
+      }
+
+      // Get child parse tree
       ParseTree* child = visit(Matcher{
         [&] (Location cloc) { return getParseTree(cloc, pool); },
         [&] (Token tok) { return pool.pushBack(tok); },
@@ -345,9 +373,11 @@ namespace Parsing {
       }, curr->child);
       children.push_back(child);
 
+      // Backward step
       loc = curr->prev.value();
       curr = &dpa[loc.pos][loc.i];
     }
+
     assert(curr->state.rulePos == 0);
     assert(!curr->prev.has_value());
 
@@ -362,8 +392,8 @@ namespace Parsing {
   }
 
   // Constructs a parse tree for the `startSymbol`. If there are none, returns `nullptr`.
-  ParseTree* EarleyParser::getParseTree(Core::Allocator<ParseTree>& pool) const {
-    return fin ? getParseTree(*fin, pool) : nullptr;
+  ParseTree* EarleyParser::getParseTree(Core::Allocator<ParseTree>& pool) {
+    return fin? getParseTree(*fin, pool) : nullptr;
   }
 
   #undef assert
@@ -371,6 +401,12 @@ namespace Parsing {
   vector<EarleyParser::ErrorInfo> EarleyParser::popErrors() {
     vector<ErrorInfo> res;
     res.swap(errors);
+    return res;
+  }
+
+  vector<EarleyParser::AmbiguityInfo> EarleyParser::popAmbiguities() {
+    vector<AmbiguityInfo> res;
+    res.swap(ambiguities);
     return res;
   }
 

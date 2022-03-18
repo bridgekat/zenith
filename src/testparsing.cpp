@@ -32,18 +32,5 @@ int main() {
   Mu mu;
   mu.analyze(content);
 
-  /*
-  enum Terminal: TokenID { B };
-  enum Nonterminal: TokenID { S };
-  vector<Token> str = { { B, "" }, { B, "" }, { B, "" } };
-
-  EarleyParser parser;
-  parser.rules.push_back({ S, { { true, B } } });
-  parser.rules.push_back({ S, { { false, S }, { false, S } } });
-
-  parser.start = S;
-  vector<vector<EarleyParser::State>> dpa = parser.run();
-  */
-
   return 0;
 }

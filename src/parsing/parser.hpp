@@ -35,6 +35,12 @@ namespace Parsing {
       ErrorInfo(size_t startPos, size_t endPos, const vector<Symbol>& expected, const optional<Symbol>& got):
         startPos(startPos), endPos(endPos), expected(expected), got(got) {}
     };
+    // Ambiguity information
+    struct AmbiguityInfo {
+      size_t startPos, endPos;
+      AmbiguityInfo(size_t startPos, size_t endPos):
+        startPos(startPos), endPos(endPos) {}
+    };
 
     // Production rules
     vector<Rule> rules;
@@ -43,7 +49,8 @@ namespace Parsing {
     // Optional symbol for erroneous substrings. Will be used for error recovery.
     optional<Symbol> errorSymbol;
 
-    EarleyParser(): rules(), startSymbol(0), errorSymbol(), str(), nullable(), dpa(), fin(), errors() {}
+    EarleyParser():
+      rules(), startSymbol(0), errorSymbol(), str(), nullable(), dpa(), fin(), error(false), errors(), ambiguities() {}
     virtual ~EarleyParser() = default;
 
     // Computes a possible parse tree. Returns `nullptr` if unable to recover from errors.
@@ -51,6 +58,7 @@ namespace Parsing {
     ParseTree* parse(const vector<Token>& str, Core::Allocator<ParseTree>& pool);
     // Get and clear error log
     vector<ErrorInfo> popErrors();
+    vector<AmbiguityInfo> popAmbiguities();
 
     // Debug output
     string showStates(const vector<string>& names) const;
@@ -80,17 +88,21 @@ namespace Parsing {
     vector<optional<size_t>> nullable;
     vector<vector<LinkedState>> dpa;
     optional<Location> fin;
+    bool error;
     vector<ErrorInfo> errors;
+    vector<AmbiguityInfo> ambiguities;
 
     // The parsing algorithm
     size_t toCharsStart(size_t pos) const noexcept;
     size_t toCharsEnd(size_t pos) const noexcept;
-    void logError(size_t pos);
+    void logError(size_t pos, size_t endPos);
     void run();
+
+    // Parse tree generation
     ParseTree* nullParseTree(size_t pos, Symbol id, Core::Allocator<ParseTree>& pool) const;
     ParseTree* errorParseTree(size_t startPos, size_t endPos, Core::Allocator<ParseTree>& pool) const;
-    ParseTree* getParseTree(Location loc, Core::Allocator<ParseTree>& pool) const;
-    ParseTree* getParseTree(Core::Allocator<ParseTree>& pool) const;
+    ParseTree* getParseTree(Location loc, Core::Allocator<ParseTree>& pool);
+    ParseTree* getParseTree(Core::Allocator<ParseTree>& pool);
 
     // Debug output
     string showState(const State& s, const vector<string>& names) const;

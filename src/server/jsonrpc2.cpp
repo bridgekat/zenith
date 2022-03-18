@@ -52,7 +52,7 @@ namespace Server {
       if (p == string::npos)
         throw Core::NotImplemented("unexpected line in JSON-RPC header, no \": \" found in \"" + s + "\"");
       string key = s.substr(0, p), value = s.substr(p + 2);
-      log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
+      // log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
 
       if (key == "Content-Length") {
         std::stringstream ss(value);
@@ -71,7 +71,7 @@ namespace Server {
     // End of header, get content
     s.resize(n);
     in.read(s.data(), n);
-    log << "<< " << s << std::endl << std::endl;
+    // log << "<< " << s << std::endl << std::endl;
 
     if (in.eof()) return nullopt;
     return s;
@@ -211,17 +211,17 @@ namespace Server {
 
   void JSONRPC2Server::send(const json& j) {
     string s = j.dump();
-
     // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
     out << "Content-Length: " << s.size() << "\r\n";
     out << "Content-Type: " << CONTENT_TYPE_VALUE << "\r\n";
     out << "\r\n";
     out.write(s.data(), s.size());
     out.flush();
-
+    /*
     log << ">> " << "Content-Length: " << s.size() << std::endl;
     log << ">> " << "Content-Type: " << CONTENT_TYPE_VALUE << std::endl;
     log << ">> " << s << std::endl << std::endl;
+    */
   }
 
   void JSONRPC2Server::sendResult(int64_t id, const json& result) {

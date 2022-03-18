@@ -1,3 +1,4 @@
+// For testing...
 
 #ai none // Proof terms only
 any x, y, z {
@@ -121,7 +122,6 @@ any x, y assume x = y {
 
 
 
-/*
 // Summary
 // Context: contains four types of things:
 Individual variables        ι
@@ -154,5 +154,4 @@ def := :: :<-> idef :: undef
 
 // Auxiliary keywords (some are used to guide AI, some are used to guide human readers)
 => by name namespace private public
-*/
 
