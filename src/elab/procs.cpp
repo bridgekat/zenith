@@ -1,6 +1,11 @@
 #include "procs.hpp"
 
+
 namespace Elab::Procs {
+
+  // Allow throwing in `noexcept` functions; we really intend to terminate with an error message
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wterminate"
 
   bool propValue(const Expr* e, const vector<bool>& fvmap) {
     using enum Expr::Tag;
@@ -115,6 +120,8 @@ namespace Elab::Procs {
     }
     throw NotImplemented();
   }
+
+  #pragma GCC diagnostic pop
 
   string showSubs(const Subs& subs, const Context& ctx) {
     using enum Expr::VarTag;

@@ -4,6 +4,8 @@
 #define BASE_HPP_
 
 #include <vector>
+#include <memory>
+#include <utility>
 #include <string>
 #include <stdexcept>
 
@@ -14,35 +16,66 @@ namespace Core {
   // This ensures that objects stay in the same place
   template <typename T>
   class Allocator {
-  private:
-    std::size_t bSize, next;
-    std::vector<T*> blocks;
-
   public:
-    Allocator(std::size_t blockSize = 1024): bSize(blockSize), next(0), blocks() {}
-    Allocator(Allocator&&) = default;
-    Allocator& operator=(Allocator&&) = default;
-    ~Allocator() { for (T* p: blocks) delete[] p; }
+    Allocator(std::size_t blockSize = 1024):
+      blockSize(blockSize),
+      alloc(),
+      blocks(),
+      next(0) {}
+
+    Allocator(Allocator&& r) noexcept:
+      blockSize(r.blockSize),
+      alloc(std::move(r.alloc)),
+      blocks(std::move(r.blocks)), // Guarantees to leave r.blocks empty
+      next(std::exchange(r.next, 0)) {}
+
+    Allocator& operator=(Allocator&& r) noexcept {
+      if (this != &r) {
+        deallocateBlocks();
+        blockSize = r.blockSize;
+        alloc = std::move(r.alloc);
+        blocks = std::move(r.blocks);
+        next = std::exchange(r.next, 0);
+      }
+      return *this;
+    }
+
+    ~Allocator() {
+      deallocateBlocks();
+    }
 
     // TODO: preserve allocated space?
     void clear() noexcept {
-      for (T* p: blocks) delete[] p;
-      next = 0;
+      deallocateBlocks();
       blocks.clear();
+      next = 0;
     }
 
     T* pushBack(const T& obj) {
-      if (next == 0) blocks.push_back(new T[bSize]);
+      if (next == 0) blocks.push_back(alloc.allocate(blockSize));
       T* res = blocks.back() + next;
-      *res = obj;
+      std::construct_at(res, obj);
       next++;
-      if (next >= bSize) next = 0;
+      if (next >= blockSize) next = 0;
       return res;
     }
 
     std::size_t size() const noexcept {
-      if (next == 0) return bSize * blocks.size();
-      return bSize * (blocks.size() - 1) + next;
+      if (next == 0) return blockSize * blocks.size();
+      return blockSize * (blocks.size() - 1) + next;
+    }
+
+  private:
+    std::size_t blockSize;
+    std::allocator<T> alloc;
+    std::vector<T*> blocks;
+    std::size_t next;
+
+    void deallocateBlocks() noexcept {
+      for (size_t i = 0; i < blocks.size(); i++) {
+        std::destroy_n(blocks[i], (i + 1 == blocks.size() && next > 0)? next : blockSize);
+        alloc.deallocate(blocks[i], blockSize);
+      }
     }
   };
 

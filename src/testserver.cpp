@@ -9,7 +9,6 @@
 #include <fcntl.h>
 #include <io.h>
 #endif
-#include <nlohmann/json.hpp>
 #include "core/base.hpp"
 #include "server/languageserver.hpp"
 #include "mu.hpp"

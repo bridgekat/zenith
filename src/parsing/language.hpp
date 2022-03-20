@@ -22,7 +22,7 @@ namespace Parsing {
 
   // Specialize this for human-friendly type names (in debugging `Language`)
   // See: https://stackoverflow.com/questions/4484982/how-to-convert-typename-t-to-string-in-c
-  template <typename T> struct SymbolName { static const char* get() { return typeid(T).name(); } };
+  template <typename T> struct SymbolName { static const string get() { return typeid(T).name(); } };
   // #define DEMANGLE_SYMBOL_NAME(T) template <> struct SymbolName<T> { static const char* get() { return #T; } };
 
 

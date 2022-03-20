@@ -81,11 +81,14 @@ namespace Elab {
         }
         break;
     }
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wterminate"
     throw NotImplemented();
+    #pragma GCC diagnostic pop
   }
 
   // Apply `subs` to all of `cont`
-  void Tableau::applySubs(const Subs& subs, bool assertNoChange) {
+  void Tableau::applySubs(const Subs& subs, [[maybe_unused]] bool assertNoChange) {
     for (size_t ind = 0; ind < cont.size(); ind++) {
       auto& branch = cont[ind];
       branch.hashset[L].clear();

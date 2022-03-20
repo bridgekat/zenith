@@ -3,6 +3,10 @@
 
 namespace Core {
 
+  // Allow throwing in `noexcept` functions; we really intend to terminate with an error message
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wterminate"
+
   Expr* Expr::clone(Allocator<Expr>& pool) const {
     Expr* res = pool.pushBack(*this);
     switch (tag) {
@@ -131,7 +135,7 @@ namespace Core {
       }
       case TRUE:    return "true";
       case FALSE:   return "false";
-      case NOT:     return "not " + (conn.l ? conn.l->toString(ctx, stk) : "[?]");
+      case NOT:     return "(not " + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + ")";
       case AND:     return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " and "
                                + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
       case OR:      return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " or "
@@ -335,5 +339,7 @@ namespace Core {
     }
     throw NotImplemented();
   }
+
+  #pragma GCC diagnostic pop
 
 }

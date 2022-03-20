@@ -12,7 +12,27 @@ using Parsing::ParseTree;
 // Symbol declarations
 // ===================
 
-#define symbol(T) struct T; template <> struct Parsing::SymbolName<T> { static const char* get() { return #T; } }; struct T
+string toLowercaseDashes(const string& s) {
+  string res;
+  bool first = true;
+  for (char c: s) {
+    if (c >= 'A' && c <= 'Z') {
+      if (!first) res += '-';
+      res += (c - 'A' + 'a');
+    } else {
+      res += c;
+    }
+    first = false;
+  }
+  return res;
+}
+
+#define symbol(T) \
+  struct T; \
+  template <> struct Parsing::SymbolName<T> { \
+    static const string get() { return toLowercaseDashes(#T); } \
+  }; \
+  struct T
 
 // Terminal symbols
 
@@ -32,6 +52,7 @@ symbol(OpLBrace) {};
 symbol(OpRBrace) {};
 symbol(OpRRArrow) {};
 symbol(OpSlash) {};
+symbol(OpVertBar) {};
 
 symbol(KwAny) {};
 symbol(KwAnyFunc) {};
@@ -40,6 +61,7 @@ symbol(KwAssume) {};
 symbol(KwName) {};
 symbol(KwProof) {};
 
+symbol(Constant) { string name; };
 symbol(Infix80) { string name; };
 symbol(Infix60) { string name; };
 symbol(Infix40) { string name; };
@@ -61,6 +83,9 @@ symbol(Term60) { Core::Expr* e; };
 symbol(Term40) { Core::Expr* e; };
 symbol(Term30) { Core::Expr* e; };
 symbol(Term20) { Core::Expr* e; };
+symbol(Term10) { Core::Expr* e; };
+symbol(Term10Suffix) { Core::Expr* e; };
+symbol(Term10OrSuffix) { Core::Expr* e; };
 symbol(Term) { Core::Expr* e; };
 
 symbol(Expr) { Core::Expr* e; };                   // Assumed to be verified
@@ -70,20 +95,19 @@ symbol(NewVar) { string name; };
 symbol(NewVars) { vector<string> names; };
 symbol(Any) {};
 
-symbol(NewFunc) { string name; unsigned short arity; };
-symbol(NewFuncs) { vector<pair<string, unsigned short>> fs; };
+symbol(NewArity) { string name; unsigned short arity; };
+symbol(NewArities) { vector<pair<string, unsigned short>> names; };
 symbol(AnyFunc) {};
-
-symbol(NewPred) { string name; unsigned short arity; };
-symbol(NewPreds) { vector<pair<string, unsigned short>> ps; };
 symbol(AnyPred) {};
 
 symbol(Assumption) { string name; Core::Expr* expr; };
 symbol(Assumptions) { vector<pair<string, Core::Expr*>> as; };
 symbol(Assume) {};
 
+symbol(OptRRArrow) {};
 symbol(OptProof) { optional<Core::Proof*> proof; };
 symbol(OptName) { optional<string> name; };
+symbol(OptSemicolon) {};
 symbol(Assertion) {};
 
 symbol(Decl) {};
@@ -97,7 +121,9 @@ symbol(Decls) {};
 // Patterns, rules and semantic actions
 // ====================================
 
-Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::Sort::SVAR }})), boundVars(), sourceMap() {
+Mu::Mu():
+  exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::Sort::SVAR }})),
+  boundVars(), sourceMap(), info(), errors() {
 
   // Terminal symbols
 
@@ -127,6 +153,7 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
   addPattern(trivial(OpRBrace),    word("}"));
   addPattern(trivial(OpRRArrow),   word("=>"));
   addPattern(trivial(OpSlash),     word("/"));
+  addPattern(trivial(OpVertBar),   word("|"));
 
   addPattern(trivial(KwAny),     word("any"));
   addPattern(trivial(KwAnyFunc), word("anyfunc"));
@@ -138,10 +165,12 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
   addPattern([] (const string& lexeme) -> Infix80 { return { lexeme }; }, ch({ '*', '\\', '%', '^', }));
   addPattern([] (const string& lexeme) -> Infix60 { return { lexeme }; }, ch({ '+', '-' }));
   addPattern([] (const string& lexeme) -> Infix40 { return { lexeme }; }, alt({ ch({ '=', '<', '>' }), word("!="), word(">="), word("<=") }));
-  addPattern([] (const string& lexeme) -> Infix20 { return { lexeme }; },
-    alt({ word("and"), word("or"), word("implies"), word("iff"), word("->"), word("<->") }));
+  addPattern([] (const string& lexeme) -> Constant { return { lexeme }; },
+    alt({ word("true"), word("false") }));
   addPattern([] (const string& lexeme) -> Prefix30 { return { lexeme }; },
     alt({ word("not") }));
+  addPattern([] (const string& lexeme) -> Infix20 { return { lexeme }; },
+    alt({ word("and"), word("or"), word("implies"), word("iff"), word("->"), word("<->") }));
   addPattern([] (const string& lexeme) -> Binder { return { lexeme }; },
     alt({ word("forall"), word("exists"), word("unique"), word("forallfunc"), word("forallpred") }));
   addPattern([] (const string& lexeme) -> Identifier { return { lexeme }; },
@@ -156,6 +185,12 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
   #define makeExpr(...) Core::Expr::make(exprs, __VA_ARGS__)
   #define makeProof(...) Core::Proof::make(proofs, __VA_ARGS__)
 
+  addRuleFor<Var, Constant>([this] (const ParseTree* x) -> Var {
+    auto c = getChild<Constant>(x, 0);
+    if (c.name == "true") return { makeExpr(Core::Expr::TRUE) };
+    if (c.name == "false") return { makeExpr(Core::Expr::FALSE) };
+    throw AnalysisErrorException(x, "Unknown constant: " + c.name);
+  });
   addRuleFor<Var, Identifier>([this] (const ParseTree* x) -> Var {
     string name = getChild<Identifier>(x, 0).name;
     for (size_t i = 0; i < boundVars.size(); i++) {
@@ -169,8 +204,6 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     }
     throw AnalysisErrorException(x, "Undefined identifier: " + name);
   });
-
-  // TODO: binders
 
   addRule([]     (Var&& var)              -> Vars { return { { var.e } }; });
   addRule([]     (Vars&& vars, Var&& var) -> Vars { vars.es.push_back(var.e); return vars; });
@@ -209,10 +242,73 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     if (op.name == "iff" || op.name == "<->") return { makeExpr(Core::Expr::IFF, lhs.e, rhs.e) };
     throw AnalysisErrorException(x, "Unknown connective: " + op.name);
   });
-  addRule([]     (Term20&& t)                               -> Term { return { t.e }; });
-  addRule([]     (OpLParen, Term&& t, OpRParen)             -> Var { return { t.e }; });
+  addRule([]     (Term20&& t)                               -> Term10 { return { t.e }; });
+  addRuleFor<Term10Suffix, Binder, NewVars, OpComma, Term10OrSuffix>([this] (const ParseTree* x) -> Term10Suffix {
+    auto binder = getChild<Binder>(x, 0);
+    auto names = getChild<NewVars>(x, 1).names;
+    for (auto& name: names) boundVars.push_back(name);
+    auto e = getChild<Term10OrSuffix>(x, 3).e;
+    for (auto it = names.rbegin(); it != names.rend(); it++) {
+      boundVars.pop_back();
+      string name = *it;
+      if (binder.name == "forall") e = makeExpr(Core::Expr::FORALL, name, 0, Core::Sort::SVAR, e);
+      else if (binder.name == "exists") e = makeExpr(Core::Expr::EXISTS, name, 0, Core::Sort::SVAR, e);
+      else if (binder.name == "unique") e = makeExpr(Core::Expr::UNIQUE, name, 0, Core::Sort::SVAR, e);
+      else if (binder.name == "forallfunc") e = makeExpr(Core::Expr::FORALL2, name, 1, Core::Sort::SVAR, e);
+      else if (binder.name == "forallpred") e = makeExpr(Core::Expr::FORALL2, name, 1, Core::Sort::SPROP, e);
+      else throw AnalysisErrorException(x, "Unknown connective: " + binder.name);
+    }
+    return { e };
+  });
+  addRuleFor<Term10Suffix, Binder, NewArities, OpComma, Term10OrSuffix>([this] (const ParseTree* x) -> Term10Suffix {
+    auto binder = getChild<Binder>(x, 0);
+    auto names = getChild<NewArities>(x, 1).names;
+    for (auto& [name, _]: names) boundVars.push_back(name);
+    auto e = getChild<Term10OrSuffix>(x, 3).e;
+    for (auto it = names.rbegin(); it != names.rend(); it++) {
+      boundVars.pop_back();
+      string name = it->first; unsigned short arity = it->second;
+      if (binder.name == "forall") e = makeExpr(Core::Expr::FORALL, name, arity, Core::Sort::SVAR, e);
+      else if (binder.name == "exists") e = makeExpr(Core::Expr::EXISTS, name, arity, Core::Sort::SVAR, e);
+      else if (binder.name == "unique") e = makeExpr(Core::Expr::UNIQUE, name, arity, Core::Sort::SVAR, e);
+      else if (binder.name == "forallfunc") e = makeExpr(Core::Expr::FORALL2, name, arity, Core::Sort::SVAR, e);
+      else if (binder.name == "forallpred") e = makeExpr(Core::Expr::FORALL2, name, arity, Core::Sort::SPROP, e);
+      else throw AnalysisErrorException(x, "Unknown connective: " + binder.name);
+    }
+    return { e };
+  });
+  addRule([]     (Term10Suffix&& t)                         -> Term10OrSuffix { return { t.e }; });
+  addRule([]     (Term10&& t)                               -> Term10OrSuffix { return { t.e }; });
+  // TEMP CODE
+  addRuleFor<Term10, Prefix30, Term10Suffix>([this] (const ParseTree* x) -> Term10 {
+    auto op = getChild<Prefix30>(x, 0);
+    auto t = getChild<Term10Suffix>(x, 1);
+    if (op.name == "not") return { makeExpr(Core::Expr::NOT, t.e) };
+    throw AnalysisErrorException(x, "Unknown connective: " + op.name);
+  });
+  // TEMP CODE
+  addRuleFor<Term10, Term20, Infix20, Term10Suffix>([this] (const ParseTree* x) -> Term10 {
+    auto lhs = getChild<Term20>(x, 0);
+    auto op = getChild<Infix20>(x, 1);
+    auto rhs = getChild<Term10Suffix>(x, 2);
+    if (op.name == "and") return { makeExpr(Core::Expr::AND, lhs.e, rhs.e) };
+    if (op.name == "or") return { makeExpr(Core::Expr::OR, lhs.e, rhs.e) };
+    if (op.name == "implies" || op.name == "->") return { makeExpr(Core::Expr::IMPLIES, lhs.e, rhs.e) };
+    if (op.name == "iff" || op.name == "<->") return { makeExpr(Core::Expr::IFF, lhs.e, rhs.e) };
+    throw AnalysisErrorException(x, "Unknown connective: " + op.name);
+  });
+  /*
+  // TODO: lambdas
+  addRuleFor<Var, Vars, OpVertBar, Term>([this] (const ParseTree* x) -> Var {
+    vector<Core::Expr*> vars = getChild<Vars>(x, 0).es;
+  });
+  */
+  addRule([] (Term10&& t)                   -> Term { return { t.e }; });
+  addRule([] (Term10Suffix&& t)             -> Term { return { t.e }; });
+  addRule([] (OpLParen, Term&& t, OpRParen) -> Var { return { t.e }; });
 
   addRuleFor<Expr, Term>([this] (const ParseTree* x) -> Expr {
+    boundVars.clear();
     auto e = getChild<Term>(x, 0).e;
     try {
       auto t = e->checkType(ctx);
@@ -236,24 +332,19 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     return {};
   });
 
-  addRule([]     (Identifier&& id, OpSlash, Natural&& n) -> NewFunc { return { id.name, static_cast<unsigned short>(n.data) }; });
-  addRule([]     (NewFunc&& f)                           -> NewFuncs { return { { { f.name, f.arity } } }; });
-  addRule([]     (NewFuncs&& fs, OpComma)                -> NewFuncs { return fs; });
-  addRule([]     (NewFuncs&& fs, OpComma, NewFunc&& f)   -> NewFuncs { fs.fs.emplace_back(f.name, f.arity); return fs; });
-  addRuleFor<AnyFunc, KwAnyFunc, NewFuncs, Decl>([this] (const ParseTree* x) -> AnyFunc {
-    auto fs = getChild<NewFuncs>(x, 1).fs;
+  addRule([]     (Identifier&& id, OpSlash, Natural&& n)  -> NewArity { return { id.name, static_cast<unsigned short>(n.data) }; });
+  addRule([]     (NewArity&& f)                           -> NewArities { return { { { f.name, f.arity } } }; });
+  addRule([]     (NewArities&& fs, OpComma)               -> NewArities { return fs; });
+  addRule([]     (NewArities&& fs, OpComma, NewArity&& f) -> NewArities { fs.names.emplace_back(f.name, f.arity); return fs; });
+  addRuleFor<AnyFunc, KwAnyFunc, NewArities, Decl>([this] (const ParseTree* x) -> AnyFunc {
+    auto fs = getChild<NewArities>(x, 1).names;
     for (auto& [name, arity]: fs) ctx.pushVar(name, Core::Type{{ arity, Core::Sort::SVAR }});
     getChild<Decl>(x, 2);
     for (size_t i = 0; i < fs.size(); i++) ctx.pop(exprs);
     return {};
   });
-
-  addRule([]     (Identifier&& id, OpSlash, Natural&& n) -> NewPred { return { id.name, static_cast<unsigned short>(n.data) }; });
-  addRule([]     (NewPred&& p)                           -> NewPreds { return { { { p.name, p.arity } } }; });
-  addRule([]     (NewPreds&& ps, OpComma)                -> NewPreds { return ps; });
-  addRule([]     (NewPreds&& ps, OpComma, NewPred&& p)   -> NewPreds { ps.ps.emplace_back(p.name, p.arity); return ps; });
-  addRuleFor<AnyPred, KwAnyPred, NewPreds, Decl>([this] (const ParseTree* x) -> AnyPred {
-    auto ps = getChild<NewPreds>(x, 1).ps;
+  addRuleFor<AnyPred, KwAnyPred, NewArities, Decl>([this] (const ParseTree* x) -> AnyPred {
+    auto ps = getChild<NewArities>(x, 1).names;
     for (auto& [name, arity]: ps) ctx.pushVar(name, Core::Type{{ arity, Core::Sort::SPROP }});
     getChild<Decl>(x, 2);
     for (size_t i = 0; i < ps.size(); i++) ctx.pop(exprs);
@@ -272,11 +363,16 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     return {};
   });
 
-  addRule([]     ()                                                      -> OptProof { return { nullopt }; });
-  addRule([]     (KwProof, Proof&& pf)                                   -> OptProof { return { pf.pf }; });
-  addRule([]     ()                                                      -> OptName { return { nullopt }; });
-  addRule([]     (KwName, Identifier&& id)                               -> OptName { return { id.name }; });
-  addRule([this] (OpRRArrow, Expr&&, OptName&&, OptProof&&, OpSemicolon) -> Assertion {
+  addRule([]     ()                                                        -> OptRRArrow { return {}; });
+  addRule([]     (OpRRArrow)                                               -> OptRRArrow { return {}; });
+  addRule([]     ()                                                        -> OptProof { return { nullopt }; });
+  addRule([]     (KwProof, Proof&& pf)                                     -> OptProof { return { pf.pf }; });
+  addRule([]     ()                                                        -> OptName { return { nullopt }; });
+  addRule([]     (KwName, Identifier&& id)                                 -> OptName { return { id.name }; });
+  // This will give too much ambiguity...
+  // addRule([]     ()                                                        -> OptSemicolon { return {}; });
+  addRule([]     (OpSemicolon)                                             -> OptSemicolon { return {}; });
+  addRule([this] (OptRRArrow, Expr&&, OptName&&, OptProof&&, OptSemicolon) -> Assertion {
     // TODO: verify or start tableau thread
     return {};
   });
@@ -297,17 +393,17 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
     return {};
   });
 
-  // Error recovery rules (TODO: add more?)
-  addRule([]     (OpLBrace, Error, OpRBrace)     -> Block { return {}; });
-  addRule([]     (OpRRArrow, Error, OpSemicolon) -> Assertion { return {}; });
-  addRule([]     (KwAssume, Error, Decl)         -> Assume { return {}; });
-  addRule([]     (KwAny, Error, Decl)            -> Any { return {}; });
-  addRule([]     (KwAnyFunc, Error, Decl)        -> AnyFunc { return {}; });
-  addRule([]     (KwAnyPred, Error, Decl)        -> AnyPred { return {}; });
-  addRule([]     (Error)                         -> Decl { return {}; });
+  // Error recovery rules
+  addRule([]     (OpRRArrow, Error)          -> Assertion { return {}; });
+  addRule([]     (Error, OpSemicolon)        -> Assertion { return {}; });
+  addRule([]     (KwAssume, Error, Decl)     -> Assume { return {}; });
+  addRule([]     (KwAny, Error, Decl)        -> Any { return {}; });
+  addRule([]     (KwAnyFunc, Error, Decl)    -> AnyFunc { return {}; });
+  addRule([]     (KwAnyPred, Error, Decl)    -> AnyPred { return {}; });
+  addRule([]     (Error)                     -> Decl { return {}; });
 
-  #undef expr
-  #undef proof
+  #undef makeExpr
+  #undef makeProof
 
   /*
   // Test ambiguity detection (use `=> $B $B $B;` to trigger)
@@ -320,6 +416,7 @@ Mu::Mu(): exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::S
   addRule([] (A) -> Expr { return {}; });
   */
 }
+
 
 // =======================
 // Root symbol declaration

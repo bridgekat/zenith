@@ -9,7 +9,10 @@
 #include <unordered_map>
 #include <functional>
 #include <stdexcept>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated"
 #include <nlohmann/json.hpp>
+#pragma GCC diagnostic pop
 #include <core/base.hpp>
 #include "coroutine.hpp"
 

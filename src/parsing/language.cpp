@@ -31,12 +31,13 @@ namespace Parsing {
       } else {
         s += "but reached the end of file";
       }
-      res.emplace_back(e.startPos, e.endPos, s);
+      res.emplace_back(e.startPos, e.endPos, s + "\n");
     }
     for (const auto& e: EarleyParser::popAmbiguities()) {
-      string s = "Parsing error, ambiguity detected\n";
-      s += "(Alternative parse tree display has not been implemented yet."
-           " If you see this message, it is likely that the grammar is incorrect;"
+      string s = "Warning, ambiguity detected\n";
+      s += "(Alternative parse tree display has not been implemented yet;"
+           " you can try to add commas or parentheses to eliminate ambiguity."
+           " If you cannot get rid of this message, it is likely that the grammar is incorrect;"
            " please contact zhanrong.qiao21@imperial.ac.uk for this issue.)";
       res.emplace_back(e.startPos, e.endPos, s);
     }

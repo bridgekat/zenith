@@ -131,6 +131,8 @@ namespace Parsing {
 
     // Invariant: `mp` maps all elements of `states[pos]` to their indices
     for (size_t pos = 0; pos <= n; pos++) {
+      bool again = false;
+      start:
 
       // "Prediction/completion" stage
       for (size_t i = 0; i < dpa[pos].size(); i++) {
@@ -193,25 +195,43 @@ namespace Parsing {
       for (Symbol sym: added) isAdded[sym] = false;
       added.clear();
 
-      if (pos >= str.size()) break;
-      Token tok = str[pos];
-
-      // "Scanning" stage
-      // Also updating `mp` to reflect `states[pos + 1]` instead
-      mp.clear();
-      for (size_t i = 0; i < dpa[pos].size(); i++) {
-        State s = dpa[pos][i].state;
-        const auto& derived = rules[s.ruleIndex].rhs;
-        if (s.rulePos < derived.size() && derived[s.rulePos] == tok.id) {
-          State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
-          // No need to check presence! `s` is already unique.
-          mp[ss] = dpa[pos + 1].size();
-          dpa[pos + 1].emplace_back(ss, Location{ pos, i }, tok, false);
+      bool ok = false;
+      if (pos < str.size()) {
+        // "Scanning" stage
+        // Also updating `mp` to reflect `states[pos + 1]` instead
+        Token tok = str[pos];
+        mp.clear();
+        for (size_t i = 0; i < dpa[pos].size(); i++) {
+          State s = dpa[pos][i].state;
+          const auto& derived = rules[s.ruleIndex].rhs;
+          if (s.rulePos < derived.size() && derived[s.rulePos] == tok.id) {
+            State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
+            // No need to check presence! `s` is already unique.
+            mp[ss] = dpa[pos + 1].size();
+            dpa[pos + 1].emplace_back(ss, Location{ pos, i }, tok, false);
+          }
         }
+        ok = !dpa[pos + 1].empty();
+      } else {
+        // Final position
+        // Check if the start symbol completes at the end position
+        fin = nullopt;
+        for (size_t i = 0; i < dpa[n].size(); i++) {
+          const State& s = dpa[n][i].state;
+          const Rule& rule = rules[s.ruleIndex];
+          if (s.startPos == 0 && rule.lhs == startSymbol && s.rulePos == rule.rhs.size()) {
+            fin = { n, i };
+            break;
+          }
+        }
+        ok = fin.has_value();
       }
 
-      // Simple error recovery (TODO: limit total number of errors?)
-      if (dpa[pos + 1].empty()) {
+      if (!ok) {
+        // Simple error recovery (TODO: limit total number of errors?)
+        // Mark the error
+        error = true;
+        if (!errorPos) errorPos = pos;
         // To minimise ambiguity, we don't add multiple states with the same rule-index.
         // This may be undesirable for rules with multiple error-symbols, but we keep it simple for now!
         vector<bool> f(m, false);
@@ -223,14 +243,16 @@ namespace Parsing {
               f[s.ruleIndex] = true;
               State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
               // No need to check presence! `s.ruleIndex` is already unique.
-              mp[ss] = dpa[pos + 1].size();
-              dpa[pos + 1].emplace_back(ss, Location{ posj, j }, ErrorChild{}, false);
+              mp[ss] = dpa[pos].size();
+              dpa[pos].emplace_back(ss, Location{ posj, j }, ErrorChild{}, false);
             }
           }
         }
-        // Mark the error
-        error = true;
-        if (!errorPos) errorPos = pos;
+        // Restart the loop body one more time (for possible completions), without advancing `pos`
+        if (!again) {
+          again = true;
+          goto start;
+        }
       } else {
         // End of consecutive errors
         if (errorPos) logError(*errorPos, pos - 1);
@@ -238,24 +260,8 @@ namespace Parsing {
       }
     }
     // End of consecutive errors
-    if (errorPos) logError(*errorPos, n - 1);
+    if (errorPos) logError(*errorPos, n);
     errorPos = nullopt;
-
-    // Check if the start symbol completes at the end position
-    fin = nullopt;
-    for (size_t i = 0; i < dpa[n].size(); i++) {
-      const State& s = dpa[n][i].state;
-      const Rule& rule = rules[s.ruleIndex];
-      if (s.startPos == 0 && rule.lhs == startSymbol && s.rulePos == rule.rhs.size()) {
-        fin = { n, i };
-        break;
-      }
-    }
-    if (!fin) {
-      // Mark the error
-      error = true;
-      logError(n, n);
-    }
 
     /*
     * ===== A hand-wavey argument for correctness =====
@@ -290,7 +296,7 @@ namespace Parsing {
   }
 
   // See: https://en.cppreference.com/w/cpp/utility/variant/visit
-  template<class... Ts> struct Matcher: Ts... { using Ts::operator()...; };
+  template <class... Ts> struct Matcher: Ts... { using Ts::operator()...; };
 
   #define assert(expr) if (!(expr)) throw Core::Unreachable()
 
