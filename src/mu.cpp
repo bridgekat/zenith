@@ -1,10 +1,13 @@
 #include "mu.hpp"
 #include <optional>
+#include <variant>
+#include <iostream>
 
 using std::string;
 using std::vector;
 using std::pair, std::make_pair;
 using std::optional, std::make_optional, std::nullopt;
+using std::variant, std::get, std::holds_alternative;
 using Parsing::ParseTree;
 
 
@@ -39,7 +42,6 @@ string toLowercaseDashes(const string& s) {
 symbol(Blank) {};
 symbol(LineComment) {};
 symbol(BlockComment) {};
-symbol(Directive) {};
 
 symbol(Natural) { uint32_t data; };
 symbol(String) { string data; };
@@ -53,6 +55,7 @@ symbol(OpRBrace) {};
 symbol(OpRRArrow) {};
 symbol(OpSlash) {};
 symbol(OpVertBar) {};
+symbol(OpColonEq) {};
 
 symbol(KwAny) {};
 symbol(KwAnyFunc) {};
@@ -60,6 +63,9 @@ symbol(KwAnyPred) {};
 symbol(KwAssume) {};
 symbol(KwName) {};
 symbol(KwProof) {};
+
+symbol(KwMetaDef) {};
+symbol(KwMetaUndef) {};
 
 symbol(Constant) { string name; };
 symbol(Infix80) { string name; };
@@ -114,69 +120,121 @@ symbol(Decl) {};
 symbol(Block) {};
 symbol(Decls) {};
 
+symbol(MetaSymbol) { pair<bool, string> s; };
+symbol(MetaPattern) { vector<pair<bool, string>> ss; };
+symbol(MetaDef) {};
+symbol(MetaUndef) {};
+symbol(Meta) { bool isSpecial; };
+
 #undef symbol
 
+
+ParseTree* cloneParseTree(const ParseTree* x, Core::Allocator<ParseTree>& pool) {
+  ParseTree* res = pool.pushBack(*x), * last = nullptr;
+  for (const ParseTree* p = res->c; p; p = p->s) {
+    ParseTree* q = cloneParseTree(p, pool);
+    (last? last->s : res->c) = q;
+    last = q;
+  }
+  (last? last->s : res->c) = nullptr;
+  return res;
+}
+
+// Ad-hoc...
+ParseTree* Mu::replaceVars(const ParseTree* x, const std::unordered_map<string, const ParseTree*> mp) {
+  if (x->id == getSymbol<Var>() && x->c && x->c->id == getSymbol<Identifier>() && mp.contains(*x->c->lexeme)) {
+    auto it = mp.find(*x->c->lexeme);
+    if (it != mp.end()) {
+      return cloneParseTree(it->second, pool);
+    }
+  }
+  ParseTree* res = pool.pushBack(*x), * last = nullptr;
+  for (const ParseTree* p = res->c; p; p = p->s) {
+    ParseTree* q = replaceVars(p, mp);
+    (last? last->s : res->c) = q;
+    last = q;
+  }
+  (last? last->s : res->c) = nullptr;
+  return res;
+}
 
 // ====================================
 // Patterns, rules and semantic actions
 // ====================================
 
-Mu::Mu():
-  exprs(), proofs(), ctx(), op1(ctx.pushVar("*", Core::Type{{ 2, Core::Sort::SVAR }})),
-  boundVars(), sourceMap(), info(), errors() {
+Mu::Mu() {
 
-  // Terminal symbols
+  // Terminal symbols (TODO: disambiguate based on pattern ID instead of symbol ID)
 
   #define trivial(T) [] (const string&) -> T { return {}; }
 
-  addPattern(trivial(Blank), star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })), true);
-  addPattern(trivial(LineComment), concat(word("//"), star(except({ '\r', '\n' }))), true);
-  addPattern(trivial(BlockComment),
-    concat(word("/*"),
-      star(concat(star(except({ '*' })), plus(ch({ '*' })), except({ '/' }))),
-                  star(except({ '*' })), plus(ch({ '*' })), ch({ '/' })), true);
-  addPattern(trivial(Directive),
-    concat(ch({ '\r', '\n' }), star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })),
-      ch({ '#' }), star(except({ '\r', '\n' }))), true);
-
-  addPattern([] (const string& lexeme) -> Natural { return { static_cast<uint32_t>(std::stoi(lexeme)) }; },
+  setPattern([] (const string& lexeme) -> Natural { return { static_cast<uint32_t>(std::stoi(lexeme)) }; },
     alt({ star(range('0', '9')),
           concat(ch({ '0' }), ch({ 'x', 'X' }), star(alt({ range('0', '9'), range('a', 'f'), range('A', 'F') }))) }));
-  addPattern([] (const string& lexeme) -> String { return { lexeme.substr(1, lexeme.size() - 1) }; },
+  setPattern([] (const string& lexeme) -> String { return { lexeme.substr(1, lexeme.size() - 2) }; },
     concat(ch({ '"' }), star(alt({ except({ '"', '\\' }), concat(ch({ '\\' }), ch({ '"', '\\' })) })), ch({ '"' })));
 
-  addPattern(trivial(OpComma),     word(","));
-  addPattern(trivial(OpSemicolon), word(";"));
-  addPattern(trivial(OpLParen),    word("("));
-  addPattern(trivial(OpRParen),    word(")"));
-  addPattern(trivial(OpLBrace),    word("{"));
-  addPattern(trivial(OpRBrace),    word("}"));
-  addPattern(trivial(OpRRArrow),   word("=>"));
-  addPattern(trivial(OpSlash),     word("/"));
-  addPattern(trivial(OpVertBar),   word("|"));
-
-  addPattern(trivial(KwAny),     word("any"));
-  addPattern(trivial(KwAnyFunc), word("anyfunc"));
-  addPattern(trivial(KwAnyPred), word("anypred"));
-  addPattern(trivial(KwAssume),  word("assume"));
-  addPattern(trivial(KwName),    word("name"));
-  addPattern(trivial(KwProof),   word("proof"));
-
-  addPattern([] (const string& lexeme) -> Infix80 { return { lexeme }; }, ch({ '*', '\\', '%', '^', }));
-  addPattern([] (const string& lexeme) -> Infix60 { return { lexeme }; }, ch({ '+', '-' }));
-  addPattern([] (const string& lexeme) -> Infix40 { return { lexeme }; }, alt({ ch({ '=', '<', '>' }), word("!="), word(">="), word("<=") }));
-  addPattern([] (const string& lexeme) -> Constant { return { lexeme }; },
-    alt({ word("true"), word("false") }));
-  addPattern([] (const string& lexeme) -> Prefix30 { return { lexeme }; },
-    alt({ word("not") }));
-  addPattern([] (const string& lexeme) -> Infix20 { return { lexeme }; },
-    alt({ word("and"), word("or"), word("implies"), word("iff"), word("->"), word("<->") }));
-  addPattern([] (const string& lexeme) -> Binder { return { lexeme }; },
-    alt({ word("forall"), word("exists"), word("unique"), word("forallfunc"), word("forallpred") }));
-  addPattern([] (const string& lexeme) -> Identifier { return { lexeme }; },
+  setPattern([] (const string& lexeme) -> Identifier { return { lexeme }; },
     concat(
       alt({ range('a', 'z'), range('A', 'Z'), ch({ '_', '`' }), utf8segment() }),
       star(alt({ range('a', 'z'), range('A', 'Z'), range('0', '9'), ch({ '_', '`', '\'', '.' }), utf8segment() }))));
+  setPattern([] (const string& lexeme) -> Binder { return { lexeme }; },
+    alt({ word("forall"), word("exists"), word("unique"), word("forallfunc"), word("forallpred") }));
+
+  setPattern(trivial(KwAny),         word("any"));
+  setPattern(trivial(KwAnyFunc),     word("anyfunc"));
+  setPattern(trivial(KwAnyPred),     word("anypred"));
+  setPattern(trivial(KwAssume),      word("assume"));
+  setPattern(trivial(KwName),        word("name"));
+  setPattern(trivial(KwProof),       word("proof"));
+
+  setPattern(trivial(KwMetaDef),     word("#def"));
+  setPattern(trivial(KwMetaUndef),   word("#undef"));
+
+  setPattern([] (const string& lexeme) -> Infix80 { return { lexeme }; }, ch({ '*', '\\', '%', '^', }));
+  setPattern([] (const string& lexeme) -> Infix60 { return { lexeme }; }, ch({ '+', '-' }));
+  setPattern([] (const string& lexeme) -> Infix40 { return { lexeme }; }, alt({ ch({ '=', '<', '>' }), word("!="), word(">="), word("<=") }));
+  setPattern([] (const string& lexeme) -> Constant { return { lexeme }; },
+    alt({ word("true"), word("false") }));
+  setPattern([] (const string& lexeme) -> Prefix30 { return { lexeme }; },
+    alt({ word("not") }));
+  setPattern([] (const string& lexeme) -> Infix20 { return { lexeme }; },
+    alt({ word("and"), word("or"), word("implies"), word("iff"), word("->"), word("<->") }));
+
+  setPattern(trivial(OpComma),       word(","));
+  setPattern(trivial(OpSemicolon),   word(";"));
+  setPattern(trivial(OpLParen),      word("("));
+  setPattern(trivial(OpRParen),      word(")"));
+  setPattern(trivial(OpLBrace),      word("{"));
+  setPattern(trivial(OpRBrace),      word("}"));
+  setPattern(trivial(OpRRArrow),     word("=>"));
+  setPattern(trivial(OpSlash),       word("/"));
+  setPattern(trivial(OpVertBar),     word("|"));
+  setPattern(trivial(OpColonEq),     word(":="));
+  
+  /*
+  setPattern(trivial(Blank), star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })));
+  setPattern(trivial(LineComment), concat(word("//"), star(except({ '\r', '\n' }))));
+  setPattern(trivial(BlockComment),
+    concat(word("/*"),
+      star(concat(star(except({ '*' })), plus(ch({ '*' })), except({ '/' }))),
+                  star(except({ '*' })), plus(ch({ '*' })), ch({ '/' })));
+  */
+  /*
+  setPattern(trivial(Directive),
+    concat(ch({ '\r', '\n' }), star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })),
+      ch({ '#' }), star(except({ '\r', '\n' }))));
+  */
+
+  setPattern(trivial(Blank), alt({
+    star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })),
+    concat(word("//"), star(except({ '\r', '\n' }))),
+    concat(word("/*"),
+      star(concat(star(except({ '*' })), plus(ch({ '*' })), except({ '/' }))),
+                  star(except({ '*' })), plus(ch({ '*' })), ch({ '/' }))
+  }));
+
+  setAsIgnoredSymbol<Blank>();
 
   #undef trivial
 
@@ -363,16 +421,16 @@ Mu::Mu():
     return {};
   });
 
-  addRule([]     ()                                                        -> OptRRArrow { return {}; });
-  addRule([]     (OpRRArrow)                                               -> OptRRArrow { return {}; });
-  addRule([]     ()                                                        -> OptProof { return { nullopt }; });
-  addRule([]     (KwProof, Proof&& pf)                                     -> OptProof { return { pf.pf }; });
-  addRule([]     ()                                                        -> OptName { return { nullopt }; });
-  addRule([]     (KwName, Identifier&& id)                                 -> OptName { return { id.name }; });
-  // This will give too much ambiguity...
-  // addRule([]     ()                                                        -> OptSemicolon { return {}; });
-  addRule([]     (OpSemicolon)                                             -> OptSemicolon { return {}; });
-  addRule([this] (OptRRArrow, Expr&&, OptName&&, OptProof&&, OptSemicolon) -> Assertion {
+  addRule([]     ()                                                       -> OptRRArrow { return {}; });
+  addRule([]     (OpRRArrow)                                              -> OptRRArrow { return {}; });
+  addRule([]     ()                                                       -> OptProof { return { nullopt }; });
+  addRule([]     (KwProof, Proof&& pf)                                    -> OptProof { return { pf.pf }; });
+  addRule([]     ()                                                       -> OptName { return { nullopt }; });
+  addRule([]     (KwName, Identifier&& id)                                -> OptName { return { id.name }; });
+  addRule([]     ()                                                       -> OptSemicolon { return {}; });
+  addRule([]     (OpSemicolon)                                            -> OptSemicolon { return {}; });
+  // Using `OptSemicolon` will cause too much ambiguity...
+  addRule([this] (OptRRArrow, Expr&&, OptName&&, OptProof&&, OpSemicolon) -> Assertion {
     // TODO: verify or start tableau thread
     return {};
   });
@@ -393,6 +451,68 @@ Mu::Mu():
     return {};
   });
 
+  // Directive rules (used separately)
+  addRule([]     (String&& s)                       -> MetaSymbol { return { { true, s.data } }; });
+  addRule([]     (Identifier&& s)                   -> MetaSymbol { return { { false, s.name } }; });
+  addRule([]     (MetaSymbol&& s)                   -> MetaPattern { return { { s.s } }; });
+  addRule([]     (MetaPattern&& ss, MetaSymbol&& s) -> MetaPattern { ss.ss.push_back(s.s); return ss; });
+  addRuleFor<MetaDef, KwMetaDef, MetaPattern, OpColonEq, Term, KwName, Identifier, OptSemicolon>([this] (const ParseTree* x) -> MetaDef {
+    auto pattern = getChild<MetaPattern>(x, 1).ss;
+    string rulename = getChild<Identifier>(x, 5).name;
+    const ParseTree* term = x->c->s->s->s;
+    std::unordered_map<string, size_t> positions;
+    // Generate new production rule from the given pattern
+    Parsing::Symbol lhs = getSymbol<Term>();
+    vector<Parsing::Symbol> rhs;
+    for (size_t i = 0; i < pattern.size(); i++) {
+      string name = pattern[i].second;
+      if (pattern[i].first) {
+        // Terminal (TODO: pattern removal from lexer...)
+        if (!terminals.contains(name)) {
+          Parsing::Symbol sym = newSymbol(name, [] (const ParseTree*) -> std::any { return {}; });
+          // setPatternImpl(name, sym, word(name), [] (const ParseTree*) -> std::any { return {}; });
+          NFALexer::addPattern(sym, word(name));
+          terminals[name] = sym;
+        }
+        rhs.push_back(terminals[name]);
+      } else {
+        // Argument
+        positions[name] = i;
+        rhs.push_back(getSymbol<Var>());
+      }
+    }
+    // Add handler for this new rule
+    size_t rid = addRuleImpl(symbols[lhs].name, lhs, rhs, [this, term, positions] (const ParseTree* x) -> Term {
+      std::unordered_map<string, const ParseTree*> mp;
+      for (auto& [key, val]: positions) {
+        const ParseTree* p = x->c;
+        for (size_t i = 0; i < val; i++) p = p->s;
+        mp[key] = p;
+      }
+      ParseTree* transformed = replaceVars(term, mp);
+      return get<Term>(transformed);
+    });
+    customParsingRules[rulename] = rid;
+    return {};
+  });
+  addRuleFor<MetaUndef, KwMetaUndef, Identifier, OptSemicolon>([this] (const ParseTree* x) -> MetaUndef {
+    string name = getChild<Identifier>(x, 1).name;
+    auto it = customParsingRules.find(name);
+    if (it == customParsingRules.end()) {
+      errors.emplace_back(x, "Unknown parsing rule \"" + name + "\"");
+    } else {
+      EarleyParser::rules[it->second].active = false;
+      customParsingRules.erase(it);
+    }
+    return {};
+  });
+  addRule([]     (MetaDef)                          -> Meta { return { true }; });
+  addRule([]     (MetaUndef)                        -> Meta { return { true }; });
+  addRuleFor<Decl, Meta>([] (const ParseTree*)      -> Decl { return {}; }); // No-op
+
+  EarleyParser::specialSymbol = getSymbol<Meta>();
+  EarleyParser::specialHandler = [this] (const ParseTree* x, EarleyParser*) { return get<Meta>(x).isSpecial; };
+
   // Error recovery rules
   addRule([]     (OpRRArrow, Error)          -> Assertion { return {}; });
   addRule([]     (Error, OpSemicolon)        -> Assertion { return {}; });
@@ -410,7 +530,7 @@ Mu::Mu():
   struct A {};
   struct B {};
 
-  addPattern([] (const string&) -> B { return {}; }, word("$B"));
+  setPattern([] (const string&) -> B { return {}; }, word("$B"));
   addRule([] (A, A) -> A { return {}; });
   addRule([] (B) -> A { return {}; });
   addRule([] (A) -> Expr { return {}; });

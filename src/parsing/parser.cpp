@@ -14,10 +14,9 @@ namespace Parsing {
   using std::holds_alternative, std::get, std::visit;
 
 
-  ParseTree* EarleyParser::parse(const vector<Token>& str, Core::Allocator<ParseTree>& pool) {
-    this->str = str;
-    run();
-    return getParseTree(pool);
+  ParseTree* EarleyParser::parse(Core::Allocator<ParseTree>& pool) {
+    run(pool);
+    return fin? getParseTree(*fin, pool) : nullptr;
   }
 
   size_t EarleyParser::toCharsStart(size_t pos) const noexcept {
@@ -32,7 +31,7 @@ namespace Parsing {
 
   // For use in `run()` only
   void EarleyParser::logError(size_t pos, size_t endPos) {
-    if (dpa.size() != str.size() + 1 || pos >= dpa.size()) throw Core::Unreachable();
+    if (pos >= dpa.size()) throw Core::Unreachable();
 
     vector<Symbol> expected;
     for (const LinkedState& ls: dpa[pos]) {
@@ -56,25 +55,69 @@ namespace Parsing {
   //   https://arxiv.org/pdf/1910.08129.pdf
   // (I am not going to dig too deep into the theories about different parsing algorithms now!)
 
-  void EarleyParser::run() {
-    const size_t n = str.size(), m = rules.size();
+  // TODO: clean up
+  void EarleyParser::run(Core::Allocator<ParseTree>& pool) {
     error = false;
 
-    // Find the number `k` of symbols involved
-    Symbol k = startSymbol + 1;
-    for (const auto& [lhs, rhs]: rules) {
-      k = std::max(k, lhs + 1);
-      for (Symbol sym: rhs) k = std::max(k, sym + 1);
-    }
+    // Number of symbols involved
+    Symbol k;
+
+    vector<size_t> sorted;
+    vector<size_t> firstRule;
+    vector<size_t> totalLength;
+
+    // A minor optimization: avoid looking up rules multiple times (see below)
+    vector<Symbol> added;
+    vector<bool> isAdded;
+
+    nullable.clear();
+    dpa.clear();
+
+    // This will be called at the beginning of the algorithm AND after calling `specialHandler`
+    auto reinit = [&] () {
+      
+      // Find the number `k` of symbols involved
+      k = std::max(startSymbol + 1, errorSymbol? *errorSymbol + 1 : 0);
+      for (const auto& [lhs, rhs, _]: rules) {
+        k = std::max(k, lhs + 1);
+        for (Symbol sym: rhs) k = std::max(k, sym + 1);
+      }
+
+      // Sort all active rules by nonterminal id (for faster access)
+      sorted.clear();
+      for (size_t i = 0; i < rules.size(); i++) if (rules[i].active) sorted.push_back(i);
+      std::sort(sorted.begin(), sorted.end(), [this] (size_t a, size_t b) { return rules[a].lhs < rules[b].lhs; });
+      size_t m = sorted.size();
+
+      // For each nonterminal find the id of its first production rule (for faster access, if none then set to `m`)
+      // Also accumulate the lengths of RHS (plus one) of the production rules (for better hashing)
+      firstRule = vector<size_t>(k, m);
+      totalLength = vector<size_t> (m, 0);
+      for (size_t i = 0; i < m; i++) {
+        const auto& [lhs, rhs, _] = rules[sorted[i]];
+        if (firstRule[lhs] == m) firstRule[lhs] = i;
+        if (i + 1 < m) totalLength[i + 1] = totalLength[i] + rhs.size() + 1;
+      }
+
+      nullable.resize(k);
+
+      isAdded.clear();
+      isAdded.resize(k);
+    };
+
+    reinit();
+
+    // A hash function for DP states (refers to `totalLength[]`)
+    auto hash = [&totalLength] (const State& x) { return x.startPos * 524287u + (totalLength[x.ruleIndex] + x.rulePos); };
+    unordered_map<State, size_t, decltype(hash)> mp(0, hash);
 
     // Work out "nullable" nonterminals and their nullable rules (O(|G|²))
     // Currently we don't care about ambiguous nullables!
-    nullable.clear();
-    nullable.resize(k);
+    // (Currently, nullable flags are preserved after calling `specialHandler`...)
     bool updates = false;
     do {
       updates = false;
-      for (size_t i = 0; i < m; i++) {
+      for (size_t i = 0; i < rules.size(); i++) {
         Symbol lhs = rules[i].lhs;
         const auto& rhs = rules[i].rhs;
         if (!nullable[lhs].has_value()) {
@@ -90,47 +133,27 @@ namespace Parsing {
       }
     } while (updates);
 
-    // Sort all rules by nonterminal id (for faster access)
-    vector<size_t> sorted;
-    for (size_t i = 0; i < m; i++) sorted.push_back(i);
-    std::sort(sorted.begin(), sorted.end(), [this] (size_t a, size_t b) { return rules[a].lhs < rules[b].lhs; });
-
-    // For each nonterminal find the id of its first production rule (for faster access, if none then set to `m`)
-    // Also accumulate the lengths of RHS (plus one) of the production rules (for better hashing)
-    vector<size_t> firstRule(k, m);
-    vector<size_t> totalLength(m, 0);
-    for (size_t i = 0; i < m; i++) {
-      const auto& [lhs, rhs] = rules[sorted[i]];
-      if (firstRule[lhs] == m) firstRule[lhs] = i;
-      if (i + 1 < m) totalLength[i + 1] = totalLength[i] + rhs.size() + 1;
-    }
-
-    // The main DP array
-    dpa.clear();
-    dpa.resize(n + 1);
-
-    // A hash function for DP states
-    auto hash = [&totalLength] (const State& x) {
-      return x.startPos * 524287u + (totalLength[x.ruleIndex] + x.rulePos);
-    };
-    unordered_map<State, size_t, decltype(hash)> mp(0, hash);
-
-    // A minor optimization: avoid looking up rules multiple times (see below)
-    vector<Symbol> added;
-    vector<bool> isAdded(k);
-
     // Consecutive errors are reported once
     optional<size_t> errorPos = nullopt;
 
     // Initial states
-    for (size_t i = firstRule[startSymbol]; i < m && rules[sorted[i]].lhs == startSymbol; i++) {
+    dpa.emplace_back();
+    for (size_t i = firstRule[startSymbol]; i < sorted.size() && rules[sorted[i]].lhs == startSymbol; i++) {
       State s{ 0, sorted[i], 0 };
       mp[s] = dpa[0].size();
       dpa[0].emplace_back(s, nullopt, monostate{}, false);
     }
 
-    // Invariant: `mp` maps all elements of `states[pos]` to their indices
-    for (size_t pos = 0; pos <= n; pos++) {
+    // Invariant: `mp` maps all elements of `dpa[pos]` to their indices
+    size_t pos = 0;
+    while (true) {
+      auto tok = lexer->getNextToken();
+      while (tok && tok->id == ignoredSymbol) tok = lexer->getNextToken();
+      if (tok) {
+        str.push_back(*tok);
+        dpa.emplace_back();
+      }
+
       bool again = false;
       start:
 
@@ -145,12 +168,14 @@ namespace Parsing {
           if (!isAdded[sym]) {
             isAdded[sym] = true;
             added.push_back(sym);
-            // Add all rules for `sym`
-            for (size_t j = firstRule[sym]; j < m && rules[sorted[j]].lhs == sym; j++) {
-              State ss{ pos, sorted[j], 0 };
-              if (!mp.contains(ss)) {
-                mp[ss] = dpa[pos].size();
-                dpa[pos].emplace_back(ss, nullopt, monostate{}, false);
+            // Add all active rules for `sym`
+            for (size_t j = firstRule[sym]; j < sorted.size() && rules[sorted[j]].lhs == sym; j++) {
+              if (rules[sorted[j]].active) {
+                State ss{ pos, sorted[j], 0 };
+                if (!mp.contains(ss)) {
+                  mp[ss] = dpa[pos].size();
+                  dpa[pos].emplace_back(ss, nullopt, monostate{}, false);
+                }
               }
             }
           }
@@ -164,7 +189,7 @@ namespace Parsing {
               // Ambiguity detected
               LinkedState& ls = dpa[pos][mp[ss]];
               ls.ambiguous = true;
-              // TODO: prefer child with production rule of smaller index
+              // TODO: prefer child with production rule of larger index
             }
           }
         } else {
@@ -185,7 +210,7 @@ namespace Parsing {
                 // Ambiguity detected
                 LinkedState& ls = dpa[pos][mp[tt]];
                 ls.ambiguous = true;
-                // TODO: prefer child with production rule of smaller index
+                // TODO: prefer child with production rule of larger index
               }
             }
           }
@@ -195,20 +220,29 @@ namespace Parsing {
       for (Symbol sym: added) isAdded[sym] = false;
       added.clear();
 
+      // If the special symbol get completed, call the special handler
+      for (size_t i = 0; i < dpa[pos].size(); i++) {
+        State s = dpa[pos][i].state;
+        const Rule& rule = rules[s.ruleIndex];
+        if (rule.lhs == specialSymbol && s.rulePos == rule.rhs.size()) {
+          bool modified = specialHandler(getParseTree({ pos, i }, pool), this);
+          if (modified) reinit();
+        }
+      }
+
       bool ok = false;
-      if (pos < str.size()) {
+      if (tok) {
         // "Scanning" stage
-        // Also updating `mp` to reflect `states[pos + 1]` instead
-        Token tok = str[pos];
+        // Also updating `mp` to reflect `dpa[pos + 1]` instead
         mp.clear();
         for (size_t i = 0; i < dpa[pos].size(); i++) {
           State s = dpa[pos][i].state;
           const auto& derived = rules[s.ruleIndex].rhs;
-          if (s.rulePos < derived.size() && derived[s.rulePos] == tok.id) {
+          if (s.rulePos < derived.size() && derived[s.rulePos] == tok->id) {
             State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
             // No need to check presence! `s` is already unique.
             mp[ss] = dpa[pos + 1].size();
-            dpa[pos + 1].emplace_back(ss, Location{ pos, i }, tok, false);
+            dpa[pos + 1].emplace_back(ss, Location{ pos, i }, *tok, false);
           }
         }
         ok = !dpa[pos + 1].empty();
@@ -216,11 +250,11 @@ namespace Parsing {
         // Final position
         // Check if the start symbol completes at the end position
         fin = nullopt;
-        for (size_t i = 0; i < dpa[n].size(); i++) {
-          const State& s = dpa[n][i].state;
+        for (size_t i = 0; i < dpa[pos].size(); i++) {
+          const State& s = dpa[pos][i].state;
           const Rule& rule = rules[s.ruleIndex];
           if (s.startPos == 0 && rule.lhs == startSymbol && s.rulePos == rule.rhs.size()) {
-            fin = { n, i };
+            fin = { pos, i };
             break;
           }
         }
@@ -234,7 +268,7 @@ namespace Parsing {
         if (!errorPos) errorPos = pos;
         // To minimise ambiguity, we don't add multiple states with the same rule-index.
         // This may be undesirable for rules with multiple error-symbols, but we keep it simple for now!
-        vector<bool> f(m, false);
+        vector<bool> f(rules.size(), false);
         for (size_t posj = pos + 1; posj --> 0;) { // [0, pos] decreasing, inclusive
           for (size_t j = 0; j < dpa[posj].size(); j++) {
             const State& s = dpa[posj][j].state;
@@ -255,12 +289,14 @@ namespace Parsing {
         }
       } else {
         // End of consecutive errors
-        if (errorPos) logError(*errorPos, pos - 1);
+        if (errorPos) logError(*errorPos, again? pos : pos - 1);
         errorPos = nullopt;
       }
+      // Advance `pos`
+      if (tok) pos++; else break;
     }
     // End of consecutive errors
-    if (errorPos) logError(*errorPos, n);
+    if (errorPos) logError(*errorPos, pos);
     errorPos = nullopt;
 
     /*
@@ -285,7 +321,7 @@ namespace Parsing {
     *
     * ===== A hand-wavey argument for time complexity =====
     * For each iteration of the outer loop:
-    *   Number of states (i.e. `states[pos].size()`) = O(|G|n)
+    *   Number of states (i.e. `dpa[pos].size()`) = O(|G|n)
     *   Prediction = O(|G|n) (iterating through states = O(|G|n), total states added = O(|G|))
     *   Completion = O(|G|²n²) (iterating though states = O(|G|n), time for each state = O(|G|n))
     *              = O(|G|n) for unambiguous (iterating through states = O(|G|n), total states added = O(|G|n))
@@ -395,11 +431,6 @@ namespace Parsing {
     }
 
     return res;
-  }
-
-  // Constructs a parse tree for the `startSymbol`. If there are none, returns `nullptr`.
-  ParseTree* EarleyParser::getParseTree(Core::Allocator<ParseTree>& pool) {
-    return fin? getParseTree(*fin, pool) : nullptr;
   }
 
   #undef assert

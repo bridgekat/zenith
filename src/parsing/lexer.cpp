@@ -91,10 +91,10 @@ namespace Parsing {
       closure(v, t);
       s.swap(t);
       // Update result if reaches accepting state
-      // Patterns with smaller IDs have higher priority
+      // Patterns with larger IDs have higher priority
       optional<Symbol> curr = nullopt;
       for (State x: s) if (table[x].ac) {
-        if (!curr || curr.value() > table[x].ac.value()) curr = table[x].ac;
+        if (!curr || curr.value() < table[x].ac.value()) curr = table[x].ac;
       }
       // Update longest match, if applicable
       if (curr) res = { i + 1, curr.value() };
@@ -146,7 +146,7 @@ namespace Parsing {
       optional<Symbol> curr;
       for (auto ns: s) {
         auto opt = nfa->table[ns].ac;
-        if (opt && (!curr || curr.value() > opt.value())) curr = opt;
+        if (opt && (!curr || curr.value() < opt.value())) curr = opt;
       }
       dfa->table[x].ac = curr;
       // Compute transitions
@@ -202,7 +202,7 @@ namespace Parsing {
   //   See: https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm
   //   See: https://en.wikipedia.org/wiki/Partition_refinement
   // Pre: the TokenIDs in accepting states are small nonnegative integers.
-  // (They are directly used as initial partition IDs; I am too lazy so I didn't make a map.)
+  // (They are directly used as initial partition IDs)
   class PartitionRefinement {
   public:
     typedef DFALexer::State State;

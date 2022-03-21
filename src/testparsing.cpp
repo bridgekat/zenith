@@ -25,7 +25,7 @@ string readFile(std::ifstream& in) {
 
 int main() {
 
-  std::ifstream in("notes/test.mu");
+  std::ifstream in("test.mu");
   string content = readFile(in);
   in.close();
 

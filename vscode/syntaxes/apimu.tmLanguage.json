@@ -57,7 +57,7 @@
     },
     {
       "name": "keyword.control.directive.apimu",
-      "match": "^[ \\t\\n\\v\\f\\r]*#[^ /]*"
+      "match": "(#def|#undef|#ls)\\b"
     }
   ],
   "scopeName": "source.apimu"

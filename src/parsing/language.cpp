@@ -51,8 +51,14 @@ namespace Parsing {
     symbols.emplace_back("", [sym] (const ParseTree* x) -> std::any {
       if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
       throw Core::Unreachable("Language: no matching rule");
-    }, false);
+    });
     mp[tid] = sym;
+    return sym;
+  }
+
+  Symbol Language::newSymbol(const string& name, std::function<std::any(const ParseTree*)> action) {
+    Symbol sym = symbols.size();
+    symbols.emplace_back(name, action);
     return sym;
   }
 
@@ -66,26 +72,32 @@ namespace Parsing {
     };
   }
 
-  Symbol Language::addPatternImpl(const string& name, type_index tid, NFA pattern, bool discard, function<std::any(const string&)> action) {
+  void Language::setAsIgnoredSymbol(const string& name, Symbol sym) {
+    if (ignoredSymbol) throw Core::Unreachable("Language: at most one ignored symbol can be set");
+    ignoredSymbol = sym;
+    symbols[sym].name = name;
+  }
 
-    // Insert new symbol if not already present
-    auto it = mp.find(tid);
-    if (it != mp.end()) throw Core::NotImplemented("Language: multiple patterns is not supported");
-    Symbol sym = symbols.size();
-    symbols.emplace_back("<" + name + ">", [sym, action] (const ParseTree* x) -> std::any {
-      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
-      if (!x->lexeme.has_value()) throw Core::Unreachable("Language: no matching rule");
-      return action(x->lexeme.value_or(""));
-    }, discard);
-    mp[tid] = sym;
+  Symbol Language::setPatternImpl(const string& name, Symbol sym, NFA pattern, std::function<std::any(const ParseTree*)> action) {
+
+    // Update name
+    symbols[sym].name = "<" + name + ">";
 
     // Add new pattern
     NFALexer::addPattern(sym, pattern);
 
+    // Add new handler for new pattern (this will override old patterns, but not old production rules)
+    auto prev = symbols[sym].action;
+    symbols[sym].action = [sym, prev, action] (const ParseTree* x) -> std::any {
+      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
+      if (x->lexeme.has_value()) return action(x);
+      return prev(x);
+    };
+
     return sym;
   }
 
-  Symbol Language::addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action) {
+  size_t Language::addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action) {
 
     // Update name
     symbols[lhs].name = "[" + name + "]";
@@ -102,31 +114,15 @@ namespace Parsing {
       return prev(x);
     };
 
-    return lhs;
+    return rid;
   }
 
   // TEMP CODE
   ParseTree* Language::parseImpl(const string& str, Symbol start) {
 
-    // Scan (using NFA for debugging speed)
-    // DFALexer dfa(*this);
-    // dfa.optimize();
-    // dfa.setString(str);
-    NFALexer::setString(str);
-
-    vector<Token> tokens;
-    // auto next = dfa.getNextToken();
-    auto next = NFALexer::getNextToken();
-    while (next) {
-      Token tok = next.value();
-      if (!symbols[tok.id].discard) tokens.push_back(tok);
-      // next = dfa.getNextToken();
-      next = NFALexer::getNextToken();
-    }
-
-    // Parse
     this->startSymbol = start;
-    ParseTree* x = EarleyParser::parse(tokens, pool);
+    NFALexer::setString(str);
+    ParseTree* x = EarleyParser::parse(pool);
 
     return x;
   }

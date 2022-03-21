@@ -61,14 +61,13 @@ namespace Parsing {
     struct Entry {
       string name;
       std::function<std::any(const ParseTree*)> action;
-      bool discard; // Discard after scanning; for nonterminal symbols only
     };
 
     vector<Entry> symbols;
     unordered_map<std::type_index, Symbol> mp;
     Core::Allocator<ParseTree> pool;
 
-    Language(): NFALexer(), EarleyParser(), symbols(), mp(), pool() {}
+    Language(): NFALexer(), EarleyParser(this), symbols(), mp(), pool() {}
 
     // Get symbol index for type; insert new nonterminal symbol if not already present
     template <typename T>
@@ -80,23 +79,28 @@ namespace Parsing {
     void setAsErrorSymbol() { return setAsErrorSymbol(SymbolName<T>::get(), getSymbol<T>(), T{}); }
     void setAsErrorSymbol(const string& name, Symbol sym, std::any val);
 
-    // Add a terminal symbol with a pattern.
-    // `addPattern` (*) -> `addPatternImpl`
+    // Set as ignored symbol; can only be called at most once currently.
     template <typename T>
-    Symbol addPattern(T action, NFA pattern, bool discard = false) {
+    void setAsIgnoredSymbol() { return setAsIgnoredSymbol(SymbolName<T>::get(), getSymbol<T>()); }
+    void setAsIgnoredSymbol(const string& name, Symbol sym);
+
+    // Set pattern for terminal symbol.
+    // This will override old patterns, but not old production rules.
+    // `setPattern` (*) -> `setPatternImpl`
+    template <typename T>
+    Symbol setPattern(T action, NFA pattern) {
       using U = LambdaConverter<T>;
-      return addPatternImpl(
+      return setPatternImpl(
         SymbolName<typename U::ReturnType>::get(),
-        typeid(typename U::ReturnType),
+        getSymbol<typename U::ReturnType>(),
         pattern,
-        discard,
-        typename U::ConvertedType(action));
+        [this, action] (const ParseTree* x) { return action(x->lexeme.value()); });
     }
 
-    // Add a production rule. LHS must not be a known terminal symbol. Nonterminal symbols are automatically added.
+    // Add a production rule. Symbols on the RHS are automatically added.
     // `addRule` (*) -> `addRuleIndexed` (*) -> `addRuleImpl`
     template <typename T>
-    Symbol addRule(T action) {
+    size_t addRule(T action) {
       using U = LambdaConverter<T>;
       return addRuleIndexed(
         SymbolName<typename U::ReturnType>::get(),
@@ -108,7 +112,7 @@ namespace Parsing {
     // This could give more freedom on the order of evaluation, but the template arguments must be provided explicitly.
     // `addRuleFor` (*) -> `addRuleImpl`
     template <typename ReturnType, typename... ParamTypes>
-    Symbol addRuleFor(std::function<ReturnType(const ParseTree*)> action) {
+    size_t addRuleFor(std::function<ReturnType(const ParseTree*)> action) {
       return addRuleImpl(
         SymbolName<ReturnType>::get(),
         getSymbol<ReturnType>(),
@@ -155,29 +159,30 @@ namespace Parsing {
       return std::any_cast<ReturnType>(symbols[start].action(x));
     }
 
+    // (For dynamically added symbols)
+    Symbol newSymbol(const string& name, std::function<std::any(const ParseTree*)> action);
+
+    // Keep most of the code untemplated to avoid slowing down compilation
+    Symbol setPatternImpl(const string& name, Symbol sym, NFA pattern, std::function<std::any(const ParseTree*)> action);
+    size_t addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action);
+    ParseTree* parseImpl(const string& str, Symbol start);
+
   private:
 
     // The "index trick" (pattern matching on index sequence)
     template <typename ReturnType, typename... ParamTypes, size_t... Indices>
-    Symbol addRuleIndexed(const string& name, std::function<ReturnType(ParamTypes...)> action, std::index_sequence<Indices...>) {
+    size_t addRuleIndexed(const string& name, std::function<ReturnType(ParamTypes...)> action, std::index_sequence<Indices...>) {
       return addRuleImpl(
         name,
         getSymbol<ReturnType>(),
         vector<Symbol>{ getSymbol<ParamTypes>()... },
         [this, action] (const ParseTree* x) {
           vector<std::any> params;
-          for (ParseTree* p = x->c; p; p = p->s) {
-            params.push_back(symbols[p->id].action(p));
-          }
+          for (ParseTree* p = x->c; p; p = p->s) params.push_back(symbols[p->id].action(p));
           if (params.size() != sizeof...(ParamTypes)) throw Core::Unreachable("Langugage: arity does not match");
           return action(std::move(std::any_cast<typename std::decay<ParamTypes>::type>(params[Indices]))...);
         });
     }
-
-    // Keep most of the code untemplated to avoid slowing down compilation
-    Symbol addPatternImpl(const string& name, std::type_index tid, NFA pattern, bool discard, std::function<std::any(const string&)> action);
-    Symbol addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action);
-    ParseTree* parseImpl(const string& str, Symbol start);
 
   };
 

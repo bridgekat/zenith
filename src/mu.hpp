@@ -28,15 +28,19 @@ public:
   std::vector<AnalysisErrorException> popAnalysisErrors();
 
 private:
-  Core::Allocator<Core::Expr> exprs;
-  Core::Allocator<Core::Proof> proofs;
+  Core::Allocator<Core::Expr> exprs{};
+  Core::Allocator<Core::Proof> proofs{};
 
-  Core::Context ctx;
-  size_t op1; // TEMP CODE (for testing infix parsing)
-  std::vector<std::string> boundVars;
-  std::unordered_map<void*, std::pair<size_t, size_t>> sourceMap;
-  std::vector<AnalysisInfo> info;
-  std::vector<AnalysisErrorException> errors;
+  Core::Context ctx{};
+  size_t op1{}; // TEMP CODE (for testing infix parsing)
+  std::vector<std::string> boundVars{};
+
+  std::unordered_map<std::string, size_t> terminals{};
+  std::unordered_map<std::string, size_t> customParsingRules{};
+
+  std::unordered_map<void*, std::pair<size_t, size_t>> sourceMap{};
+  std::vector<AnalysisInfo> info{};
+  std::vector<AnalysisErrorException> errors{};
 
   template <typename ...Ts>
   Core::Expr* makeExprLoc(const Parsing::ParseTree* x, const Ts&... args) {
@@ -51,6 +55,8 @@ private:
     sourceMap[res] = { x->startPos, x->endPos };
     return res;
   }
+
+  Parsing::ParseTree* replaceVars(const Parsing::ParseTree* x, const std::unordered_map<std::string, const Parsing::ParseTree*> mp);
 };
 
 #endif // MU_HPP_

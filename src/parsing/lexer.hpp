@@ -79,10 +79,11 @@ namespace Parsing {
     #define trans(s, c, t) table[s].tr.emplace_back(c, t)
 
     // Add pattern (mark accepting state)
+    // Patterns with larger IDs have higher priority
     void addPattern(Symbol id, NFA nfa) {
       trans(initial, 0, nfa.first);
       auto& o = table[nfa.second].ac;
-      if (!o.has_value()) o = id;
+      if (!o || *o < id) o = id;
     }
 
     // Some useful pattern constructors (equivalent to regexes)
