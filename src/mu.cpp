@@ -126,6 +126,7 @@ symbol(Decl) {};
 
 ParseTree* cloneParseTree(const ParseTree* x, Core::Allocator<ParseTree>& pool) {
   ParseTree* res = pool.pushBack(*x), * last = nullptr;
+  res->s = nullptr;
   for (const ParseTree* p = res->c; p; p = p->s) {
     ParseTree* q = cloneParseTree(p, pool);
     (last? last->s : res->c) = q;
@@ -136,16 +137,40 @@ ParseTree* cloneParseTree(const ParseTree* x, Core::Allocator<ParseTree>& pool) 
 }
 
 // Ad-hoc...
-ParseTree* Mu::replaceVars(const ParseTree* x, const std::unordered_map<string, const ParseTree*> mp) {
+ParseTree* Mu::replaceVarsByTerms(const ParseTree* x, const std::unordered_map<string, const ParseTree*> mp) {
   if (x->id == getSymbol<Var>() && x->c && x->c->id == getSymbol<Identifier>() && mp.contains(*x->c->lexeme)) {
     auto it = mp.find(*x->c->lexeme);
     if (it != mp.end()) {
-      return cloneParseTree(it->second, pool);
+      ParseTree* lparen = pool.pushBack(ParseTree{
+        nullptr, nullptr,
+        getSymbol<OpLParen>(),
+        "(", lparenPattern, nullopt,
+        x->startPos, x->startPos + 1
+      });
+      ParseTree* cloned = cloneParseTree(it->second, pool);
+      ParseTree* rparen = pool.pushBack(ParseTree{
+        nullptr, nullptr,
+        getSymbol<OpRParen>(),
+        ")", rparenPattern, nullopt,
+        x->endPos, x->endPos + 1
+      });
+      ParseTree* res = pool.pushBack(ParseTree{
+        nullptr, nullptr,
+        getSymbol<Var>(),
+        nullopt, nullopt, parenRule,
+        x->startPos, x->endPos
+      });
+      res->c = lparen;
+      lparen->s = cloned;
+      cloned->s = rparen;
+      rparen->s = nullptr;
+      return res;
     }
   }
   ParseTree* res = pool.pushBack(*x), * last = nullptr;
+  res->s = nullptr;
   for (const ParseTree* p = res->c; p; p = p->s) {
-    ParseTree* q = replaceVars(p, mp);
+    ParseTree* q = replaceVarsByTerms(p, mp);
     (last? last->s : res->c) = q;
     last = q;
   }
@@ -160,6 +185,18 @@ ParseTree* Mu::replaceVars(const ParseTree* x, const std::unordered_map<string, 
 Mu::Mu() {
 
   // Terminal symbols (TODO: disambiguate based on pattern ID instead of symbol ID)
+
+  #define epsilon     lexer.epsilon
+  #define ch          lexer.ch
+  #define range       lexer.range
+  #define concat      lexer.concat
+  #define word        lexer.word
+  #define alt         lexer.alt
+  #define star        lexer.star
+  #define plus        lexer.plus
+  #define any         lexer.any
+  #define utf8segment lexer.utf8segment
+  #define except      lexer.except
 
   #define trivial(T) [] (const string&) -> T { return {}; }
 
@@ -198,8 +235,8 @@ Mu::Mu() {
 
   addPattern(trivial(OpComma),       word(","));
   addPattern(trivial(OpSemicolon),   word(";"));
-  addPattern(trivial(OpLParen),      word("("));
-  addPattern(trivial(OpRParen),      word(")"));
+  lparenPattern = addPattern(trivial(OpLParen),      word("("));
+  rparenPattern = addPattern(trivial(OpRParen),      word(")"));
   addPattern(trivial(OpLBrace),      word("{"));
   addPattern(trivial(OpRBrace),      word("}"));
   addPattern(trivial(OpRRArrow),     word("=>"));
@@ -216,6 +253,17 @@ Mu::Mu() {
 
   setAsIgnoredSymbol<Blank>();
 
+  #undef epsilon
+  #undef ch
+  #undef range
+  #undef concat
+  #undef word
+  #undef alt
+  #undef star
+  #undef plus
+  #undef any
+  #undef utf8segment
+  #undef except
   #undef trivial
 
   // Nonterminal symbols
@@ -343,7 +391,7 @@ Mu::Mu() {
   */
   addRule([] (Term10&& t)                   -> Term { return { t.e }; });
   addRule([] (Term10Suffix&& t)             -> Term { return { t.e }; });
-  addRule([] (OpLParen, Term&& t, OpRParen) -> Var { return { t.e }; });
+  parenRule = addRule([] (OpLParen, Term&& t, OpRParen) -> Var { return { t.e }; });
 
   addRuleFor<Expr, Term>([this] (const ParseTree* x) -> Expr {
     boundVars.clear();
@@ -431,15 +479,14 @@ Mu::Mu() {
         // Terminal (TODO: pattern removal from lexer...)
         if (!terminals.contains(name)) {
           Parsing::Symbol sym = newSymbol(name, [] (const ParseTree*) -> std::any { return {}; });
-          // addPatternImpl(name, sym, word(name), [] (const ParseTree*) -> std::any { return {}; });
-          NFALexer::addPattern(sym, word(name));
+          lexer.addPattern(sym, lexer.word(name));
           terminals[name] = sym;
         }
         rhs.push_back(terminals[name]);
       } else {
         // Argument
         positions[name] = i;
-        rhs.push_back(getSymbol<Var>());
+        rhs.push_back(getSymbol<Term>());
       }
     }
     // Add handler for this new rule
@@ -450,7 +497,7 @@ Mu::Mu() {
         for (size_t i = 0; i < val; i++) p = p->s;
         mp[key] = p;
       }
-      ParseTree* transformed = replaceVars(term, mp);
+      ParseTree* transformed = replaceVarsByTerms(term, mp);
       return get<Term30>(transformed);
     });
     customParsingRules[rulename] = rid;
@@ -462,7 +509,7 @@ Mu::Mu() {
     if (it == customParsingRules.end()) {
       errors.emplace_back(x, "Unknown parsing rule \"" + name + "\"");
     } else {
-      EarleyParser::rules[it->second].active = false;
+      parser.rules[it->second].active = false;
       customParsingRules.erase(it);
     }
     return {};
@@ -510,8 +557,8 @@ Mu::Mu() {
 
 void Mu::analyze(const string& str) {
   scopes.emplace_back(0, 1);
-  NFALexer::setString(str);
-  while (!EarleyParser::eof()) {
+  lexer.setString(str);
+  while (!parser.eof()) {
     immediate = false;
     try {
       Language::nextSentence<Decl>();

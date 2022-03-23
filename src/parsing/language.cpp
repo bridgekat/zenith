@@ -11,10 +11,10 @@ namespace Parsing {
   vector<Language::ParsingErrorException> Language::popParsingErrors() {
     vector<ParsingErrorException> res;
     // See: https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
-    for (const auto& e: NFALexer::popErrors()) {
+    for (const auto& e: lexer.popErrors()) {
       res.emplace_back(e.startPos, e.endPos, "Parsing error, unexpected characters: " + e.lexeme);
     }
-    for (const auto& e: EarleyParser::popErrors()) {
+    for (const auto& e: parser.popErrors()) {
       string s = "Parsing error, expected one of:\n";
       bool first = true;
       for (Symbol sym: e.expected) {
@@ -33,7 +33,7 @@ namespace Parsing {
       }
       res.emplace_back(e.startPos, e.endPos, s + "\n");
     }
-    for (const auto& e: EarleyParser::popAmbiguities()) {
+    for (const auto& e: parser.popAmbiguities()) {
       string s = "Warning: unresolved ambiguity\n";
       s += "(Alternative parse tree display has not been implemented yet;"
            " you can try adding commas and parentheses or modifying notations to eliminate ambiguity."
@@ -63,18 +63,18 @@ namespace Parsing {
   }
 
   void Language::setAsIgnoredSymbol(const string& name, Symbol sym) {
-    if (ignoredSymbol) throw Core::Unreachable("Language: at most one ignored symbol can be set");
-    ignoredSymbol = sym;
+    if (parser.ignoredSymbol) throw Core::Unreachable("Language: at most one ignored symbol can be set");
+    parser.ignoredSymbol = sym;
     symbols[sym].name = name;
   }
 
-  Symbol Language::addPatternImpl(const string& name, Symbol sym, NFA pattern, std::function<std::any(const ParseTree*)> action) {
+  Symbol Language::addPatternImpl(const string& name, Symbol sym, NFALexer::NFA pattern, std::function<std::any(const ParseTree*)> action) {
 
     // Update name
     symbols[sym].name = "<" + name + ">";
 
     // Add new pattern
-    size_t pid = NFALexer::addPattern(sym, pattern);
+    size_t pid = lexer.addPattern(sym, pattern);
 
     // Add new handler for new pattern
     auto prev = symbols[sym].action;
@@ -93,8 +93,8 @@ namespace Parsing {
     symbols[lhs].name = "[" + name + "]";
 
     // Add new production rule
-    size_t rid = rules.size();
-    rules.emplace_back(lhs, rhs);
+    size_t rid = parser.rules.size();
+    parser.rules.emplace_back(lhs, rhs);
 
     // Add new handler for new rule
     auto prev = symbols[lhs].action;
@@ -108,8 +108,8 @@ namespace Parsing {
   }
 
   ParseTree* Language::nextSentenceImpl(Symbol start) {
-    this->startSymbol = start;
-    return EarleyParser::nextSentence(pool);
+    parser.startSymbol = start;
+    return parser.nextSentence(pool);
   }
 
 }

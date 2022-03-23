@@ -36,6 +36,7 @@ private:
   std::vector<std::pair<size_t, size_t>> scopes{};
   std::vector<std::string> boundVars{};
 
+  size_t lparenPattern{}, rparenPattern{}, parenRule{};
   std::unordered_map<std::string, size_t> terminals{};
   std::unordered_map<std::string, size_t> customParsingRules{};
 
@@ -57,7 +58,7 @@ private:
     return res;
   }
 
-  Parsing::ParseTree* replaceVars(const Parsing::ParseTree* x, const std::unordered_map<std::string, const Parsing::ParseTree*> mp);
+  Parsing::ParseTree* replaceVarsByTerms(const Parsing::ParseTree* x, const std::unordered_map<std::string, const Parsing::ParseTree*> mp);
 };
 
 #endif // MU_HPP_

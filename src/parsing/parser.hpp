@@ -5,7 +5,6 @@
 
 #include <optional>
 #include <variant>
-#include <functional>
 #include <core/base.hpp>
 #include "lexer.hpp"
 
@@ -48,19 +47,17 @@ namespace Parsing {
     Symbol startSymbol;
 
     // Token stream
-    Lexer* lexer;
+    Lexer& lexer;
     // Ignored token ID
     optional<Symbol> ignoredSymbol;
 
-    EarleyParser(Lexer* lexer):
+    // The given Lexer reference must be valid over the EarleyParser's lifetime.
+    EarleyParser(Lexer& lexer):
       rules(), startSymbol(0), lexer(lexer), ignoredSymbol(),
       numSymbols(0), nullableRule(), sorted(), firstRule(), totalLength(),
       sentence(), dpa(), errors(), ambiguities() {}
-    EarleyParser(const EarleyParser&) = default;
-    EarleyParser& operator=(const EarleyParser&) = default;
-    virtual ~EarleyParser() = default;
 
-    bool eof() const noexcept { return lexer->eof(); }
+    bool eof() const noexcept { return lexer.eof(); }
 
     // Constructs a parse tree for `startSymbol`. Returns `nullptr` if reached end-of-file.
     // All errors will be logged
@@ -89,12 +86,10 @@ namespace Parsing {
       bool ambiguous;
     };
 
-    // Maintained states (TODO: maintain?)
+    // Ephemeral states
     Symbol numSymbols;
     vector<optional<size_t>> nullableRule;
     vector<size_t> sorted, firstRule, totalLength;
-
-    // Ephemeral states
     vector<ParseTree> sentence;
     vector<vector<LinkedState>> dpa;
 

@@ -224,7 +224,7 @@ namespace Parsing {
     struct Class { size_t size; List* head; bool isDist; };
     struct Identity { size_t cl; List* ptr; };
 
-    // Ephemeral states (I put these here only to unclutter the main function...)
+    // Ephemeral states
     vector<vector<pair<unsigned char, State>>> rev; // Reverse edges
     vector<Class> cl;                   // Classes (size, pointer to head, is used as distinguisher set)
     vector<Identity> id;                // Identities (class index, pointer to list)

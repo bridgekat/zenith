@@ -5,6 +5,7 @@
 #include <core/base.hpp>
 #include "parser.hpp"
 
+
 namespace Parsing {
 
   using std::unordered_map;
@@ -20,22 +21,29 @@ namespace Parsing {
 
   ParseTree* EarleyParser::nextSentence(Core::Allocator<ParseTree>& pool) {
     optional<ErrorInfo> error;
-    size_t pos = lexer->position();
+    // size_t pos = lexer->position();
     process();
     while (!eof()) {
       auto opt = run();
       if (opt) {
         if (error) errors.push_back(*error);
         if (opt->first.pos == 0) throw Core::Unreachable("EarleyParser: nullable sentences can be problematic");
-        lexer->setPosition(opt->second);
+        lexer.setPosition(opt->second);
         return getParseTree(opt->first, pool);
       }
       // !opt
       if (!error) error = lastError();
+      /*
       lexer->setPosition(pos);
       auto tok = lexer->nextToken();
       while (tok && tok->id == ignoredSymbol) tok = lexer->nextToken();
       pos = lexer->position();
+      */
+      if (sentence.size() > 1) {
+        lexer.setPosition(sentence.back().startPos);
+      } else {
+        // No need to backtrack (otherwise infinite loop could occur)
+      }
     }
     // eof()
     if (error) errors.push_back(*error);
@@ -124,12 +132,12 @@ namespace Parsing {
       }
     } while (updates);
 
-    // Sort all rules by nonterminal id (for faster access in `run()`)
+    // Sort all rules by nonterminal ID (for faster access in `run()`)
     sorted.clear();
     for (size_t i = 0; i < m; i++) sorted.push_back(i);
     std::sort(sorted.begin(), sorted.end(), [this] (size_t a, size_t b) { return rules[a].lhs < rules[b].lhs; });
 
-    // For each nonterminal find the id of its first production rule (for faster access in `run()`, if none then set to `m`)
+    // For each nonterminal find the index of its first production rule (for faster access in `run()`, if none then set to `m`)
     // Also accumulate the lengths of RHS (plus one) of the production rules (for better hashing in `run()`)
     firstRule = vector<size_t>(numSymbols, m);
     totalLength = vector<size_t>(m, 0);
@@ -143,7 +151,6 @@ namespace Parsing {
   // Pre: `numSymbols`, `nullableRule`, `sorted`, `firstRule` and `totalLength` must be
   //   consistent with currently active rules.
   optional<pair<EarleyParser::Location, size_t>> EarleyParser::run() {
-    const size_t m = rules.size();
     optional<pair<Location, size_t>> res = nullopt;
 
     sentence.clear();
@@ -159,7 +166,7 @@ namespace Parsing {
 
     // Initial states
     dpa.emplace_back();
-    for (size_t i = firstRule[startSymbol]; i < m && rules[sorted[i]].lhs == startSymbol; i++) {
+    for (size_t i = firstRule[startSymbol]; i < sorted.size() && rules[sorted[i]].lhs == startSymbol; i++) {
       if (!rules[sorted[i]].active) continue;
       State s{ 0, sorted[i], 0 };
       mp[s] = dpa[0].size();
@@ -181,7 +188,7 @@ namespace Parsing {
             isAdded[sym] = true;
             added.push_back(sym);
             // Add all active rules for `sym`
-            for (size_t j = firstRule[sym]; j < m && rules[sorted[j]].lhs == sym; j++) {
+            for (size_t j = firstRule[sym]; j < sorted.size() && rules[sorted[j]].lhs == sym; j++) {
               if (!rules[sorted[j]].active) continue;
               State ss{ pos, sorted[j], 0 };
               if (!mp.contains(ss)) {
@@ -207,8 +214,6 @@ namespace Parsing {
           // Perform nonempty completion
           if (derived.empty()) continue;
           Symbol lhs = rules[s.ruleIndex].lhs;
-          // (TODO: optimize this loop for better time complexity bounds on unambiguous grammars?)
-          // (Or maybe too many heap allocations will make it slower in practice?)
           for (size_t j = 0; j < dpa[s.startPos].size(); j++) {
             State t = dpa[s.startPos][j].state;
             const auto& tderived = rules[t.ruleIndex].rhs;
@@ -236,14 +241,14 @@ namespace Parsing {
         const State& s = dpa[pos][i].state;
         const Rule& rule = rules[s.ruleIndex];
         if (s.startPos == 0 && rule.lhs == startSymbol && s.rulePos == rule.rhs.size()) {
-          res = { { pos, i }, lexer->position() };
+          res = { { pos, i }, lexer.position() };
           break;
         }
       }
 
       // Advance to next position
-      auto opt = lexer->nextToken();
-      while (opt && opt->id == ignoredSymbol) opt = lexer->nextToken();
+      auto opt = lexer.nextToken();
+      while (opt && opt->id == ignoredSymbol) opt = lexer.nextToken();
       if (!opt) break;
       ParseTree tok = *opt;
       sentence.push_back(tok);
@@ -293,7 +298,7 @@ namespace Parsing {
     *              = O(|G|n) for unambiguous (iterating through states = O(|G|n), total states added = O(|G|n))
     *   Scanning   = O(|G|n) (iterating through states = O(|G|n))
     * Overall: O(|G|²n³)
-    *          O(|G|n²) for unambiguous
+    *          O(|G|n²) for unambiguous (*)
     */
 
     return res;

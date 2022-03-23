@@ -1,4 +1,4 @@
-// Parsing :: Language
+// Parsing :: SymbolName, Language
 
 #ifndef LANGUAGE_HPP_
 #define LANGUAGE_HPP_
@@ -47,7 +47,7 @@ namespace Parsing {
   };
 
   // Inherit from this class to create new languages.
-  class Language: protected NFALexer, protected EarleyParser {
+  class Language {
   public:
     struct ParsingErrorException: public std::runtime_error {
       size_t startPos, endPos;
@@ -67,12 +67,18 @@ namespace Parsing {
     unordered_map<std::type_index, Symbol> mp;
     Core::Allocator<ParseTree> pool;
 
-    Language(): NFALexer(), EarleyParser(this), symbols(), mp(), pool() {}
+    NFALexer lexer;
+    EarleyParser parser;
+
+    Language(): symbols(), mp(), pool(), lexer(), parser(lexer) {}
 
     // Get symbol index for type; insert new nonterminal symbol if not already present
     template <typename T>
     Symbol getSymbol() { return getSymbol(typeid(T)); }
     Symbol getSymbol(std::type_index tid);
+
+    // For dynamically added symbols
+    Symbol newSymbol(const string& name, std::function<std::any(const ParseTree*)> action);
 
     // Set as ignored symbol; can only be called at most once currently.
     template <typename T>
@@ -82,7 +88,7 @@ namespace Parsing {
     // Add pattern for terminal symbol.
     // `addPattern` (*) -> `addPatternImpl`
     template <typename T>
-    Symbol addPattern(T action, NFA pattern) {
+    Symbol addPattern(T action, NFALexer::NFA pattern) {
       using U = LambdaConverter<T>;
       return addPatternImpl(
         SymbolName<typename U::ReturnType>::get(),
@@ -153,11 +159,8 @@ namespace Parsing {
       return std::any_cast<ReturnType>(symbols[start].action(x));
     }
 
-    // (For dynamically added symbols)
-    Symbol newSymbol(const string& name, std::function<std::any(const ParseTree*)> action);
-
     // Keep most of the code untemplated to avoid slowing down compilation
-    Symbol addPatternImpl(const string& name, Symbol sym, NFA pattern, std::function<std::any(const ParseTree*)> action);
+    Symbol addPatternImpl(const string& name, Symbol sym, NFALexer::NFA pattern, std::function<std::any(const ParseTree*)> action);
     size_t addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action);
     ParseTree* nextSentenceImpl(Symbol start);
 
