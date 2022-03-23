@@ -1,4 +1,4 @@
-// Parsing :: EarleyParser, TemplatedParser
+// Parsing :: Rule, EarleyParser
 
 #ifndef PARSER_HPP_
 #define PARSER_HPP_
@@ -29,7 +29,6 @@ namespace Parsing {
   // For more details see implementation (`parser.cpp`).
   class EarleyParser {
   public:
-    // Error information
     struct ErrorInfo {
       size_t startPos, endPos;
       vector<Symbol> expected;
@@ -37,7 +36,6 @@ namespace Parsing {
       ErrorInfo(size_t startPos, size_t endPos, const vector<Symbol>& expected, const optional<Symbol>& got):
         startPos(startPos), endPos(endPos), expected(expected), got(got) {}
     };
-    // Ambiguity information
     struct AmbiguityInfo {
       size_t startPos, endPos;
       AmbiguityInfo(size_t startPos, size_t endPos):
@@ -48,19 +46,6 @@ namespace Parsing {
     vector<Rule> rules;
     // Starting symbol
     Symbol startSymbol;
-    // Optional symbol for erroneous substrings. Will be used for error recovery.
-    optional<Symbol> errorSymbol;
-
-    // For external hacks. Currently allowed operations:
-    //   1. ADDING symbols/rules, or
-    //   2. MARKING existing rules inactive during a parse.
-    // Optional token for the "special handler" (e.g. preprocessor).
-    optional<Symbol> specialSymbol;
-    // The "special handler" called upon encountering `specialSymbol`.
-    // Returns whether `this` is modified.
-    // Note: currently, marking nullable rules as invalid does NOT prevent their further use.
-    //   This has little effect in practice, and fixing it would cause too much trouble...
-    std::function<bool(ParseTree*, EarleyParser*)> specialHandler;
 
     // Token stream
     Lexer* lexer;
@@ -68,15 +53,18 @@ namespace Parsing {
     optional<Symbol> ignoredSymbol;
 
     EarleyParser(Lexer* lexer):
-      rules(), startSymbol(0), errorSymbol(), specialSymbol(), specialHandler(), lexer(lexer), ignoredSymbol(),
-      str(), nullable(), dpa(), fin(), error(false), errors(), ambiguities() {}
+      rules(), startSymbol(0), lexer(lexer), ignoredSymbol(),
+      numSymbols(0), nullableRule(), sorted(), firstRule(), totalLength(),
+      sentence(), dpa(), errors(), ambiguities() {}
     EarleyParser(const EarleyParser&) = default;
     EarleyParser& operator=(const EarleyParser&) = default;
     virtual ~EarleyParser() = default;
 
-    // Constructs a parse tree for the `startSymbol`. Returns `nullptr` if unable to recover from errors.
+    bool eof() const noexcept { return lexer->eof(); }
+
+    // Constructs a parse tree for `startSymbol`. Returns `nullptr` if reached end-of-file.
     // All errors will be logged
-    ParseTree* parse(Core::Allocator<ParseTree>& pool);
+    ParseTree* nextSentence(Core::Allocator<ParseTree>& pool);
     // Get and clear error log
     vector<ErrorInfo> popErrors();
     vector<AmbiguityInfo> popAmbiguities();
@@ -92,36 +80,36 @@ namespace Parsing {
     };
     // Location in DP array
     struct Location { size_t pos, i; };
-    // Empty or error child
-    struct EmptyChild {};
-    struct ErrorChild {};
     // State with transition source links
     struct LinkedState {
       State state;
       optional<Location> prev;
-      variant<Location, Token, EmptyChild, ErrorChild, monostate> child;
+      variant<Location, ParseTree, monostate> child;
       // TODO: store more information about ambiguity? (e.g. at least one alternative parse)
       bool ambiguous;
     };
 
+    // Maintained states (TODO: maintain?)
+    Symbol numSymbols;
+    vector<optional<size_t>> nullableRule;
+    vector<size_t> sorted, firstRule, totalLength;
+
     // Ephemeral states
-    vector<Token> str;
-    vector<optional<size_t>> nullable;
+    vector<ParseTree> sentence;
     vector<vector<LinkedState>> dpa;
-    optional<Location> fin;
-    bool error;
+
     vector<ErrorInfo> errors;
     vector<AmbiguityInfo> ambiguities;
 
     // The parsing algorithm
     size_t toCharsStart(size_t pos) const noexcept;
     size_t toCharsEnd(size_t pos) const noexcept;
-    void logError(size_t pos, size_t endPos);
-    void run(Core::Allocator<ParseTree>& pool);
+    optional<ErrorInfo> lastError();
+    void process();
+    optional<pair<Location, size_t>> run();
 
     // Parse tree generation
     ParseTree* nullParseTree(size_t pos, Symbol id, Core::Allocator<ParseTree>& pool) const;
-    ParseTree* errorParseTree(size_t startPos, size_t endPos, Core::Allocator<ParseTree>& pool) const;
     ParseTree* getParseTree(Location loc, Core::Allocator<ParseTree>& pool);
 
     // Debug output

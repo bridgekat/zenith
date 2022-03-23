@@ -1,4 +1,4 @@
-// Parsing :: Token, TokenID, NFALexer, DFALexer
+// Parsing :: Symbol, ParseTree, Lexer, NFALexer, DFALexer
 
 #ifndef LEXER_HPP_
 #define LEXER_HPP_
@@ -21,22 +21,19 @@ namespace Parsing {
   // Symbol ID
   using Symbol = unsigned int;
 
-  // Parse tree node
+  // Parse tree node (also used as tokens)
   struct ParseTree {
     ParseTree* s, * c;
     Symbol id;
-    optional<string> lexeme;    // Terminal symbols (tokens) only
-    optional<size_t> ruleIndex; // Nonterminal symbols only
-    size_t startPos, endPos;    // Measured in characters: [startPos, endPos)
+    optional<string> lexeme;       // Terminal symbols only
+    optional<size_t> patternIndex; // Terminal symbols only
+    optional<size_t> ruleIndex;    // Nonterminal symbols only
+    size_t startPos, endPos;       // Measured in characters: [startPos, endPos)
   };
-
-  // Also used as lexer token
-  using Token = ParseTree;
 
   // A common (abstract) base class for lexers.
   class Lexer {
   public:
-    // Error information
     struct ErrorInfo {
       size_t startPos, endPos;
       string lexeme;
@@ -46,11 +43,13 @@ namespace Parsing {
 
     virtual ~Lexer() = default;
 
+    bool eof() const noexcept { return pos >= rest.size(); }
+    size_t position() const noexcept { return pos; }
+    void setPosition(size_t p) noexcept { pos = p; }
     void setString(const string& s) { pos = 0; rest = s; }
-    bool eof() const noexcept { return rest.empty(); }
 
     // All errors will be logged
-    optional<Token> getNextToken();
+    optional<ParseTree> nextToken();
     // Get and clear error log
     vector<ErrorInfo> popErrors();
 
@@ -62,8 +61,10 @@ namespace Parsing {
     string rest;
     vector<ErrorInfo> errors;
 
-    // Returns longest match in the form of (length, token)
-    virtual optional<pair<size_t, Symbol>> run(const string& s) const = 0;
+    // Returns longest match in the form of (length, pattern ID)
+    virtual optional<pair<size_t, size_t>> run(const string& s, size_t pos) const = 0;
+    // Returns the corresponding symbol ID for a given pattern ID
+    virtual Symbol patternSymbol(size_t id) const = 0;
   };
 
   // Implementation based on NFA. You may add patterns after construction.
@@ -72,18 +73,29 @@ namespace Parsing {
     typedef unsigned int State;
     typedef pair<State, State> NFA;
 
-    // Create initial state
-    NFALexer(): Lexer(), table(), initial(0) { table.emplace_back(); }
+    NFALexer(): Lexer(), table(), patterns() {}
 
     #define node(x) State x = table.size(); table.emplace_back()
     #define trans(s, c, t) table[s].tr.emplace_back(c, t)
 
     // Add pattern (mark accepting state)
-    // Patterns with larger IDs have higher priority
-    void addPattern(Symbol id, NFA nfa) {
-      trans(initial, 0, nfa.first);
+    // Returns pattern ID
+    size_t addPattern(Symbol sym, NFA nfa) {
+      size_t id = patterns.size();
       auto& o = table[nfa.second].ac;
-      if (!o || *o < id) o = id;
+      if (o) throw Core::Unreachable("NFALexer: accepting state already marked (NFA already used)");
+      o = id;
+      patterns.emplace_back(nfa.first, sym, true);
+      return id;
+    }
+
+    // Returns true if pattern was previously active
+    // Other pattern IDs are unaffected
+    bool removePattern(size_t id) {
+      if (id >= patterns.size()) throw Core::Unreachable("NFALexer: index out of range");
+      if (!patterns[id].active) return false;
+      patterns[id].active = false;
+      return true;
     }
 
     // Some useful pattern constructors (equivalent to regexes)
@@ -146,21 +158,26 @@ namespace Parsing {
     #undef trans
 
     // Returns the size of the table
-    size_t tableSize() { return table.size(); }
+    size_t tableSize() const noexcept { return table.size(); }
 
   private:
     // The transition & accepting state table
     struct Entry {
       vector<pair<unsigned char, State>> tr;
-      optional<Symbol> ac;
+      optional<size_t> ac;
       Entry(): tr(), ac() {}
     };
     vector<Entry> table;
-    // The initial state
-    State initial;
+    // The list of patterns
+    struct Pattern {
+      State initial;
+      Symbol sym;
+      bool active = true;
+    };
+    vector<Pattern> patterns;
 
-    // Returns longest match in the form of (length, token)
-    optional<pair<size_t, Symbol>> run(const string& s) const override;
+    optional<pair<size_t, size_t>> run(const string& s, size_t pos) const override;
+    Symbol patternSymbol(size_t id) const override { return patterns[id].sym; }
 
     friend class PowersetConstruction;
   };
@@ -177,7 +194,7 @@ namespace Parsing {
     void optimize();
 
     // Returns the size of the table
-    size_t tableSize() { return table.size(); }
+    size_t tableSize() const noexcept { return table.size(); }
 
     // Convert lexer DFA to TextMate grammar JSON (based on regular expressions)
     // Following: https://macromates.com/manual/en/regular_expressions (only a simple subset is used)
@@ -189,15 +206,17 @@ namespace Parsing {
     struct Entry {
       bool has[0x100];
       State tr[0x100];
-      optional<Symbol> ac;
+      optional<size_t> ac;
       Entry(): has{}, tr{}, ac() {}
     };
     vector<Entry> table;
     // The initial state
     State initial;
+    // Mapping from pattern ID to symbol ID
+    vector<Symbol> patternSymbols;
 
-    // Returns longest match in the form of (length, token)
-    optional<pair<size_t, Symbol>> run(const string& s) const override;
+    optional<pair<size_t, size_t>> run(const string& s, size_t pos) const override;
+    Symbol patternSymbol(size_t id) const override { return patternSymbols[id]; }
 
     friend class PowersetConstruction;
     friend class PartitionRefinement;

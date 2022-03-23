@@ -79,8 +79,6 @@ symbol(Identifier) { string name; };
 
 // Nonterminal symbols
 
-symbol(Error) {};
-
 symbol(Var) { Core::Expr* e; };
 symbol(Vars) { vector<Core::Expr*> es; };
 symbol(Term100) { Core::Expr* e; };
@@ -116,15 +114,12 @@ symbol(OptName) { optional<string> name; };
 symbol(OptSemicolon) {};
 symbol(Assertion) {};
 
-symbol(Decl) {};
-symbol(Block) {};
-symbol(Decls) {};
+symbol(MacroRuleSymbol) { pair<bool, string> s; };
+symbol(MacroRule) { vector<pair<bool, string>> ss; };
+symbol(MacroDef) {};
+symbol(MacroUndef) {};
 
-symbol(MetaSymbol) { pair<bool, string> s; };
-symbol(MetaPattern) { vector<pair<bool, string>> ss; };
-symbol(MetaDef) {};
-symbol(MetaUndef) {};
-symbol(Meta) { bool isSpecial; };
+symbol(Decl) {};
 
 #undef symbol
 
@@ -168,71 +163,56 @@ Mu::Mu() {
 
   #define trivial(T) [] (const string&) -> T { return {}; }
 
-  setPattern([] (const string& lexeme) -> Natural { return { static_cast<uint32_t>(std::stoi(lexeme)) }; },
+  addPattern([] (const string& lexeme) -> Natural { return { static_cast<uint32_t>(std::stoi(lexeme)) }; },
     alt({ star(range('0', '9')),
           concat(ch({ '0' }), ch({ 'x', 'X' }), star(alt({ range('0', '9'), range('a', 'f'), range('A', 'F') }))) }));
-  setPattern([] (const string& lexeme) -> String { return { lexeme.substr(1, lexeme.size() - 2) }; },
+  addPattern([] (const string& lexeme) -> String { return { lexeme.substr(1, lexeme.size() - 2) }; },
     concat(ch({ '"' }), star(alt({ except({ '"', '\\' }), concat(ch({ '\\' }), ch({ '"', '\\' })) })), ch({ '"' })));
 
-  setPattern([] (const string& lexeme) -> Identifier { return { lexeme }; },
+  addPattern([] (const string& lexeme) -> Identifier { return { lexeme }; },
     concat(
       alt({ range('a', 'z'), range('A', 'Z'), ch({ '_', '`' }), utf8segment() }),
       star(alt({ range('a', 'z'), range('A', 'Z'), range('0', '9'), ch({ '_', '`', '\'', '.' }), utf8segment() }))));
-  setPattern([] (const string& lexeme) -> Binder { return { lexeme }; },
+  addPattern([] (const string& lexeme) -> Binder { return { lexeme }; },
     alt({ word("forall"), word("exists"), word("unique"), word("forallfunc"), word("forallpred") }));
 
-  setPattern(trivial(KwAny),         word("any"));
-  setPattern(trivial(KwAnyFunc),     word("anyfunc"));
-  setPattern(trivial(KwAnyPred),     word("anypred"));
-  setPattern(trivial(KwAssume),      word("assume"));
-  setPattern(trivial(KwName),        word("name"));
-  setPattern(trivial(KwProof),       word("proof"));
+  addPattern(trivial(KwAny),         word("any"));
+  addPattern(trivial(KwAnyFunc),     word("anyfunc"));
+  addPattern(trivial(KwAnyPred),     word("anypred"));
+  addPattern(trivial(KwAssume),      word("assume"));
+  addPattern(trivial(KwName),        word("name"));
+  addPattern(trivial(KwProof),       word("proof"));
 
-  setPattern(trivial(KwMetaDef),     word("#def"));
-  setPattern(trivial(KwMetaUndef),   word("#undef"));
+  addPattern(trivial(KwMetaDef),     word("#def"));
+  addPattern(trivial(KwMetaUndef),   word("#undef"));
 
-  setPattern([] (const string& lexeme) -> Infix80 { return { lexeme }; }, ch({ '*', '\\', '%', '^', }));
-  setPattern([] (const string& lexeme) -> Infix60 { return { lexeme }; }, ch({ '+', '-' }));
-  setPattern([] (const string& lexeme) -> Infix40 { return { lexeme }; }, alt({ ch({ '=', '<', '>' }), word("!="), word(">="), word("<=") }));
-  setPattern([] (const string& lexeme) -> Constant { return { lexeme }; },
+  addPattern([] (const string& lexeme) -> Infix80 { return { lexeme }; }, ch({ '*', '\\', '%', '^', }));
+  addPattern([] (const string& lexeme) -> Infix60 { return { lexeme }; }, ch({ '+', '-' }));
+  addPattern([] (const string& lexeme) -> Infix40 { return { lexeme }; }, alt({ ch({ '=', '<', '>' }), word("!="), word(">="), word("<=") }));
+  addPattern([] (const string& lexeme) -> Constant { return { lexeme }; },
     alt({ word("true"), word("false") }));
-  setPattern([] (const string& lexeme) -> Prefix30 { return { lexeme }; },
+  addPattern([] (const string& lexeme) -> Prefix30 { return { lexeme }; },
     alt({ word("not") }));
-  setPattern([] (const string& lexeme) -> Infix20 { return { lexeme }; },
+  addPattern([] (const string& lexeme) -> Infix20 { return { lexeme }; },
     alt({ word("and"), word("or"), word("implies"), word("iff"), word("->"), word("<->") }));
 
-  setPattern(trivial(OpComma),       word(","));
-  setPattern(trivial(OpSemicolon),   word(";"));
-  setPattern(trivial(OpLParen),      word("("));
-  setPattern(trivial(OpRParen),      word(")"));
-  setPattern(trivial(OpLBrace),      word("{"));
-  setPattern(trivial(OpRBrace),      word("}"));
-  setPattern(trivial(OpRRArrow),     word("=>"));
-  setPattern(trivial(OpSlash),       word("/"));
-  setPattern(trivial(OpVertBar),     word("|"));
-  setPattern(trivial(OpColonEq),     word(":="));
-  
-  /*
-  setPattern(trivial(Blank), star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })));
-  setPattern(trivial(LineComment), concat(word("//"), star(except({ '\r', '\n' }))));
-  setPattern(trivial(BlockComment),
+  addPattern(trivial(OpComma),       word(","));
+  addPattern(trivial(OpSemicolon),   word(";"));
+  addPattern(trivial(OpLParen),      word("("));
+  addPattern(trivial(OpRParen),      word(")"));
+  addPattern(trivial(OpLBrace),      word("{"));
+  addPattern(trivial(OpRBrace),      word("}"));
+  addPattern(trivial(OpRRArrow),     word("=>"));
+  addPattern(trivial(OpSlash),       word("/"));
+  addPattern(trivial(OpVertBar),     word("|"));
+  addPattern(trivial(OpColonEq),     word(":="));
+
+  addPattern(trivial(Blank), star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })));
+  addPattern(trivial(Blank), concat(word("//"), star(except({ '\r', '\n' }))));
+  addPattern(trivial(Blank),
     concat(word("/*"),
       star(concat(star(except({ '*' })), plus(ch({ '*' })), except({ '/' }))),
                   star(except({ '*' })), plus(ch({ '*' })), ch({ '/' })));
-  */
-  /*
-  setPattern(trivial(Directive),
-    concat(ch({ '\r', '\n' }), star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })),
-      ch({ '#' }), star(except({ '\r', '\n' }))));
-  */
-
-  setPattern(trivial(Blank), alt({
-    star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })),
-    concat(word("//"), star(except({ '\r', '\n' }))),
-    concat(word("/*"),
-      star(concat(star(except({ '*' })), plus(ch({ '*' })), except({ '/' }))),
-                  star(except({ '*' })), plus(ch({ '*' })), ch({ '/' }))
-  }));
 
   setAsIgnoredSymbol<Blank>();
 
@@ -277,9 +257,9 @@ Mu::Mu() {
   });
 
   addRule([]     (Term100&& t)                              -> Term80 { return { t.e }; });
-  addRule([this] (Term80&& lhs, Infix80&&, Term100&& rhs)   -> Term80 { return { makeExpr(Core::Expr::FREE, op1, vector<Core::Expr*>{ lhs.e, rhs.e }) }; }); // TODO: lookup table
+  addRule([this] (Term80&& lhs, Infix80&&, Term100&& rhs)   -> Term80 { return { makeExpr(Core::Expr::FREE, ctx.eq, vector<Core::Expr*>{ lhs.e, rhs.e }) }; }); // TODO: lookup table
   addRule([]     (Term80&& t)                               -> Term60 { return { t.e }; });
-  addRule([this] (Term60&& lhs, Infix60&&, Term80&& rhs)    -> Term60 { return { makeExpr(Core::Expr::FREE, op1, vector<Core::Expr*>{ lhs.e, rhs.e }) }; });
+  addRule([this] (Term60&& lhs, Infix60&&, Term80&& rhs)    -> Term60 { return { makeExpr(Core::Expr::FREE, ctx.eq, vector<Core::Expr*>{ lhs.e, rhs.e }) }; });
   addRule([]     (Term60&& t)                               -> Term40 { return { t.e }; });
   addRule([this] (Term40&& lhs, Infix40&&, Term60&& rhs)    -> Term40 { return { makeExpr(Core::Expr::FREE, ctx.eq, vector<Core::Expr*>{ lhs.e, rhs.e }) }; });
   addRule([]     (Term40&& t)                               -> Term30 { return { t.e }; });
@@ -338,7 +318,7 @@ Mu::Mu() {
   addRule([]     (Term10Suffix&& t)                         -> Term10OrSuffix { return { t.e }; });
   addRule([]     (Term10&& t)                               -> Term10OrSuffix { return { t.e }; });
   // TEMP CODE
-  addRuleFor<Term10, Prefix30, Term10Suffix>([this] (const ParseTree* x) -> Term10 {
+  addRuleFor<Term10Suffix, Prefix30, Term10Suffix>([this] (const ParseTree* x) -> Term10Suffix {
     auto op = getChild<Prefix30>(x, 0);
     auto t = getChild<Term10Suffix>(x, 1);
     if (op.name == "not") return { makeExpr(Core::Expr::NOT, t.e) };
@@ -382,11 +362,11 @@ Mu::Mu() {
   addRule([]     (NewVar&& v)                        -> NewVars { return { { v.name } }; });
   addRule([]     (NewVars&& vs, OpComma)             -> NewVars { return vs; });
   addRule([]     (NewVars&& vs, OpComma, NewVar&& v) -> NewVars { vs.names.push_back(v.name); return vs; });
-  addRuleFor<Any, KwAny, NewVars, Decl>([this] (const ParseTree* x) -> Any {
+  addRuleFor<Any, KwAny, NewVars>([this] (const ParseTree* x) -> Any {
     auto names = getChild<NewVars>(x, 1).names;
     for (auto& name: names) ctx.pushVar(name, Core::Type{{ 0, Core::Sort::SVAR }});
-    getChild<Decl>(x, 2);
-    for (size_t i = 0; i < names.size(); i++) ctx.pop(exprs);
+    scopes.emplace_back(names.size(), 0);
+    immediate = true;
     return {};
   });
 
@@ -394,18 +374,18 @@ Mu::Mu() {
   addRule([]     (NewArity&& f)                           -> NewArities { return { { { f.name, f.arity } } }; });
   addRule([]     (NewArities&& fs, OpComma)               -> NewArities { return fs; });
   addRule([]     (NewArities&& fs, OpComma, NewArity&& f) -> NewArities { fs.names.emplace_back(f.name, f.arity); return fs; });
-  addRuleFor<AnyFunc, KwAnyFunc, NewArities, Decl>([this] (const ParseTree* x) -> AnyFunc {
+  addRuleFor<AnyFunc, KwAnyFunc, NewArities>([this] (const ParseTree* x) -> AnyFunc {
     auto fs = getChild<NewArities>(x, 1).names;
     for (auto& [name, arity]: fs) ctx.pushVar(name, Core::Type{{ arity, Core::Sort::SVAR }});
-    getChild<Decl>(x, 2);
-    for (size_t i = 0; i < fs.size(); i++) ctx.pop(exprs);
+    scopes.emplace_back(fs.size(), 0);
+    immediate = true;
     return {};
   });
-  addRuleFor<AnyPred, KwAnyPred, NewArities, Decl>([this] (const ParseTree* x) -> AnyPred {
+  addRuleFor<AnyPred, KwAnyPred, NewArities>([this] (const ParseTree* x) -> AnyPred {
     auto ps = getChild<NewArities>(x, 1).names;
     for (auto& [name, arity]: ps) ctx.pushVar(name, Core::Type{{ arity, Core::Sort::SPROP }});
-    getChild<Decl>(x, 2);
-    for (size_t i = 0; i < ps.size(); i++) ctx.pop(exprs);
+    scopes.emplace_back(ps.size(), 0);
+    immediate = true;
     return {};
   });
 
@@ -413,56 +393,37 @@ Mu::Mu() {
   addRule([]     (Assumption&& a)                            -> Assumptions { return { { { a.name, a.expr } } }; });
   addRule([]     (Assumptions&& as, OpComma)                 -> Assumptions { return as; });
   addRule([]     (Assumptions&& as, OpComma, Assumption&& a) -> Assumptions { as.as.emplace_back(a.name, a.expr); return as; });
-  addRuleFor<Assume, KwAssume, Assumptions, Decl>([this] (const ParseTree* x) -> Assume {
+  addRuleFor<Assume, KwAssume, Assumptions>([this] (const ParseTree* x) -> Assume {
     auto as = getChild<Assumptions>(x, 1).as;
     for (auto& [name, e]: as) ctx.pushAssumption(name, e);
-    getChild<Decl>(x, 2);
-    for (size_t i = 0; i < as.size(); i++) ctx.pop(exprs);
+    scopes.emplace_back(as.size(), 0);
+    immediate = true;
     return {};
   });
 
-  addRule([]     ()                                                       -> OptRRArrow { return {}; });
-  addRule([]     (OpRRArrow)                                              -> OptRRArrow { return {}; });
-  addRule([]     ()                                                       -> OptProof { return { nullopt }; });
-  addRule([]     (KwProof, Proof&& pf)                                    -> OptProof { return { pf.pf }; });
-  addRule([]     ()                                                       -> OptName { return { nullopt }; });
-  addRule([]     (KwName, Identifier&& id)                                -> OptName { return { id.name }; });
-  addRule([]     ()                                                       -> OptSemicolon { return {}; });
-  addRule([]     (OpSemicolon)                                            -> OptSemicolon { return {}; });
-  // Using `OptSemicolon` will cause too much ambiguity...
-  addRule([this] (OptRRArrow, Expr&&, OptName&&, OptProof&&, OpSemicolon) -> Assertion {
+  addRule([]     ()                        -> OptRRArrow { return {}; });
+  addRule([]     (OpRRArrow)               -> OptRRArrow { return {}; });
+  addRule([]     ()                        -> OptProof { return { nullopt }; });
+  addRule([]     (KwProof, Proof&& pf)     -> OptProof { return { pf.pf }; });
+  addRule([]     ()                        -> OptName { return { nullopt }; });
+  addRule([]     (KwName, Identifier&& id) -> OptName { return { id.name }; });
+  addRule([]     ()                        -> OptSemicolon { return {}; });
+  addRule([]     (OpSemicolon)             -> OptSemicolon { return {}; });
+  addRule([this] (OptRRArrow, Expr&&, OptName&&, OptProof&&, OptSemicolon) -> Assertion {
     // TODO: verify or start tableau thread
     return {};
   });
 
-  // To generate verifiable `Decl`s, complete these actions
-  // Currently omitted for clarity
-  addRule([]     (Block)                     -> Decl { return {}; });
-  addRule([]     (Assertion)                 -> Decl { return {}; });
-  addRule([]     (Assume)                    -> Decl { return {}; });
-  addRule([]     (Any)                       -> Decl { return {}; });
-  addRule([]     (AnyFunc)                   -> Decl { return {}; });
-  addRule([]     (AnyPred)                   -> Decl { return {}; });
-  addRule([]     (OpLBrace, Decls, OpRBrace) -> Block { return {}; });
-  addRule([]     ()                          -> Decls { return {}; });
-  addRuleFor<Decls, Decls, Decl>([this] (const ParseTree* x) -> Decls {
-    getChild<Decls>(x, 0);
-    try { getChild<Decl>(x, 1); } catch (AnalysisErrorException& ex) { errors.push_back(ex); }
-    return {};
-  });
-
-  // Directive rules (used separately)
-  addRule([]     (String&& s)                       -> MetaSymbol { return { { true, s.data } }; });
-  addRule([]     (Identifier&& s)                   -> MetaSymbol { return { { false, s.name } }; });
-  addRule([]     (MetaSymbol&& s)                   -> MetaPattern { return { { s.s } }; });
-  addRule([]     (MetaPattern&& ss, MetaSymbol&& s) -> MetaPattern { ss.ss.push_back(s.s); return ss; });
-  addRuleFor<MetaDef, KwMetaDef, MetaPattern, OpColonEq, Term, KwName, Identifier, OptSemicolon>([this] (const ParseTree* x) -> MetaDef {
-    auto pattern = getChild<MetaPattern>(x, 1).ss;
+  addRule([]     (String&& s)                          -> MacroRuleSymbol { return { { true, s.data } }; });
+  addRule([]     (Identifier&& s)                      -> MacroRuleSymbol { return { { false, s.name } }; });
+  addRule([]     (MacroRuleSymbol&& s)                 -> MacroRule { return { { s.s } }; });
+  addRule([]     (MacroRule&& ss, MacroRuleSymbol&& s) -> MacroRule { ss.ss.push_back(s.s); return ss; });
+  addRuleFor<MacroDef, KwMetaDef, MacroRule, OpColonEq, Term30, KwName, Identifier, OptSemicolon>([this] (const ParseTree* x) -> MacroDef {
+    auto pattern = getChild<MacroRule>(x, 1).ss;
     string rulename = getChild<Identifier>(x, 5).name;
     const ParseTree* term = x->c->s->s->s;
     std::unordered_map<string, size_t> positions;
     // Generate new production rule from the given pattern
-    Parsing::Symbol lhs = getSymbol<Term>();
     vector<Parsing::Symbol> rhs;
     for (size_t i = 0; i < pattern.size(); i++) {
       string name = pattern[i].second;
@@ -470,7 +431,7 @@ Mu::Mu() {
         // Terminal (TODO: pattern removal from lexer...)
         if (!terminals.contains(name)) {
           Parsing::Symbol sym = newSymbol(name, [] (const ParseTree*) -> std::any { return {}; });
-          // setPatternImpl(name, sym, word(name), [] (const ParseTree*) -> std::any { return {}; });
+          // addPatternImpl(name, sym, word(name), [] (const ParseTree*) -> std::any { return {}; });
           NFALexer::addPattern(sym, word(name));
           terminals[name] = sym;
         }
@@ -482,7 +443,7 @@ Mu::Mu() {
       }
     }
     // Add handler for this new rule
-    size_t rid = addRuleImpl(symbols[lhs].name, lhs, rhs, [this, term, positions] (const ParseTree* x) -> Term {
+    size_t rid = addRuleImpl("term30", getSymbol<Term30>(), rhs, [this, term, positions] (const ParseTree* x) -> Term30 {
       std::unordered_map<string, const ParseTree*> mp;
       for (auto& [key, val]: positions) {
         const ParseTree* p = x->c;
@@ -490,12 +451,12 @@ Mu::Mu() {
         mp[key] = p;
       }
       ParseTree* transformed = replaceVars(term, mp);
-      return get<Term>(transformed);
+      return get<Term30>(transformed);
     });
     customParsingRules[rulename] = rid;
     return {};
   });
-  addRuleFor<MetaUndef, KwMetaUndef, Identifier, OptSemicolon>([this] (const ParseTree* x) -> MetaUndef {
+  addRuleFor<MacroUndef, KwMetaUndef, Identifier, OptSemicolon>([this] (const ParseTree* x) -> MacroUndef {
     string name = getChild<Identifier>(x, 1).name;
     auto it = customParsingRules.find(name);
     if (it == customParsingRules.end()) {
@@ -506,21 +467,26 @@ Mu::Mu() {
     }
     return {};
   });
-  addRule([]     (MetaDef)                          -> Meta { return { true }; });
-  addRule([]     (MetaUndef)                        -> Meta { return { true }; });
-  addRuleFor<Decl, Meta>([] (const ParseTree*)      -> Decl { return {}; }); // No-op
 
-  EarleyParser::specialSymbol = getSymbol<Meta>();
-  EarleyParser::specialHandler = [this] (const ParseTree* x, EarleyParser*) { return get<Meta>(x).isSpecial; };
+  addRule([]     (Assertion)                 -> Decl { return {}; });
+  addRule([]     (Assume)                    -> Decl { return {}; });
+  addRule([]     (Any)                       -> Decl { return {}; });
+  addRule([]     (AnyFunc)                   -> Decl { return {}; });
+  addRule([]     (AnyPred)                   -> Decl { return {}; });
+  addRule([]     (MacroDef)                  -> Decl { return {}; });
+  addRule([]     (MacroUndef)                -> Decl { return {}; });
 
-  // Error recovery rules
-  addRule([]     (OpRRArrow, Error)          -> Assertion { return {}; });
-  addRule([]     (Error, OpSemicolon)        -> Assertion { return {}; });
-  addRule([]     (KwAssume, Error, Decl)     -> Assume { return {}; });
-  addRule([]     (KwAny, Error, Decl)        -> Any { return {}; });
-  addRule([]     (KwAnyFunc, Error, Decl)    -> AnyFunc { return {}; });
-  addRule([]     (KwAnyPred, Error, Decl)    -> AnyPred { return {}; });
-  addRule([]     (Error)                     -> Decl { return {}; });
+  addRuleFor<Decl, OpLBrace>([this] (const ParseTree*) -> Decl {
+    if (scopes.empty()) throw Core::Unreachable();
+    scopes.back().second++;
+    return {};
+  });
+  addRuleFor<Decl, OpRBrace>([this] (const ParseTree* x) -> Decl {
+    if (scopes.empty()) throw Core::Unreachable();
+    if (scopes.size() == 1 && scopes.back().second <= 1) throw AnalysisErrorException(x, "Unexpected closing brace");
+    scopes.back().second--;
+    return {};
+  });
 
   #undef makeExpr
   #undef makeProof
@@ -530,7 +496,7 @@ Mu::Mu() {
   struct A {};
   struct B {};
 
-  setPattern([] (const string&) -> B { return {}; }, word("$B"));
+  addPattern([] (const string&) -> B { return {}; }, word("$B"));
   addRule([] (A, A) -> A { return {}; });
   addRule([] (B) -> A { return {}; });
   addRule([] (A) -> Expr { return {}; });
@@ -543,8 +509,22 @@ Mu::Mu() {
 // =======================
 
 void Mu::analyze(const string& str) {
-  Language::setAsErrorSymbol<Error>();
-  Language::parse<Decls>(str);
+  scopes.emplace_back(0, 1);
+  NFALexer::setString(str);
+  while (!EarleyParser::eof()) {
+    immediate = false;
+    try {
+      Language::nextSentence<Decl>();
+    } catch (AnalysisErrorException& ex) {
+      errors.push_back(ex);
+    }
+    if (!immediate) {
+      while (!scopes.empty() && scopes.back().second == 0) {
+        for (size_t i = 0; i < scopes.back().first; i++) ctx.pop(exprs);
+        scopes.pop_back();
+      }
+    }
+  }
 }
 
 vector<Mu::AnalysisInfo> Mu::popAnalysisInfo() {

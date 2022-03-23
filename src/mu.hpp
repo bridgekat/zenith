@@ -32,7 +32,8 @@ private:
   Core::Allocator<Core::Proof> proofs{};
 
   Core::Context ctx{};
-  size_t op1{}; // TEMP CODE (for testing infix parsing)
+  bool immediate{};
+  std::vector<std::pair<size_t, size_t>> scopes{};
   std::vector<std::string> boundVars{};
 
   std::unordered_map<std::string, size_t> terminals{};

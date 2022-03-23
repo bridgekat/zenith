@@ -38,10 +38,6 @@ namespace Server {
     void process();
   };
 
-  class LanguageServer: public JSONRPC2Server {
-  public:
-  };
-
 }
 
 #endif // LANGUAGESERVER_HPP_

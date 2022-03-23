@@ -74,23 +74,17 @@ namespace Parsing {
     Symbol getSymbol() { return getSymbol(typeid(T)); }
     Symbol getSymbol(std::type_index tid);
 
-    // Set as error symbol; can only be called at most once currently; do not add other rules to error symbols.
-    template <typename T>
-    void setAsErrorSymbol() { return setAsErrorSymbol(SymbolName<T>::get(), getSymbol<T>(), T{}); }
-    void setAsErrorSymbol(const string& name, Symbol sym, std::any val);
-
     // Set as ignored symbol; can only be called at most once currently.
     template <typename T>
     void setAsIgnoredSymbol() { return setAsIgnoredSymbol(SymbolName<T>::get(), getSymbol<T>()); }
     void setAsIgnoredSymbol(const string& name, Symbol sym);
 
-    // Set pattern for terminal symbol.
-    // This will override old patterns, but not old production rules.
-    // `setPattern` (*) -> `setPatternImpl`
+    // Add pattern for terminal symbol.
+    // `addPattern` (*) -> `addPatternImpl`
     template <typename T>
-    Symbol setPattern(T action, NFA pattern) {
+    Symbol addPattern(T action, NFA pattern) {
       using U = LambdaConverter<T>;
-      return setPatternImpl(
+      return addPatternImpl(
         SymbolName<typename U::ReturnType>::get(),
         getSymbol<typename U::ReturnType>(),
         pattern,
@@ -145,15 +139,15 @@ namespace Parsing {
       return get<ReturnType>(x);
     }
 
-    // Parse with a given initial symbol (type).
-    // `parse` (*) -> `parseImpl`
+    // Parse next sentence with a given initial symbol (type).
+    // `nextSentence` (*) -> `nextSentenceImpl`
     template <typename ReturnType>
-    std::optional<ReturnType> parse(const string& str) {
+    std::optional<ReturnType> nextSentence() {
       std::type_index tid = typeid(ReturnType);
       auto it = mp.find(tid);
       if (it == mp.end()) throw Core::Unreachable("Language: unknown start symbol");
       Symbol start = it->second;
-      ParseTree* x = parseImpl(str, start);
+      ParseTree* x = nextSentenceImpl(start);
       if (!x) return std::nullopt;
       if (x->id != start) throw Core::Unreachable("Language: parsing completed with unexpected root node");
       return std::any_cast<ReturnType>(symbols[start].action(x));
@@ -163,9 +157,9 @@ namespace Parsing {
     Symbol newSymbol(const string& name, std::function<std::any(const ParseTree*)> action);
 
     // Keep most of the code untemplated to avoid slowing down compilation
-    Symbol setPatternImpl(const string& name, Symbol sym, NFA pattern, std::function<std::any(const ParseTree*)> action);
+    Symbol addPatternImpl(const string& name, Symbol sym, NFA pattern, std::function<std::any(const ParseTree*)> action);
     size_t addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action);
-    ParseTree* parseImpl(const string& str, Symbol start);
+    ParseTree* nextSentenceImpl(Symbol start);
 
   private:
 

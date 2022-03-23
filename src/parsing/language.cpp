@@ -17,7 +17,7 @@ namespace Parsing {
     for (const auto& e: EarleyParser::popErrors()) {
       string s = "Parsing error, expected one of:\n";
       bool first = true;
-      for (Symbol sym: e.expected) if (sym != errorSymbol) {
+      for (Symbol sym: e.expected) {
         string name = symbols.at(sym).name;
         if (name.empty()) name = "(" + std::to_string(sym) + ")";
         s += (first? "" : ", ") + name;
@@ -34,10 +34,10 @@ namespace Parsing {
       res.emplace_back(e.startPos, e.endPos, s + "\n");
     }
     for (const auto& e: EarleyParser::popAmbiguities()) {
-      string s = "Warning, ambiguity detected\n";
+      string s = "Warning: unresolved ambiguity\n";
       s += "(Alternative parse tree display has not been implemented yet;"
-           " you can try to add commas or parentheses to eliminate ambiguity."
-           " If you cannot get rid of this message, it is likely that the grammar is incorrect;"
+           " you can try adding commas and parentheses or modifying notations to eliminate ambiguity."
+           " If you cannot get rid of this message, it is likely that the base grammar is incorrect;"
            " please contact zhanrong.qiao21@imperial.ac.uk for this issue.)";
       res.emplace_back(e.startPos, e.endPos, s);
     }
@@ -50,7 +50,7 @@ namespace Parsing {
     Symbol sym = symbols.size();
     symbols.emplace_back("", [sym] (const ParseTree* x) -> std::any {
       if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
-      throw Core::Unreachable("Language: no matching rule");
+      throw Core::Unreachable("Language: no matching rule or pattern");
     });
     mp[tid] = sym;
     return sym;
@@ -62,35 +62,25 @@ namespace Parsing {
     return sym;
   }
 
-  void Language::setAsErrorSymbol(const string& name, Symbol sym, std::any val) {
-    if (errorSymbol) throw Core::Unreachable("Language: at most one error symbol can be set");
-    errorSymbol = sym;
-    symbols[sym].name = name;
-    symbols[sym].action = [sym, val] (const ParseTree* x) -> std::any {
-      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
-      return val;
-    };
-  }
-
   void Language::setAsIgnoredSymbol(const string& name, Symbol sym) {
     if (ignoredSymbol) throw Core::Unreachable("Language: at most one ignored symbol can be set");
     ignoredSymbol = sym;
     symbols[sym].name = name;
   }
 
-  Symbol Language::setPatternImpl(const string& name, Symbol sym, NFA pattern, std::function<std::any(const ParseTree*)> action) {
+  Symbol Language::addPatternImpl(const string& name, Symbol sym, NFA pattern, std::function<std::any(const ParseTree*)> action) {
 
     // Update name
     symbols[sym].name = "<" + name + ">";
 
     // Add new pattern
-    NFALexer::addPattern(sym, pattern);
+    size_t pid = NFALexer::addPattern(sym, pattern);
 
-    // Add new handler for new pattern (this will override old patterns, but not old production rules)
+    // Add new handler for new pattern
     auto prev = symbols[sym].action;
-    symbols[sym].action = [sym, prev, action] (const ParseTree* x) -> std::any {
+    symbols[sym].action = [sym, pid, prev, action] (const ParseTree* x) -> std::any {
       if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
-      if (x->lexeme.has_value()) return action(x);
+      if (x->patternIndex.has_value() && x->patternIndex.value() == pid) return action(x);
       return prev(x);
     };
 
@@ -117,14 +107,9 @@ namespace Parsing {
     return rid;
   }
 
-  // TEMP CODE
-  ParseTree* Language::parseImpl(const string& str, Symbol start) {
-
+  ParseTree* Language::nextSentenceImpl(Symbol start) {
     this->startSymbol = start;
-    NFALexer::setString(str);
-    ParseTree* x = EarleyParser::parse(pool);
-
-    return x;
+    return EarleyParser::nextSentence(pool);
   }
 
 }

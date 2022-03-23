@@ -11,9 +11,8 @@
 using std::pair, std::string, std::vector;
 using std::optional, std::make_optional, std::nullopt;
 using std::cin, std::cout, std::endl;
-using Parsing::Token, Parsing::Symbol;
-using Parsing::NFALexer, Parsing::DFALexer;
-using Parsing::ParseTree, Parsing::EarleyParser;
+using Parsing::Symbol, Parsing::ParseTree;
+using Parsing::NFALexer, Parsing::DFALexer, Parsing::EarleyParser;
 
 
 // See: https://stackoverflow.com/questions/116038/how-do-i-read-an-entire-file-into-a-stdstring-in-c

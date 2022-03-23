@@ -6,40 +6,38 @@
 
 namespace Parsing {
 
-  size_t cutFirstCodepoint(const string& s) {
-    if (s.empty()) return 0;
-    size_t pos = 1;
-    for (; pos < s.size(); pos++) {
-      unsigned char c = s[pos];
+  size_t cutFirstCodepoint(const string& s, size_t pos) {
+    if (pos >= s.size()) return 0;
+    size_t i = 1;
+    for (; pos + i < s.size(); i++) {
+      unsigned char c = s[pos + i];
       if ((c & 0b11000000) != 0b10000000) break;
     }
-    return pos;
+    return i;
   }
 
-  optional<Token> Lexer::getNextToken() {
+  optional<ParseTree> Lexer::nextToken() {
     string skipped;
     while (!eof()) {
-      auto opt = run(rest);
+      auto opt = run(rest, pos);
       if (opt) {
         if (!skipped.empty()) {
           errors.emplace_back(pos - skipped.size(), pos, skipped);
         }
         auto [len, id] = opt.value();
-        Token res{
+        ParseTree res{
           nullptr, nullptr,
-          id,
-          rest.substr(0, len), nullopt,
+          patternSymbol(id),
+          rest.substr(pos, len), id, nullopt,
           pos, pos + len
         };
         pos += len;
-        rest = rest.substr(len);
         return res;
       }
       // !opt
-      size_t len = cutFirstCodepoint(rest);
-      skipped += rest.substr(0, len);
+      size_t len = cutFirstCodepoint(rest, pos);
+      skipped += rest.substr(pos, len);
       pos += len;
-      rest = rest.substr(len);
     }
     // eof()
     if (!skipped.empty()) {
@@ -55,8 +53,8 @@ namespace Parsing {
   }
 
   // Directly run NFA
-  optional<pair<size_t, Symbol>> NFALexer::run(const string& str) const {
-    optional<pair<size_t, Symbol>> res = nullopt;
+  optional<pair<size_t, size_t>> NFALexer::run(const string& str, size_t pos) const {
+    optional<pair<size_t, size_t>> res = nullopt;
     vector<State> s;
     vector<bool> v(table.size(), false);
 
@@ -75,11 +73,14 @@ namespace Parsing {
       }
     };
 
-    s.push_back(initial);
-    v[initial] = true;
+    // Initial states
+    for (const auto& [initial, sym, active]: patterns) if (active) {
+      s.push_back(initial);
+      v[initial] = true;
+    }
     closure(v, s);
-    for (size_t i = 0; i < str.size(); i++) {
-      unsigned char c = str[i];
+    for (size_t i = 0; pos + i < str.size(); i++) {
+      unsigned char c = str[pos + i];
       // Reset v[] to false
       for (State x: s) v[x] = false;
       // Move one step
@@ -92,7 +93,7 @@ namespace Parsing {
       s.swap(t);
       // Update result if reaches accepting state
       // Patterns with larger IDs have higher priority
-      optional<Symbol> curr = nullopt;
+      optional<size_t> curr = nullopt;
       for (State x: s) if (table[x].ac) {
         if (!curr || curr.value() < table[x].ac.value()) curr = table[x].ac;
       }
@@ -143,7 +144,7 @@ namespace Parsing {
     // Invariant: all elements of v[] are false
     void dfs(DFALexer::State x, const vector<NFALexer::State>& s) {
       // Check if `s` contains accepting states
-      optional<Symbol> curr;
+      optional<size_t> curr;
       for (auto ns: s) {
         auto opt = nfa->table[ns].ac;
         if (opt && (!curr || curr.value() < opt.value())) curr = opt;
@@ -179,14 +180,22 @@ namespace Parsing {
     }
 
     void operator() () {
+      vector<NFALexer::State> s;
       v.clear(); v.resize(nfa->table.size());
       mp.clear();
-      vector<NFALexer::State> s = { nfa->initial };
-      v[nfa->initial] = true;
+      // Initial states
+      for (const auto& [initial, sym, active]: nfa->patterns) if (active) {
+        s.push_back(initial);
+        v[initial] = true;
+      }
       closure(v, s);
       node(dfa->initial, v);
       clearv(s);
       dfs(dfa->initial, s);
+      // Copy mapping from pattern ID to symbol ID
+      for (const auto& [initial, sym, active]: nfa->patterns) {
+        dfa->patternSymbols.push_back(sym);
+      }
     }
 
     #undef node
@@ -194,14 +203,14 @@ namespace Parsing {
     #undef clearv
   };
 
-  DFALexer::DFALexer(const NFALexer& nfa): Lexer(), table(), initial(0) {
+  DFALexer::DFALexer(const NFALexer& nfa): Lexer(), table(), initial(0), patternSymbols() {
     PowersetConstruction(&nfa, this)();
   }
 
   // Function object for the DFA state minimization
   //   See: https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm
   //   See: https://en.wikipedia.org/wiki/Partition_refinement
-  // Pre: the TokenIDs in accepting states are small nonnegative integers.
+  // Pre: the pattern IDs in accepting states are small nonnegative integers.
   // (They are directly used as initial partition IDs)
   class PartitionRefinement {
   public:
@@ -262,9 +271,9 @@ namespace Parsing {
       size_t dead = table.size();
       table.emplace_back();
       size_t n = table.size();
-      Symbol numTokens = 0;
+      size_t numPatterns = 0;
       for (size_t i = 0; i < n; i++) {
-        if (table[i].ac) numTokens = std::max(numTokens, table[i].ac.value() + 1);
+        if (table[i].ac) numPatterns = std::max(numPatterns, table[i].ac.value() + 1);
         // Other states now have transitions to the dead state
         // The dead state has all its transitions pointing to itself
         for (unsigned int c = 0x01; c <= 0xFF; c++) if (!table[i].has[c]) table[i].tr[c] = dead;
@@ -277,18 +286,18 @@ namespace Parsing {
         for (unsigned int c = 0x01; c <= 0xFF; c++) rev[table[i].tr[c]].emplace_back(c, i);
       }
 
-      // Initial partition (numTokens + 1 classes)
+      // Initial partition (numPatterns + 1 classes)
       cl.clear();
-      for (size_t i = 0; i <= numTokens; i++) newClass();
+      for (size_t i = 0; i <= numPatterns; i++) newClass();
       id.clear(); id.resize(n);
       for (size_t i = 0; i < n; i++) {
         if (table[i].ac) add(i, table[i].ac.value());
-        else             add(i, numTokens);
+        else             add(i, numPatterns);
       }
 
       // All classes except the last one (just not needed) are used as initial distinguisher sets
       dist.clear();
-      for (size_t i = 0; i < numTokens; i++) {
+      for (size_t i = 0; i < numPatterns; i++) {
         dist.push_back(i);
         cl[i].isDist = true;
       }
@@ -410,11 +419,11 @@ namespace Parsing {
   }
 
   // Run DFA
-  optional<pair<size_t, Symbol>> DFALexer::run(const string& str) const {
-    optional<pair<size_t, Symbol>> res = nullopt;
+  optional<pair<size_t, size_t>> DFALexer::run(const string& str, size_t pos) const {
+    optional<pair<size_t, size_t>> res = nullopt;
     State s = initial;
-    for (size_t i = 0; i < str.size(); i++) {
-      unsigned char c = str[i];
+    for (size_t i = 0; pos + i < str.size(); i++) {
+      unsigned char c = str[pos + i];
       if (!table[s].has[c]) break;
       s = table[s].tr[c];
       // Update result if reaches accepting state
