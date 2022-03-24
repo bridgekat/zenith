@@ -25,11 +25,11 @@
     },
     {
       "name": "entity.name.type.apimu",
-      "match": "\\b(and|or|implies|not|iff|eq|true|false|forall|exists|unique|forallpred|forallfunc|且|或|意味着|并非|当且仅当|等于|真|假|对所有|存在着|唯一存在着|对所有谓词|对所有函数)\\b"
+      "match": "\\b(and|or|implies|not|iff|equals|true|false|forall|exists|unique|forallpred|forallfunc|且|或|意味着|并非|当且仅当|等于|真|假|对所有|存在着|唯一存在着|对所有谓词|对所有函数)\\b"
     },
     {
       "name": "entity.name.type.apimu",
-      "match": "∧|∨|→|¬|↔|∃!|∀#|∀\\$|∀|∃|⊤|⊥|=|≠|∈|∉|⊆|->|<->|↑|\\b(in|notin|subsetof)\\b|\\|"
+      "match": "∧|∨|→|¬|↔|∃!|∀#|∀\\$|∀|∃|⊤|⊥|=|≠|∈|∉|⊆|->|<->|↑|\\b(in)\\b|\\|"
     },
     {
       "name": "variable.parameter.apimu",
@@ -57,7 +57,7 @@
     },
     {
       "name": "keyword.control.directive.apimu",
-      "match": "(#def|#undef|#ls)\\b"
+      "match": "(#def|#define|#undef|#ls)\\b"
     }
   ],
   "scopeName": "source.apimu"

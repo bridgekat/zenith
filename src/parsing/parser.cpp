@@ -13,6 +13,9 @@ namespace Parsing {
   using std::variant, std::monostate;
   using std::holds_alternative, std::get, std::visit;
 
+  // See: https://en.cppreference.com/w/cpp/utility/variant/visit
+  template <class... Ts> struct Matcher: Ts... { using Ts::operator()...; };
+
 
   // What a tangled mess... I just want to skip some error tokens and return the next statement
   // (preferring the longest parse, like how disambiguation works in lexers)...
@@ -105,7 +108,7 @@ namespace Parsing {
 
     // Find the number of symbols involved
     numSymbols = startSymbol + 1;
-    for (const auto& [lhs, rhs, active]: rules) {
+    for (const auto& [lhs, rhs, prec, active]: rules) {
       numSymbols = std::max(numSymbols, lhs + 1);
       for (Symbol sym: rhs) numSymbols = std::max(numSymbols, sym + 1);
     }
@@ -142,7 +145,7 @@ namespace Parsing {
     firstRule = vector<size_t>(numSymbols, m);
     totalLength = vector<size_t>(m, 0);
     for (size_t i = 0; i < m; i++) {
-      const auto& [lhs, rhs, _] = rules[sorted[i]];
+      const auto& [lhs, rhs, prec, active] = rules[sorted[i]];
       if (firstRule[lhs] == m) firstRule[lhs] = i;
       if (i + 1 < m) totalLength[i + 1] = totalLength[i] + rhs.size() + 1;
     }
@@ -167,10 +170,11 @@ namespace Parsing {
     // Initial states
     dpa.emplace_back();
     for (size_t i = firstRule[startSymbol]; i < sorted.size() && rules[sorted[i]].lhs == startSymbol; i++) {
-      if (!rules[sorted[i]].active) continue;
-      State s{ 0, sorted[i], 0 };
+      const size_t rid = sorted[i];
+      if (!rules[rid].active) continue;
+      State s{ 0, rid, 0 };
       mp[s] = dpa[0].size();
-      dpa[0].emplace_back(s, nullopt, monostate{}, false);
+      dpa[0].emplace_back(s, nullopt, monostate{});
     }
 
     // Invariant: `mp` maps all elements of `states[pos]` to their indices
@@ -189,44 +193,62 @@ namespace Parsing {
             added.push_back(sym);
             // Add all active rules for `sym`
             for (size_t j = firstRule[sym]; j < sorted.size() && rules[sorted[j]].lhs == sym; j++) {
-              if (!rules[sorted[j]].active) continue;
-              State ss{ pos, sorted[j], 0 };
+              const size_t rid = sorted[j];
+              if (!rules[rid].active) continue;
+              State ss{ pos, rid, 0 };
               if (!mp.contains(ss)) {
                 mp[ss] = dpa[pos].size();
-                dpa[pos].emplace_back(ss, nullopt, monostate{}, false);
+                dpa[pos].emplace_back(ss, nullopt, monostate{});
               }
             }
           }
           // If `sym` is nullable, we could skip it (empty completion)
           if (nullableRule[sym].has_value()) {
             State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
+            // Calculate new cost
+            size_t numDisrespects = dpa[pos][i].numDisrespects;
+            if (rules[s.ruleIndex].lhs == sym &&
+                rules[s.ruleIndex].prec > rules[*nullableRule[sym]].prec)
+              numDisrespects += rules[s.ruleIndex].prec - rules[*nullableRule[sym]].prec;
+            // New linked state
+            LinkedState lss{ ss, Location{ pos, i }, monostate{}, numDisrespects };
             if (!mp.contains(ss)) {
               mp[ss] = dpa[pos].size();
-              dpa[pos].emplace_back(ss, Location{ pos, i }, monostate{}, false);
+              dpa[pos].push_back(lss);
             } else {
               // Ambiguity detected
-              LinkedState& ls = dpa[pos][mp[ss]];
-              ls.ambiguous = true;
-              // TODO: prefer child with production rule of smaller index
+              LinkedState& lsso = dpa[pos][mp[ss]];
+              int res = disambiguate(pos, lsso, lss);
+              if (res > 0) lsso = lss;
+              if (res == 0) lsso.unresolved = true;
             }
           }
         } else {
           // Perform nonempty completion
           if (derived.empty()) continue;
-          Symbol lhs = rules[s.ruleIndex].lhs;
-          for (size_t j = 0; j < dpa[s.startPos].size(); j++) {
-            State t = dpa[s.startPos][j].state;
+          Symbol sym = rules[s.ruleIndex].lhs;
+          size_t posj = s.startPos;
+          for (size_t j = 0; j < dpa[posj].size(); j++) {
+            State t = dpa[posj][j].state;
             const auto& tderived = rules[t.ruleIndex].rhs;
-            if (t.rulePos < tderived.size() && tderived[t.rulePos] == lhs) {
+            if (t.rulePos < tderived.size() && tderived[t.rulePos] == sym) {
               State tt{ t.startPos, t.ruleIndex, t.rulePos + 1 };
+              // Calculate new cost
+              size_t numDisrespects = dpa[posj][j].numDisrespects + dpa[pos][i].numDisrespects;
+              if (rules[t.ruleIndex].lhs == sym &&
+                  rules[t.ruleIndex].prec > rules[s.ruleIndex].prec)
+                numDisrespects += rules[t.ruleIndex].prec - rules[s.ruleIndex].prec;
+              // New linked state
+              LinkedState ltt{ tt, Location{ posj, j }, Location{ pos, i }, numDisrespects };
               if (!mp.contains(tt)) {
                 mp[tt] = dpa[pos].size();
-                dpa[pos].emplace_back(tt, Location{ s.startPos, j }, Location{ pos, i }, false);
+                dpa[pos].push_back(ltt);
               } else {
                 // Ambiguity detected
-                LinkedState& ls = dpa[pos][mp[tt]];
-                ls.ambiguous = true;
-                // TODO: prefer child with production rule of smaller index
+                LinkedState& ltto = dpa[pos][mp[tt]];
+                int res = disambiguate(pos, ltto, ltt);
+                if (res > 0) ltto = ltt;
+                if (res == 0) ltto.unresolved = true;
               }
             }
           }
@@ -249,7 +271,7 @@ namespace Parsing {
       // Advance to next position
       auto opt = lexer.nextToken();
       while (opt && opt->id == ignoredSymbol) opt = lexer.nextToken();
-      if (!opt) break;
+      if (!opt) break; // EOF
       ParseTree tok = *opt;
       sentence.push_back(tok);
 
@@ -262,12 +284,12 @@ namespace Parsing {
         const auto& derived = rules[s.ruleIndex].rhs;
         if (s.rulePos < derived.size() && derived[s.rulePos] == tok.id) {
           State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
-          // No need to check presence! `s` is already unique.
+          // No need to check for presence! `s` is already unique.
           mp[ss] = dpa[pos + 1].size();
-          dpa[pos + 1].emplace_back(ss, Location{ pos, i }, tok, false);
+          dpa[pos + 1].emplace_back(ss, Location{ pos, i }, tok, dpa[pos][i].numDisrespects);
         }
       }
-      if (dpa[pos + 1].empty()) break;
+      if (dpa[pos + 1].empty()) break; // Error
     }
 
     /*
@@ -304,8 +326,21 @@ namespace Parsing {
     return res;
   }
 
-  // See: https://en.cppreference.com/w/cpp/utility/variant/visit
-  template <class... Ts> struct Matcher: Ts... { using Ts::operator()...; };
+  // A helper function that gives a preference between two alternative links
+  // Returns -1 to keep old, 1 to use new, 0 for unresolved (keeping old)
+  int EarleyParser::disambiguate(size_t pos, const LinkedState& old, const LinkedState& curr) const noexcept {
+    const Rule& rule = rules[old.state.ruleIndex];
+    // if (old.state != curr.state) throw Core::Unreachable();
+    if      (old.numDisrespects < curr.numDisrespects) return -1;
+    else if (old.numDisrespects > curr.numDisrespects) return 1;
+    else {
+      bool rl = (rule.prec % 2 != 0); // Odd number denotes "rightmost longest"
+      size_t oldLength = pos - old.prev->pos;
+      size_t currLength = pos - curr.prev->pos;
+      if (rl) return currLength > oldLength?  1 : currLength < oldLength ? -1 : 0;
+      else    return currLength > oldLength? -1 : currLength < oldLength ?  1 : 0;
+    }
+  }
 
   #define assert(expr) if (!(expr)) throw Core::Unreachable()
 
@@ -358,7 +393,7 @@ namespace Parsing {
       assert(curr->prev.has_value());
 
       // Check for unresolved ambiguity
-      if (curr->ambiguous) {
+      if (curr->unresolved) {
         ambiguities.emplace_back(
           toCharsStart(curr->state.startPos),
           loc.pos == 0 ? toCharsStart(0) : toCharsEnd(loc.pos - 1)
@@ -408,7 +443,7 @@ namespace Parsing {
     string res = "";
     for (size_t pos = 0; pos <= sentence.size(); pos++) {
       res += "States at position " + std::to_string(pos) + ":\n";
-      for (const LinkedState& ls: dpa[pos]) res += showState(ls.state, names) + "\n";
+      for (const LinkedState& ls: dpa[pos]) res += showState(ls.state, names) + " (" + std::to_string(ls.numDisrespects) + ")" + "\n";
       res += "\n";
       if (pos < sentence.size()) res += "Next token: " + names.at(sentence[pos].id) + "\n";
     }

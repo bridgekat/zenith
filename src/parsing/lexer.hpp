@@ -52,6 +52,8 @@ namespace Parsing {
     optional<ParseTree> nextToken();
     // Get and clear error log
     vector<ErrorInfo> popErrors();
+    // Returns the corresponding symbol ID for a given pattern ID
+    virtual Symbol patternSymbol(size_t id) const = 0;
 
   protected:
     Lexer(): pos(0), rest(), errors() {};
@@ -63,8 +65,6 @@ namespace Parsing {
 
     // Returns longest match in the form of (length, pattern ID)
     virtual optional<pair<size_t, size_t>> run(const string& s, size_t pos) const = 0;
-    // Returns the corresponding symbol ID for a given pattern ID
-    virtual Symbol patternSymbol(size_t id) const = 0;
   };
 
   // Implementation based on NFA. You may add patterns after construction.
@@ -96,6 +96,10 @@ namespace Parsing {
       if (!patterns[id].active) return false;
       patterns[id].active = false;
       return true;
+    }
+
+    Symbol patternSymbol(size_t id) const override {
+      return patterns[id].symbol;
     }
 
     // Some useful pattern constructors (equivalent to regexes)
@@ -171,13 +175,12 @@ namespace Parsing {
     // The list of patterns
     struct Pattern {
       State initial;
-      Symbol sym;
+      Symbol symbol;
       bool active = true;
     };
     vector<Pattern> patterns;
 
     optional<pair<size_t, size_t>> run(const string& s, size_t pos) const override;
-    Symbol patternSymbol(size_t id) const override { return patterns[id].sym; }
 
     friend class PowersetConstruction;
   };
@@ -189,6 +192,10 @@ namespace Parsing {
 
     // Create DFA from NFA
     explicit DFALexer(const NFALexer& nfa);
+
+    Symbol patternSymbol(size_t id) const override {
+      return patternSymbols[id];
+    }
 
     // Optimize DFA
     void optimize();
@@ -216,7 +223,6 @@ namespace Parsing {
     vector<Symbol> patternSymbols;
 
     optional<pair<size_t, size_t>> run(const string& s, size_t pos) const override;
-    Symbol patternSymbol(size_t id) const override { return patternSymbols[id]; }
 
     friend class PowersetConstruction;
     friend class PartitionRefinement;

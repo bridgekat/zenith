@@ -37,8 +37,10 @@ private:
   std::vector<std::string> boundVars{};
 
   size_t lparenPattern{}, rparenPattern{}, parenRule{};
-  std::unordered_map<std::string, size_t> terminals{};
-  std::unordered_map<std::string, size_t> customParsingRules{};
+  // Word -> (pattern ID, ref count)
+  std::unordered_map<std::string, std::pair<size_t, size_t>> wordlike{};
+  // Name -> (rule ID, words involved)
+  std::unordered_map<std::string, std::pair<size_t, std::vector<std::string>>> customParsingRules{};
 
   std::unordered_map<void*, std::pair<size_t, size_t>> sourceMap{};
   std::vector<AnalysisInfo> info{};
@@ -58,7 +60,20 @@ private:
     return res;
   }
 
-  Parsing::ParseTree* replaceVarsByTerms(const Parsing::ParseTree* x, const std::unordered_map<std::string, const Parsing::ParseTree*> mp);
+  size_t wordlikePattern(const std::string& word);
+  void removeWordlikePattern(const std::string& word);
+
+  template <typename T>
+  size_t wordlikePatternRule(const std::string& word, const T& res) {
+    Parsing::Symbol wordsym = lexer.patternSymbol(wordlikePattern(word));
+    return addRuleImpl(
+      Parsing::SymbolName<T>::get(),
+      getSymbol<T>(),
+      std::vector<Parsing::Symbol>({ wordsym }),
+      [res] (const Parsing::ParseTree*) { return res; });
+  }
+
+  Parsing::ParseTree* replaceVarsByExprs(const Parsing::ParseTree* x, const std::unordered_map<std::string, const Parsing::ParseTree*> mp);
 };
 
 #endif // MU_HPP_

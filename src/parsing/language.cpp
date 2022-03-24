@@ -47,18 +47,17 @@ namespace Parsing {
   Symbol Language::getSymbol(type_index tid) {
     auto it = mp.find(tid);
     if (it != mp.end()) return it->second;
-    Symbol sym = symbols.size();
-    symbols.emplace_back("", [sym] (const ParseTree* x) -> std::any {
-      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
-      throw Core::Unreachable("Language: no matching rule or pattern");
-    });
+    Symbol sym = newSymbol();
     mp[tid] = sym;
     return sym;
   }
 
-  Symbol Language::newSymbol(const string& name, std::function<std::any(const ParseTree*)> action) {
+  Symbol Language::newSymbol(const string& name) {
     Symbol sym = symbols.size();
-    symbols.emplace_back(name, action);
+    symbols.emplace_back(name, [sym] (const ParseTree* x) -> std::any {
+      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
+      throw Core::Unreachable("Language: no matching rule or pattern");
+    });
     return sym;
   }
 
@@ -68,14 +67,11 @@ namespace Parsing {
     symbols[sym].name = name;
   }
 
-  Symbol Language::addPatternImpl(const string& name, Symbol sym, NFALexer::NFA pattern, std::function<std::any(const ParseTree*)> action) {
-
+  size_t Language::addPatternImpl(const string& name, Symbol sym, NFALexer::NFA pattern, std::function<std::any(const ParseTree*)> action) {
     // Update name
     symbols[sym].name = "<" + name + ">";
-
     // Add new pattern
     size_t pid = lexer.addPattern(sym, pattern);
-
     // Add new handler for new pattern
     auto prev = symbols[sym].action;
     symbols[sym].action = [sym, pid, prev, action] (const ParseTree* x) -> std::any {
@@ -83,19 +79,15 @@ namespace Parsing {
       if (x->patternIndex.has_value() && x->patternIndex.value() == pid) return action(x);
       return prev(x);
     };
-
-    return sym;
+    return pid;
   }
 
-  size_t Language::addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action) {
-
+  size_t Language::addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action, size_t prec) {
     // Update name
     symbols[lhs].name = "[" + name + "]";
-
     // Add new production rule
     size_t rid = parser.rules.size();
-    parser.rules.emplace_back(lhs, rhs);
-
+    parser.rules.emplace_back(lhs, rhs, prec);
     // Add new handler for new rule
     auto prev = symbols[lhs].action;
     symbols[lhs].action = [lhs, rid, prev, action] (const ParseTree* x) -> std::any {
@@ -103,7 +95,6 @@ namespace Parsing {
       if (x->ruleIndex.has_value() && x->ruleIndex.value() == rid) return action(x);
       return prev(x);
     };
-
     return rid;
   }
 

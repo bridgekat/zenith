@@ -55,7 +55,7 @@ namespace Core {
     const unsigned int eq;
 
     // Insert a built-in equality relation during initialization
-    Context(): a(), ind(), eq(static_cast<unsigned int>(addDef("=", {{ 2, SPROP }}))) {}
+    Context(): a(), ind(), eq(static_cast<unsigned int>(addDef("equals", {{ 2, SPROP }}))) {}
 
     // Add entries...
     size_t addDef         (const string& s, const Type& t) { a.push_back(Entry{ s, t }); return a.size() - 1; }

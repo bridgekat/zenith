@@ -21,8 +21,17 @@ namespace Parsing {
   struct Rule {
     Symbol lhs;
     vector<Symbol> rhs;
+    size_t prec = 0;
     bool active = true;
   };
+
+  // Convert floating-point precedence in the range [0, 1] to `size_t` in the range [0, 4096)
+  // (precision can be specified in the function below)
+  inline size_t makePrec(double prec, bool rightmostLongest) noexcept {
+    constexpr size_t maxPrec = 4096 / 2 - 1;
+    size_t res = prec * maxPrec;                    // `res` is now in [0, 2048)
+    return rightmostLongest? res * 2 + 1 : res * 2; // Odd number denotes "rightmost longest"
+  }
 
   // This is more suitable for left-recursive grammars than right-recursive ones.
   // For more details see implementation (`parser.cpp`).
@@ -41,19 +50,18 @@ namespace Parsing {
         startPos(startPos), endPos(endPos) {}
     };
 
-    // Production rules
-    vector<Rule> rules;
-    // Starting symbol
-    Symbol startSymbol;
-
     // Token stream
     Lexer& lexer;
-    // Ignored token ID
+    // Production rules
+    vector<Rule> rules;
+    // Starting symbol ID
+    Symbol startSymbol;
+    // Ignored token ID (optional)
     optional<Symbol> ignoredSymbol;
 
     // The given Lexer reference must be valid over the EarleyParser's lifetime.
     EarleyParser(Lexer& lexer):
-      rules(), startSymbol(0), lexer(lexer), ignoredSymbol(),
+      lexer(lexer), rules(), startSymbol(0), ignoredSymbol(),
       numSymbols(0), nullableRule(), sorted(), firstRule(), totalLength(),
       sentence(), dpa(), errors(), ambiguities() {}
 
@@ -62,6 +70,7 @@ namespace Parsing {
     // Constructs a parse tree for `startSymbol`. Returns `nullptr` if reached end-of-file.
     // All errors will be logged
     ParseTree* nextSentence(Core::Allocator<ParseTree>& pool);
+
     // Get and clear error log
     vector<ErrorInfo> popErrors();
     vector<AmbiguityInfo> popAmbiguities();
@@ -82,8 +91,8 @@ namespace Parsing {
       State state;
       optional<Location> prev;
       variant<Location, ParseTree, monostate> child;
-      // TODO: store more information about ambiguity? (e.g. at least one alternative parse)
-      bool ambiguous;
+      size_t numDisrespects = 0; // The "cost" of a parse, used in disambiguation
+      bool unresolved = false;   // TODO: store more information about unresolved ambiguity? (e.g. at least one alternative parse)
     };
 
     // Ephemeral states
@@ -93,17 +102,20 @@ namespace Parsing {
     vector<ParseTree> sentence;
     vector<vector<LinkedState>> dpa;
 
+    // Error logs
     vector<ErrorInfo> errors;
     vector<AmbiguityInfo> ambiguities;
 
-    // The parsing algorithm
     size_t toCharsStart(size_t pos) const noexcept;
     size_t toCharsEnd(size_t pos) const noexcept;
     optional<ErrorInfo> lastError();
+
+    // The parsing algorithm
     void process();
     optional<pair<Location, size_t>> run();
-
-    // Parse tree generation
+    int disambiguate(size_t pos, const LinkedState& old, const LinkedState& curr) const noexcept;
+    
+    // Parse tree construction
     ParseTree* nullParseTree(size_t pos, Symbol id, Core::Allocator<ParseTree>& pool) const;
     ParseTree* getParseTree(Location loc, Core::Allocator<ParseTree>& pool);
 

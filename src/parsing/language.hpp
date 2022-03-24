@@ -77,8 +77,8 @@ namespace Parsing {
     Symbol getSymbol() { return getSymbol(typeid(T)); }
     Symbol getSymbol(std::type_index tid);
 
-    // For dynamically added symbols
-    Symbol newSymbol(const string& name, std::function<std::any(const ParseTree*)> action);
+    // Dynamically generate a new symbol ID, distinct from all known symbols
+    Symbol newSymbol(const string& name = "");
 
     // Set as ignored symbol; can only be called at most once currently.
     template <typename T>
@@ -88,7 +88,7 @@ namespace Parsing {
     // Add pattern for terminal symbol.
     // `addPattern` (*) -> `addPatternImpl`
     template <typename T>
-    Symbol addPattern(T action, NFALexer::NFA pattern) {
+    size_t addPattern(T action, NFALexer::NFA pattern) {
       using U = LambdaConverter<T>;
       return addPatternImpl(
         SymbolName<typename U::ReturnType>::get(),
@@ -100,24 +100,26 @@ namespace Parsing {
     // Add a production rule. Symbols on the RHS are automatically added.
     // `addRule` (*) -> `addRuleIndexed` (*) -> `addRuleImpl`
     template <typename T>
-    size_t addRule(T action) {
+    size_t addRule(T action, size_t prec = 0) {
       using U = LambdaConverter<T>;
       return addRuleIndexed(
         SymbolName<typename U::ReturnType>::get(),
         typename U::ConvertedType(action),
-        typename U::IndexSequence());
+        typename U::IndexSequence(),
+        prec);
     }
 
     // Add a production rule with a more customized semantic action function that directly operates on the parse tree.
     // This could give more freedom on the order of evaluation, but the template arguments must be provided explicitly.
     // `addRuleFor` (*) -> `addRuleImpl`
     template <typename ReturnType, typename... ParamTypes>
-    size_t addRuleFor(std::function<ReturnType(const ParseTree*)> action) {
+    size_t addRuleFor(std::function<ReturnType(const ParseTree*)> action, size_t prec = 0) {
       return addRuleImpl(
         SymbolName<ReturnType>::get(),
         getSymbol<ReturnType>(),
         vector<Symbol>{ getSymbol<ParamTypes>()... },
-        action);
+        action,
+        prec);
     }
 
     // Execute semantic actions on a subtree. Used in raw actions.
@@ -159,16 +161,16 @@ namespace Parsing {
       return std::any_cast<ReturnType>(symbols[start].action(x));
     }
 
-    // Keep most of the code untemplated to avoid slowing down compilation
-    Symbol addPatternImpl(const string& name, Symbol sym, NFALexer::NFA pattern, std::function<std::any(const ParseTree*)> action);
-    size_t addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action);
+    // Keep more code untemplated to avoid slowing down compilation
+    size_t addPatternImpl(const string& name, Symbol sym, NFALexer::NFA pattern, std::function<std::any(const ParseTree*)> action);
+    size_t addRuleImpl(const string& name, Symbol lhs, const vector<Symbol>& rhs, std::function<std::any(const ParseTree*)> action, size_t prec = 0);
     ParseTree* nextSentenceImpl(Symbol start);
 
   private:
 
     // The "index trick" (pattern matching on index sequence)
     template <typename ReturnType, typename... ParamTypes, size_t... Indices>
-    size_t addRuleIndexed(const string& name, std::function<ReturnType(ParamTypes...)> action, std::index_sequence<Indices...>) {
+    size_t addRuleIndexed(const string& name, std::function<ReturnType(ParamTypes...)> action, std::index_sequence<Indices...>, size_t prec = 0) {
       return addRuleImpl(
         name,
         getSymbol<ReturnType>(),
@@ -178,7 +180,8 @@ namespace Parsing {
           for (ParseTree* p = x->c; p; p = p->s) params.push_back(symbols[p->id].action(p));
           if (params.size() != sizeof...(ParamTypes)) throw Core::Unreachable("Langugage: arity does not match");
           return action(std::move(std::any_cast<typename std::decay<ParamTypes>::type>(params[Indices]))...);
-        });
+        },
+        prec);
     }
 
   };
