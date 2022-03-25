@@ -1,5 +1,6 @@
 #include "jsonrpc2.hpp"
 #include <optional>
+#include <iostream>
 
 
 namespace Server {

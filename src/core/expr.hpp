@@ -42,7 +42,7 @@ namespace Core {
     // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
     Expr(): tag(EMPTY) {}
     Expr(VarTag vartag, unsigned int id, const vector<Expr*>& c = {}): tag(VAR) {
-      var.vartag = vartag; var.id = id; attachChildren(c);
+      var.vartag = vartag; var.id = id; var.c = nullptr; appendChildren(c);
     }
     Expr(Tag tag): tag(tag) {
       switch (tag) {
@@ -81,9 +81,9 @@ namespace Core {
     // O(size)
     Expr* clone(Allocator<Expr>& pool) const;
 
-    // Attach children (no-copy)
+    // Append children (no-copy)
     // Each node may only be attached to **one** parent node at a time!
-    void attachChildren(const vector<Expr*>& nodes) noexcept;
+    void appendChildren(const vector<Expr*>& nodes) noexcept;
 
     // Syntactical equality and hash code (up to alpha-renaming!)
     // Pre: { `this`, `rhs` } is arity-consistent

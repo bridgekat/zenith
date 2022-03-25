@@ -111,7 +111,7 @@ In general, the major premise(s) appear before the minor premise(s). Six hardest
 ## "Extension by definition" rules
 
 - `def f := <term>`: adds new function symbol `f/0` and its defining axiom `(f = <term>)` to context.
-- `def p :↔ <formula>`: adds new predicate symbol `p/0` and its defining axiom `(p ↔ <formula>)` to context.
+- `def p := <formula>`: adds new predicate symbol `p/0` and its defining axiom `(p ↔ <formula>)` to context.
 - `def f :: (y | <formula-with-y-free>)`: adds new function symbol `f/0` and its defining axiom `(forall y, <formula-with-y-free> ↔ y = f)` to context, by definite description.
   - A proof for `(unique y, <formula-with-y-free>)` must be provided.
 - `idef f :: (y | <formula-with-y-free>)`: adds new function symbol `f/0` and its defining axiom `<formula-with-y-free>[f/y]` to context, by indefinite description. (This is not a conservative extension, or only "conservative" when AC is assumed in the metatheory, and it is sufficient to prove the AC inside the theory...)

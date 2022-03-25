@@ -3,7 +3,7 @@
 #ifndef JSONRPC2_HPP_
 #define JSONRPC2_HPP_
 
-#include <iostream>
+#include <iosfwd>
 #include <thread>
 #include <string>
 #include <unordered_map>

@@ -93,7 +93,7 @@ anypred in/2 {
 
 If everything is fine, some blue squiggles would appear under `forall x, y, x and y have the same elements -> x = y`. Note that proofs are not supported yet.
 
-You may also try executing `testcore`. It contains some tests for the experimental tableau prover (currently it is rather inefficient, and does not support equational reasoning).
+You may also try executing `testcore`. It contains some tests for the experimental tableau prover (currently it is rather inefficient, and does not support equational reasoning. Nevertheless, it already proves some first-order propositions that Lean's `finish` tactic cannot prove...)
 
 
 ## Some random thoughts

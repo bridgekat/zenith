@@ -9,8 +9,8 @@ namespace Core {
     string res = "";
     for (size_t i = 0; i < t.size(); i++) {
       string curr = "";
-      for (int j = 0; j < t[i].first; j++) curr += "Var -> ";
-      curr += (t[i].second == SVAR ? "Var" : "Prop");
+      for (int j = 0; j < t[i].first; j++) curr += "var -> ";
+      curr += (t[i].second == SVAR ? "var" : "wff");
       if (i + 1 < t.size()) curr = "(" + curr + ") -> ";
       res += curr;
     }

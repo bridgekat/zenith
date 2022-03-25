@@ -31,7 +31,8 @@ namespace Parsing {
       } else {
         s += "but reached the end of file";
       }
-      res.emplace_back(e.startPos, e.endPos, s + "\n");
+      res.emplace_back(e.startPos, e.endPos, s + "\n"
+        "(Note that this list may be inexhaustive due to statement-by-statement parsing and backtracking.)");
     }
     for (const auto& e: parser.popAmbiguities()) {
       string s = "Warning: unresolved ambiguity\n";

@@ -32,9 +32,13 @@ namespace Core {
     throw NotImplemented();
   }
 
-  void Expr::attachChildren(const vector<Expr*>& nodes) noexcept {
+  void Expr::appendChildren(const vector<Expr*>& nodes) noexcept {
     if (tag != VAR) return;
-    Expr* last = nullptr;
+    Expr* last = nullptr, * next = var.c;
+    while (next) {
+      last = next;
+      next = next->s;
+    }
     for (Expr* q: nodes) {
       (last? last->s : var.c) = q;
       last = q;

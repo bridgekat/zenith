@@ -78,7 +78,7 @@ endif ()
 
 # See: https://json.nlohmann.me/integration/cmake/#fetchcontent
 set (JSON_Install OFF CACHE INTERNAL "")
-set (JSON_MultipleHeaders OFF)
+set (JSON_MultipleHeaders ON)
 include (FetchContent)
 FetchContent_Declare (nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.10.5/json.tar.xz)
 FetchContent_GetProperties (nlohmann_json)
@@ -102,6 +102,7 @@ add_executable (testserver
   src/server/coroutine.cpp
   src/server/jsonrpc2.cpp
   src/server/languageserver.cpp
+  src/server/lsp.cpp
   src/testserver.cpp)
 target_default_compile_options  (testserver)
 target_include_directories      (testserver PRIVATE src)

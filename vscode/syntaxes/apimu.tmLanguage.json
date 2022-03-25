@@ -57,7 +57,7 @@
     },
     {
       "name": "keyword.control.directive.apimu",
-      "match": "(#def|#define|#undef|#ls)\\b"
+      "match": "(#ls|#list|#def|#define|#undef)\\b"
     }
   ],
   "scopeName": "source.apimu"

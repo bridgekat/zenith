@@ -75,9 +75,6 @@ namespace Parsing {
 
     NFALexer(): Lexer(), table(), patterns() {}
 
-    #define node(x) State x = table.size(); table.emplace_back()
-    #define trans(s, c, t) table[s].tr.emplace_back(c, t)
-
     // Add pattern (mark accepting state)
     // Returns pattern ID
     size_t addPattern(Symbol sym, NFA nfa) {
@@ -101,6 +98,9 @@ namespace Parsing {
     Symbol patternSymbol(size_t id) const override {
       return patterns[id].symbol;
     }
+
+    #define node(x) State x = table.size(); table.emplace_back()
+    #define trans(s, c, t) table[s].tr.emplace_back(c, t)
 
     // Some useful pattern constructors (equivalent to regexes)
     NFA epsilon() {
