@@ -62,21 +62,21 @@ private:
   // Name -> (rule ID, words involved)
   std::unordered_map<std::string, std::pair<size_t, std::vector<std::string>>> customParsingRules{};
 
-  // std::unordered_map<void*, std::pair<size_t, size_t>> sourceMap{};
+  std::unordered_map<void*, std::pair<size_t, size_t>> sourceMap{};
   std::unordered_map<std::string, std::pair<size_t, size_t>> defMap{}; // TODO: make correct
   AnalysisResult result;
 
   template <typename ...Ts>
   Core::Expr* makeExprLoc(const Parsing::ParseTree* x, const Ts&... args) {
     Core::Expr* res = exprs.pushBack(Core::Expr(args...));
-    // sourceMap[res] = { x->startPos, x->endPos };
+    sourceMap[res] = { x->startPos, x->endPos };
     return res;
   }
 
   template <typename ...Ts>
   Core::Proof* makeProofLoc(const Parsing::ParseTree* x, const Ts&... args) {
     Core::Proof* res = proofs.pushBack(Core::Proof(args...));
-    // sourceMap[res] = { x->startPos, x->endPos };
+    sourceMap[res] = { x->startPos, x->endPos };
     return res;
   }
 

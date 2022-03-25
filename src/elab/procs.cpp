@@ -69,7 +69,7 @@ namespace Elab::Procs {
       case UNIQUE: { // (unique x, p) seen as ((exists x, p) and (forall x, p implies (forall x', p implies x = x')))
         Expr exi(EXISTS, e->bv, e->binder.arity, e->binder.sort, e->binder.r);
         Expr x(BOUND, 1), x_(BOUND, 0);
-        Expr eq(FREE, ctx.eq, { &x, &x_ });
+        Expr eq(FREE, ctx.equals, { &x, &x_ });
         Expr d(IMPLIES, e->binder.r, &eq);
         Expr c(FORALL, e->bv + "'", e->binder.arity, e->binder.sort, &d);
         Expr b(IMPLIES, e->binder.r, &c);

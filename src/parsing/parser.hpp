@@ -106,13 +106,13 @@ namespace Parsing {
     vector<ErrorInfo> errors;
     vector<AmbiguityInfo> ambiguities;
 
+    ErrorInfo lastError(size_t startPos, size_t endPos, const optional<Symbol>& got) const;
     size_t toCharsStart(size_t pos) const noexcept;
     size_t toCharsEnd(size_t pos) const noexcept;
-    optional<ErrorInfo> lastError();
 
     // The parsing algorithm
     void process();
-    optional<pair<Location, size_t>> run();
+    pair<optional<size_t>, optional<ParseTree>> run();
     int disambiguate(size_t pos, const LinkedState& old, const LinkedState& curr) const noexcept;
     
     // Parse tree construction

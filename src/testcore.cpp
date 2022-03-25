@@ -43,7 +43,7 @@ int main() {
     Context ctx;
     Allocator<Expr> pool;
 
-    unsigned int eq = ctx.eq;
+    unsigned int eq = ctx.equals;
     unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
 
     // The axiom schema of separation...
@@ -85,7 +85,7 @@ int main() {
 
     #define block std::initializer_list<Decl*>
 
-    unsigned int eq = ctx.eq;
+    unsigned int eq = ctx.equals;
     unsigned int i = ctx.size();
 
     Decl* d =
@@ -170,7 +170,7 @@ int main() {
     Allocator<Proof> ps;
     Allocator<Decl> ds;
 
-    unsigned int eq = ctx.eq;
+    unsigned int eq = ctx.equals;
     unsigned int i = ctx.size();
 
     Decl* d =
@@ -288,7 +288,7 @@ int main() {
     Allocator<Expr> pool;
     Context ctx;
 
-    unsigned int eq = ctx.eq;
+    unsigned int eq = ctx.equals;
     unsigned int f = ctx.pushVar("f", {{ 2, SVAR }});
     unsigned int g = ctx.pushVar("g", {{ 2, SVAR }});
     unsigned int h = ctx.pushVar("h", {{ 2, SVAR }});
@@ -353,7 +353,7 @@ int main() {
     Context ctx;
     Tableau tableau(ctx);
 
-    unsigned int eq = ctx.eq;
+    unsigned int eq = ctx.equals;
     unsigned int P = ctx.addDef("P", {{ 2, SPROP }});
     unsigned int R = ctx.addDef("R", {{ 1, SPROP }});
     unsigned int F = ctx.addDef("F", {{ 1, SPROP }});

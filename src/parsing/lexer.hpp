@@ -107,11 +107,13 @@ namespace Parsing {
       node(s); node(t); trans(s, 0, t);
       return { s, t };
     }
-    NFA ch(const vector<unsigned char>& ls) {
+    NFA ch_vec(const vector<unsigned char>& ls) {
       node(s); node(t);
       for (auto c: ls) trans(s, c, t);
       return { s, t };
     }
+    template <typename... Ts>
+    NFA ch(Ts... a) { return ch_vec({ static_cast<unsigned char>(a)... }); }
     NFA range(unsigned char a, unsigned char b) {
       node(s); node(t);
       for (unsigned int i = a; i <= b; i++) trans(s, i, t);
@@ -133,7 +135,7 @@ namespace Parsing {
       }
       return { s, t };
     }
-    NFA alt(const vector<NFA>& ls) {
+    NFA alt_vec(const vector<NFA>& ls) {
       node(s); node(t);
       for (auto a: ls) {
         trans(s, 0, a.first);
@@ -141,22 +143,30 @@ namespace Parsing {
       }
       return { s, t };
     }
+    template <typename... Ts>
+    NFA alt(Ts... a) { return alt_vec({ a... }); }
     NFA star(NFA a) {
       node(s); node(t);
       trans(s, 0, a.first); trans(a.second, 0, t);
       trans(a.second, 0, a.first); trans(s, 0, t);
       return { s, t };
     }
+    NFA opt(NFA a) {
+      trans(a.first, 0, a.second);
+      return { a.first, a.second };
+    }
     NFA plus(NFA a)   { return concat2(a, star(a)); }
     NFA any()         { return range(0x01, 0xFF); }
     NFA utf8segment() { return range(0x80, 0xFF); }
-    NFA except(const vector<unsigned char>& ls) {
+    NFA except_vec(const vector<unsigned char>& ls) {
       vector<bool> f(0x100, true);
       for (auto c: ls) f[c] = false;
       node(s); node(t);
       for (unsigned int i = 0x01; i <= 0xFF; i++) if (f[i]) trans(s, i, t);
       return { s, t };
     }
+    template <typename... Ts>
+    NFA except(Ts... a) { return except_vec({ static_cast<unsigned char>(a)... }); }
 
     #undef node
     #undef trans

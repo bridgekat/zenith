@@ -12,11 +12,11 @@
     },
     {
       "name": "keyword.other.apimu",
-      "match": "\\b(name|by|since|proof|namespace|private|public|notation|prefix|suffix|infix|transitive|记为|根据|命名空间|不公开|公开|记号|前缀记号|后缀记号|中缀记号)\\b"
+      "match": "\\b(name|by|since|proof|namespace|private|public|prec|right_assoc|left_assoc|记为|根据|命名空间|不公开|公开|记号|前缀记号|后缀记号|中缀记号)\\b"
     },
     {
       "name": "constant.numeric.apimu",
-      "match": "\\b(and\\.i|and\\.l|and\\.r|or\\.l|or\\.r|or\\.e|implies\\.i|implies\\.e|not\\.i|not\\.e|iff\\.i|iff\\.e|iff\\.l|iff\\.r|eq\\.i|eq\\.e|eq\\.symm|eq\\.trans|forall\\.i|forall\\.e|exists\\.i|exists\\.e|unique\\.i|unique\\.l|unique\\.r|forallpred\\.i|forallpred\\.e|forallfunc\\.i|forallfunc\\.e|true\\.i|false\\.e|raa|element)\\b"
+      "match": "\\b(and\\.i|and\\.l|and\\.r|or\\.l|or\\.r|or\\.e|implies\\.i|implies\\.e|not\\.i|not\\.e|iff\\.i|iff\\.e|iff\\.l|iff\\.r|equals\\.i|equals\\.e|forall\\.i|forall\\.e|exists\\.i|exists\\.e|unique\\.i|unique\\.l|unique\\.r|forallpred\\.i|forallpred\\.e|forallfunc\\.i|forallfunc\\.e|true\\.i|false\\.e|raa|initial)\\b"
     },
     {
       "name": "constant.numeric.apimu",

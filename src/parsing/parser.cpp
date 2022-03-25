@@ -17,40 +17,58 @@ namespace Parsing {
   template <class... Ts> struct Matcher: Ts... { using Ts::operator()...; };
 
 
-  // What a tangled mess... I just want to skip some error tokens and return the next statement
-  // (preferring the longest parse, like how disambiguation works in lexers)...
+  // Parse greedily, until there is no further possibilities.
+  // Parsing is considered successful only when the last position contains a completed root symbol.
+  // This is sometimes unsound, but I could not think of a better way of doing it.
   // (Trying to parse the whole file in one go makes dynamic parsing rules difficult,
   //  and it turned out to be a even more tangled mess...)
 
   ParseTree* EarleyParser::nextSentence(Core::Allocator<ParseTree>& pool) {
     optional<ErrorInfo> error;
-    // size_t pos = lexer->position();
     process();
     while (!eof()) {
-      auto opt = run();
-      if (opt) {
+      auto [index, nextToken] = run();
+      if (index) { // Successful parse
         if (error) errors.push_back(*error);
-        if (opt->first.pos == 0) throw Core::Unreachable("EarleyParser: nullable sentences can be problematic");
-        lexer.setPosition(opt->second);
-        return getParseTree(opt->first, pool);
+        if (sentence.empty()) throw Core::Unreachable("EarleyParser: nullable sentences can lead to infinite loop");
+        return getParseTree(Location{ dpa.size() - 1, *index }, pool);
       }
-      // !opt
-      if (!error) error = lastError();
-      /*
-      lexer->setPosition(pos);
-      auto tok = lexer->nextToken();
-      while (tok && tok->id == ignoredSymbol) tok = lexer->nextToken();
-      pos = lexer->position();
-      */
-      if (sentence.size() > 1) {
-        lexer.setPosition(sentence.back().startPos);
-      } else {
-        // No need to backtrack (otherwise infinite loop could occur)
+      if (!nextToken) { // EOF
+        if (!sentence.empty()) { // EOF with incomplete sentence
+          if (!error) error = lastError(sentence.back().endPos, sentence.back().endPos, nullopt);
+          else error->endPos = sentence.back().endPos;
+        }
+        break;
+      }
+      // Error (!index && nextToken)
+      if (!error) error = lastError(nextToken->startPos, nextToken->endPos, nextToken->id);
+      else error->endPos = nextToken->endPos;
+      if (sentence.empty()) {
+        // Skip at least one token to avoid infinite loops
+        auto tok = lexer.nextToken();
+        while (tok && tok->id == ignoredSymbol) tok = lexer.nextToken();
       }
     }
-    // eof()
     if (error) errors.push_back(*error);
     return nullptr;
+  }
+
+  // For use in `nextSentence()` only
+  EarleyParser::ErrorInfo EarleyParser::lastError(size_t startPos, size_t endPos, const optional<Symbol>& got) const {
+    if (dpa.size() != sentence.size() + 1) throw Core::Unreachable();
+    size_t pos = sentence.size();
+
+    vector<Symbol> expected;
+    for (const LinkedState& ls: dpa[pos]) {
+      const State& s = ls.state;
+      const Rule& rule = rules[s.ruleIndex];
+      if (s.rulePos < rule.rhs.size()) expected.push_back(rule.rhs[s.rulePos]);
+    }
+    std::sort(expected.begin(), expected.end());
+    size_t len = std::unique(expected.begin(), expected.end()) - expected.begin();
+    expected.resize(len);
+
+    return ErrorInfo(startPos, endPos, expected, got);
   }
 
   vector<EarleyParser::ErrorInfo> EarleyParser::popErrors() {
@@ -73,26 +91,6 @@ namespace Parsing {
   size_t EarleyParser::toCharsEnd(size_t pos) const noexcept {
     if (pos >= sentence.size()) return sentence.empty()? 0 : sentence.back().endPos;
     return sentence[pos].endPos;
-  }
-
-  // For use in `nextSentence()` only
-  optional<EarleyParser::ErrorInfo> EarleyParser::lastError() {
-    if (dpa.size() != sentence.size() + 1) throw Core::Unreachable();
-    if (sentence.empty()) return nullopt;
-    size_t pos = dpa[sentence.size()].empty() ? sentence.size() - 1 : sentence.size();
-
-    vector<Symbol> expected;
-    for (const LinkedState& ls: dpa[pos]) {
-      const State& s = ls.state;
-      const Rule& rule = rules[s.ruleIndex];
-      if (s.rulePos < rule.rhs.size()) expected.push_back(rule.rhs[s.rulePos]);
-    }
-    std::sort(expected.begin(), expected.end());
-    size_t len = std::unique(expected.begin(), expected.end()) - expected.begin();
-    expected.resize(len);
-
-    optional<Symbol> got = dpa[sentence.size()].empty() ? make_optional(sentence[pos].id) : nullopt;
-    return ErrorInfo(toCharsStart(pos), toCharsEnd(pos), expected, got);
   }
 
   // See: https://en.wikipedia.org/wiki/Earley_parser#The_algorithm (for an overview)
@@ -153,8 +151,8 @@ namespace Parsing {
 
   // Pre: `numSymbols`, `nullableRule`, `sorted`, `firstRule` and `totalLength` must be
   //   consistent with currently active rules.
-  optional<pair<EarleyParser::Location, size_t>> EarleyParser::run() {
-    optional<pair<Location, size_t>> res = nullopt;
+  pair<optional<size_t>, optional<ParseTree>> EarleyParser::run() {
+    optional<ParseTree> nextToken = nullopt;
 
     sentence.clear();
     dpa.clear();
@@ -258,22 +256,12 @@ namespace Parsing {
       for (Symbol sym: added) isAdded[sym] = false;
       added.clear();
 
-      // Check if the start symbol completes
-      for (size_t i = 0; i < dpa[pos].size(); i++) {
-        const State& s = dpa[pos][i].state;
-        const Rule& rule = rules[s.ruleIndex];
-        if (s.startPos == 0 && rule.lhs == startSymbol && s.rulePos == rule.rhs.size()) {
-          res = { { pos, i }, lexer.position() };
-          break;
-        }
-      }
-
       // Advance to next position
-      auto opt = lexer.nextToken();
-      while (opt && opt->id == ignoredSymbol) opt = lexer.nextToken();
-      if (!opt) break; // EOF
-      ParseTree tok = *opt;
-      sentence.push_back(tok);
+      size_t restore = lexer.position();
+      nextToken = lexer.nextToken();
+      while (nextToken && nextToken->id == ignoredSymbol) nextToken = lexer.nextToken();
+      if (!nextToken) break; // EOF
+      sentence.push_back(*nextToken);
 
       // "Scanning" stage
       // Also updating `mp` to reflect `states[pos + 1]` instead
@@ -282,14 +270,30 @@ namespace Parsing {
       for (size_t i = 0; i < dpa[pos].size(); i++) {
         State s = dpa[pos][i].state;
         const auto& derived = rules[s.ruleIndex].rhs;
-        if (s.rulePos < derived.size() && derived[s.rulePos] == tok.id) {
+        if (s.rulePos < derived.size() && derived[s.rulePos] == nextToken->id) {
           State ss{ s.startPos, s.ruleIndex, s.rulePos + 1 };
           // No need to check for presence! `s` is already unique.
           mp[ss] = dpa[pos + 1].size();
-          dpa[pos + 1].emplace_back(ss, Location{ pos, i }, tok, dpa[pos][i].numDisrespects);
+          dpa[pos + 1].emplace_back(ss, Location{ pos, i }, *nextToken, dpa[pos][i].numDisrespects);
         }
       }
-      if (dpa[pos + 1].empty()) break; // Error
+      if (dpa[pos + 1].empty()) { // Error
+        lexer.setPosition(restore);
+        sentence.pop_back();
+        dpa.pop_back();
+        break;
+      }
+    }
+
+    // Check if the start symbol completes
+    optional<size_t> res = nullopt;
+    for (size_t i = 0; i < dpa.back().size(); i++) {
+      const State& s = dpa.back()[i].state;
+      const Rule& rule = rules[s.ruleIndex];
+      if (s.startPos == 0 && rule.lhs == startSymbol && s.rulePos == rule.rhs.size()) {
+        res = i;
+        break;
+      }
     }
 
     /*
@@ -323,7 +327,7 @@ namespace Parsing {
     *          O(|G|n²) for unambiguous (*)
     */
 
-    return res;
+    return { res, nextToken };
   }
 
   // A helper function that gives a preference between two alternative links

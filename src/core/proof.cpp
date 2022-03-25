@@ -68,7 +68,7 @@ namespace Core {
     }
     #define matcheq(a_, l_, r_) Expr* l_, * r_; { \
       Expr* x_ = a_; \
-      if (x_->tag != VAR || x_->var.vartag != FREE || x_->var.id != ctx.eq) \
+      if (x_->tag != VAR || x_->var.vartag != FREE || x_->var.id != ctx.equals) \
         throw InvalidProof("expected proof of equality", ctx, this); \
       l_ = x_->var.c; r_ = l_->s; /* x_ is well-formed so we can expect exactly two child nodes here*/ \
     }
@@ -126,7 +126,7 @@ namespace Core {
       case RAA: { match2(proved(0), np, IMPLIES, f); match1(np, NOT, p); match0(f, FALSE); return p; }
       case EQ_I: {
         const Expr* t = wft(0);
-        return nodevar(FREE, ctx.eq, t->clone(pool), t->clone(pool));
+        return nodevar(FREE, ctx.equals, t->clone(pool), t->clone(pool));
       }
       case EQ_E: {
         auto [p, type] = exprtype(0);
@@ -173,7 +173,7 @@ namespace Core {
         matchbinder(proved(0), UNIQUE, x, px);
         return nodebinder(FORALL, x,       node2(px, IMPLIES,
                nodebinder(FORALL, x + "'", node2(px->clone(pool), IMPLIES,
-                          nodevar(FREE, ctx.eq, nodevar(BOUND, 1), nodevar(BOUND, 0))))));
+                          nodevar(FREE, ctx.equals, nodevar(BOUND, 1), nodevar(BOUND, 0))))));
       }
       case FORALL2_E: {
         // Check LHS
@@ -268,7 +268,7 @@ namespace Core {
 
       case FDEF: {
         unsigned int id = ctx.addDef(name, TTerm);
-        ctx.addTheorem(namedef, nodevar(FREE, ctx.eq, nodevar(FREE, id), wft(fdef.e)->clone(pool)));
+        ctx.addTheorem(namedef, nodevar(FREE, ctx.equals, nodevar(FREE, id), wft(fdef.e)->clone(pool)));
         return;
       }
       case PDEF: {
@@ -279,7 +279,7 @@ namespace Core {
       case DDEF: {
         matchbinder(proved(ddef.pf), UNIQUE, x, px);
         unsigned int id = ctx.addDef(name, TTerm);
-        ctx.addTheorem(namedef, nodebinder(FORALL, x, node2(px, IFF, nodevar(FREE, ctx.eq, nodevar(BOUND, 0), nodevar(FREE, id)))));
+        ctx.addTheorem(namedef, nodebinder(FORALL, x, node2(px, IFF, nodevar(FREE, ctx.equals, nodevar(BOUND, 0), nodevar(FREE, id)))));
         return;
       }
       case IDEF: {

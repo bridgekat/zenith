@@ -394,7 +394,7 @@ namespace Elab {
                                         Expr::make(pool, IMPLIES, e->binder.r,
                                         Expr::make(pool, FORALL, e->bv + "'", e->binder.arity, e->binder.sort,
                                         Expr::make(pool, IMPLIES, e->binder.r,
-                                        Expr::make(pool, FREE, ctx.eq, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) }))))));
+                                        Expr::make(pool, FREE, ctx.equals, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) }))))));
           case FORALL2: return dfs(depth); // "φ" rule is not supported yet...
           case LAM:     return dfs(depth);
         }
@@ -468,7 +468,7 @@ namespace Elab {
                           Expr::make(pool, IMPLIES, e->binder.r,
                           Expr::make(pool, FORALL, e->bv + "'", e->binder.arity, e->binder.sort,
                           Expr::make(pool, IMPLIES, e->binder.r,
-                          Expr::make(pool, FREE, ctx.eq, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) }))))));
+                          Expr::make(pool, FREE, ctx.equals, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) }))))));
             break;
           default:
             throw Unreachable();

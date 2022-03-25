@@ -47,6 +47,7 @@ symbol(LineComment) {};
 symbol(BlockComment) {};
 
 symbol(Natural) { uint32_t data; };
+symbol(Decimal) { double data; };
 symbol(String) { string data; };
 
 symbol(OpLParen) {};
@@ -75,6 +76,9 @@ symbol(KwProof) {};
 symbol(KwDef) {};
 symbol(KwIdef) {};
 symbol(KwUndef) {};
+symbol(KwPrec) {};
+symbol(KwRightmostLongest) {};
+symbol(KwRightmostShortest) {};
 symbol(KwMetaList) {};
 symbol(KwMetaDef) {};
 symbol(KwMetaUndef) {};
@@ -89,6 +93,33 @@ symbol(ConstImplies) {};
 symbol(ConstIff) {};
 symbol(Quantifier) { Core::Expr::Tag tag; };
 symbol(Quantifier2) { Core::Expr::Tag tag; Core::Sort sort; };
+
+/*
+symbol(ProofAndI) {};
+symbol(ProofAndL) {};
+symbol(ProofAndR) {};
+symbol(ProofOrL) {};
+symbol(ProofOrR) {};
+symbol(ProofOrE) {};
+symbol(ProofImpliesE) {};
+symbol(ProofNotI) {};
+symbol(ProofNotE) {};
+symbol(ProofIffI) {};
+symbol(ProofIffL) {};
+symbol(ProofIffR) {};
+symbol(ProofTrueI) {};
+symbol(ProofFalseE) {};
+symbol(ProofRAA) {};
+symbol(ProofEqualsI) {};
+symbol(ProofEqualsE) {};
+symbol(ProofForallE) {};
+symbol(ProofExistsI) {};
+symbol(ProofExistsE) {};
+symbol(ProofUniqueI) {};
+symbol(ProofUniqueL) {};
+symbol(ProofUniqueR) {};
+symbol(ProofForall2E) {};
+*/
 
 symbol(Var) { Core::Expr* e; };
 symbol(Vars) { vector<Core::Expr*> es; };
@@ -111,7 +142,7 @@ symbol(AnyPred) {};
 symbol(Assume) {};
 
 symbol(OptRRArrow) {};
-symbol(OptProof) { optional<Core::Proof*> proof; };
+symbol(OptProof) { optional<WFP> pf; };
 symbol(OptName) { optional<string> name; };
 symbol(OptSemicolon) {};
 symbol(Assertion) {};
@@ -124,6 +155,8 @@ symbol(Undef) {};
 symbol(List) {};
 symbol(MacroRuleSymbol) { pair<bool, string> s; };
 symbol(MacroRule) { vector<pair<bool, string>> ss; };
+symbol(OptPrec) { optional<double> prec; };
+symbol(OptAssoc) { int f; };
 symbol(MacroDef) {};
 symbol(MacroUndef) {};
 
@@ -223,29 +256,37 @@ Mu::Mu() {
   #define word        lexer.word
   #define alt         lexer.alt
   #define star        lexer.star
+  #define opt         lexer.opt
   #define plus        lexer.plus
   #define any         lexer.any
   #define utf8segment lexer.utf8segment
   #define except      lexer.except
 
   addPattern([] (const string& lexeme) -> Natural { return { static_cast<uint32_t>(std::stoi(lexeme)) }; },
-    alt({ star(range('0', '9')),
-          concat(ch({ '0' }), ch({ 'x', 'X' }), star(alt({ range('0', '9'), range('a', 'f'), range('A', 'F') }))) }));
+    alt(plus(range('0', '9')),
+        concat(ch('0'), ch('x', 'X'), plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F'))))));
+  addPattern([] (const string& lexeme) -> Decimal { return { static_cast<double>(std::stod(lexeme)) }; },
+    alt(concat(opt(ch('+', '-')),
+          plus(range('0', '9')), ch('.'),
+          star(range('0', '9')),
+          opt(concat(ch('e', 'E'), opt(ch('+', '-')), plus(range('0', '9'))))),
+        concat(opt(ch('+', '-')), ch('0'), ch('x', 'X'),
+          plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F'))), ch('.'),
+          star(alt(range('0', '9'), range('a', 'f'), range('A', 'F'))),
+          opt(concat(ch('p', 'P'), opt(ch('+', '-')), plus(range('0', '9')))))));
   addPattern([] (const string& lexeme) -> String { return { lexeme.substr(1, lexeme.size() - 2) }; },
-    concat(ch({ '"' }), star(alt({ except({ '"', '\\' }), concat(ch({ '\\' }), ch({ '"', '\\' })) })), ch({ '"' })));
+    concat(ch('"'), star(alt(except('"', '\\'), concat(ch('\\'), ch('"', '\\')))), ch('"')));
   addPattern([] (const string& lexeme) -> Identifier { return { lexeme }; },
-    concat(
-      alt({ range('a', 'z'), range('A', 'Z'), ch({ '_', '`' }), utf8segment() }),
-      star(alt({ range('a', 'z'), range('A', 'Z'), range('0', '9'), ch({ '_', '`', '\'', '.' }), utf8segment() }))));
-
+    concat(alt(range('a', 'z'), range('A', 'Z'), ch('_', '`'), utf8segment()),
+      star(alt(range('a', 'z'), range('A', 'Z'), range('0', '9'), ch('_', '`', '\'', '.'), utf8segment()))));
   addPattern([] (const string&) -> Blank { return {}; },
-    star(ch({ ' ', '\t', '\n', '\v', '\f', '\r' })));
+    star(ch(' ', '\t', '\n', '\v', '\f', '\r')));
   addPattern([] (const string&) -> Blank { return {}; },
-    concat(word("//"), star(except({ '\r', '\n' }))));
+    concat(word("//"), star(except('\r', '\n'))));
   addPattern([] (const string&) -> Blank { return {}; },
     concat(word("/*"),
-      star(concat(star(except({ '*' })), plus(ch({ '*' })), except({ '/' }))),
-                  star(except({ '*' })), plus(ch({ '*' })), ch({ '/' })));
+      star(concat(star(except('*')), plus(ch('*')), except('/'))),
+                  star(except('*')), plus(ch('*')), ch('/')));
   setAsIgnoredSymbol<Blank>();
 
   lparenPattern = addPattern([] (const string&) -> OpLParen { return {}; }, word("("));
@@ -258,54 +299,88 @@ Mu::Mu() {
   #undef word
   #undef alt
   #undef star
+  #undef opt
   #undef plus
   #undef any
   #undef utf8segment
   #undef except
   #undef trivial
 
-  wordlikePatternRule(",",          OpComma{});
-  wordlikePatternRule(";",          OpSemicolon{});
-  wordlikePatternRule("{",          OpLBrace{});
-  wordlikePatternRule("}",          OpRBrace{});
-  wordlikePatternRule("=>",         OpRRArrow{});
-  wordlikePatternRule("/",          OpSlash{});
-  wordlikePatternRule("|",          OpVertBar{});
-  wordlikePatternRule(":=",         OpColonEq{});
-  wordlikePatternRule("::",         OpColonColon{});
+  // These can be overriden by macros
 
-  wordlikePatternRule("equals",     ConstEquals{});
-  wordlikePatternRule("=",          ConstEquals{});
-  wordlikePatternRule("true",       ConstTrue{});
-  wordlikePatternRule("false",      ConstFalse{});
-  wordlikePatternRule("not",        ConstNot{});
-  wordlikePatternRule("and",        ConstAnd{});
-  wordlikePatternRule("or",         ConstOr{});
-  wordlikePatternRule("implies",    ConstImplies{});
-  wordlikePatternRule("->",         ConstImplies{});
-  wordlikePatternRule("iff",        ConstIff{});
-  wordlikePatternRule("<->",        ConstIff{});
+  wordlikePatternRule(",",            OpComma{});
+  wordlikePatternRule(";",            OpSemicolon{});
+  wordlikePatternRule("{",            OpLBrace{});
+  wordlikePatternRule("}",            OpRBrace{});
+  wordlikePatternRule("=>",           OpRRArrow{});
+  wordlikePatternRule("/",            OpSlash{});
+  wordlikePatternRule("|",            OpVertBar{});
+  wordlikePatternRule(":=",           OpColonEq{});
+  wordlikePatternRule("::",           OpColonColon{});
 
-  wordlikePatternRule("forall",     Quantifier{ Core::Expr::FORALL });
-  wordlikePatternRule("exists",     Quantifier{ Core::Expr::EXISTS });
-  wordlikePatternRule("unique",     Quantifier{ Core::Expr::UNIQUE });
-  wordlikePatternRule("forallfunc", Quantifier2{ Core::Expr::FORALL2, Core::Sort::SVAR });
-  wordlikePatternRule("forallpred", Quantifier2{ Core::Expr::FORALL2, Core::Sort::SPROP });
+  wordlikePatternRule("equals",       ConstEquals{});
+  wordlikePatternRule("=",            ConstEquals{});
+  wordlikePatternRule("true",         ConstTrue{});
+  wordlikePatternRule("false",        ConstFalse{});
+  wordlikePatternRule("not",          ConstNot{});
+  wordlikePatternRule("and",          ConstAnd{});
+  wordlikePatternRule("or",           ConstOr{});
+  wordlikePatternRule("implies",      ConstImplies{});
+  wordlikePatternRule("->",           ConstImplies{});
+  wordlikePatternRule("iff",          ConstIff{});
+  wordlikePatternRule("<->",          ConstIff{});
 
-  wordlikePatternRule("any",        KwAny{});
-  wordlikePatternRule("anyfunc",    KwAnyFunc{});
-  wordlikePatternRule("anypred",    KwAnyPred{});
-  wordlikePatternRule("assume",     KwAssume{});
-  wordlikePatternRule("name",       KwName{});
-  wordlikePatternRule("proof",      KwProof{});
-  wordlikePatternRule("def",        KwDef{});
-  wordlikePatternRule("idef",       KwIdef{});
-  wordlikePatternRule("undef",      KwUndef{});
-  wordlikePatternRule("#ls",        KwMetaList{});
-  wordlikePatternRule("#list",      KwMetaList{});
-  wordlikePatternRule("#def",       KwMetaDef{});
-  wordlikePatternRule("#define",    KwMetaDef{});
-  wordlikePatternRule("#undef",     KwMetaUndef{});
+  wordlikePatternRule("forall",       Quantifier{ Core::Expr::FORALL });
+  wordlikePatternRule("exists",       Quantifier{ Core::Expr::EXISTS });
+  wordlikePatternRule("unique",       Quantifier{ Core::Expr::UNIQUE });
+  wordlikePatternRule("forallfunc",   Quantifier2{ Core::Expr::FORALL2, Core::Sort::SVAR });
+  wordlikePatternRule("forallpred",   Quantifier2{ Core::Expr::FORALL2, Core::Sort::SPROP });
+
+/*
+  wordlikePatternRule("and.i",        ProofAndI{});
+  wordlikePatternRule("and.l",        ProofAndL{});
+  wordlikePatternRule("and.r",        ProofAndR{});
+  wordlikePatternRule("or.l",         ProofOrL{});
+  wordlikePatternRule("or.r",         ProofOrR{});
+  wordlikePatternRule("or.e",         ProofOrE{});
+  wordlikePatternRule("implies.e",    ProofImpliesE{});
+  wordlikePatternRule("not.i",        ProofNotI{});
+  wordlikePatternRule("not.e",        ProofNotE{});
+  wordlikePatternRule("iff.i",        ProofIffI{});
+  wordlikePatternRule("iff.l",        ProofIffL{});
+  wordlikePatternRule("iff.r",        ProofIffR{});
+  wordlikePatternRule("true.i",       ProofTrueI{});
+  wordlikePatternRule("false.e",      ProofFalseE{});
+  wordlikePatternRule("raa",          ProofRAA{});
+  wordlikePatternRule("equals.i",     ProofEqualsI{});
+  wordlikePatternRule("equals.e",     ProofEqualsE{});
+  wordlikePatternRule("forall.e",     ProofForallE{});
+  wordlikePatternRule("exists.i",     ProofExistsI{});
+  wordlikePatternRule("exists.e",     ProofExistsE{});
+  wordlikePatternRule("unique.i",     ProofUniqueI{});
+  wordlikePatternRule("unique.l",     ProofUniqueL{});
+  wordlikePatternRule("unique.r",     ProofUniqueR{});
+  wordlikePatternRule("forallfunc.e", ProofForall2E{});
+  wordlikePatternRule("forallpred.e", ProofForall2E{});
+*/
+
+  wordlikePatternRule("any",          KwAny{});
+  wordlikePatternRule("anyfunc",      KwAnyFunc{});
+  wordlikePatternRule("anypred",      KwAnyPred{});
+  wordlikePatternRule("assume",       KwAssume{});
+  wordlikePatternRule("name",         KwName{});
+  wordlikePatternRule("proof",        KwProof{});
+  wordlikePatternRule("def",          KwDef{});
+  wordlikePatternRule("idef",         KwIdef{});
+  wordlikePatternRule("undef",        KwUndef{});
+  wordlikePatternRule("prec",         KwPrec{});
+  wordlikePatternRule("right_assoc",  KwRightmostLongest{});
+  wordlikePatternRule("left_assoc",   KwRightmostShortest{});
+  wordlikePatternRule("#ls",          KwMetaList{});
+  wordlikePatternRule("#list",        KwMetaList{});
+  wordlikePatternRule("#def",         KwMetaDef{});
+  wordlikePatternRule("#define",      KwMetaDef{});
+  wordlikePatternRule("#undef",       KwMetaUndef{});
 
   // Nonterminal symbols
 
@@ -364,7 +439,7 @@ Mu::Mu() {
           makePrec(1.000, false));
   addRule([this] (ConstFalse)                           -> Expr { return { makeExpr(Core::Expr::FALSE) }; },
           makePrec(1.000, false));
-  addRule([this] (ConstEquals, Expr&& lhs, Expr&& rhs)  -> Expr { return { makeExpr(Core::Expr::FREE, ctx.eq, vector<Core::Expr*>{ lhs.e, rhs.e }) }; },
+  addRule([this] (ConstEquals, Expr&& lhs, Expr&& rhs)  -> Expr { return { makeExpr(Core::Expr::FREE, ctx.equals, vector<Core::Expr*>{ lhs.e, rhs.e }) }; },
           makePrec(0.500, false));
   addRule([this] (ConstNot, Expr&& e)                   -> Expr { return { makeExpr(Core::Expr::NOT, e.e) }; },
           makePrec(0.450, false));
@@ -383,7 +458,7 @@ Mu::Mu() {
     auto names = getChild<NewVars>(x, 1).names;
     for (auto& name: names) {
       boundVars.emplace_back(name, Core::Type{{ 0, Core::Sort::SVAR }});
-      defMap[name] = { x->c->startPos, x->c->s->endPos };
+      defMap[name] = { x->c->startPos, x->c->s->s->endPos };
     }
     auto e = getChild<Expr>(x, 3).e;
     for (auto it = names.rbegin(); it != names.rend(); it++) {
@@ -400,7 +475,7 @@ Mu::Mu() {
     auto names = getChild<NewArities>(x, 1).names;
     for (auto& [name, arity]: names) {
       boundVars.emplace_back(name, Core::Type{{ arity, quantifier.sort }});
-      defMap[name] = { x->c->startPos, x->c->s->endPos };
+      defMap[name] = { x->c->startPos, x->c->s->s->endPos };
     }
     auto e = getChild<Expr>(x, 3).e;
     for (auto it = names.rbegin(); it != names.rend(); it++) {
@@ -427,6 +502,34 @@ Mu::Mu() {
     return Expr{ e };
   }, makePrec(0.050, false));
 
+  addRuleFor<Proof, Identifier>
+  ([this] (const ParseTree* x) {
+    string name = getChild<Identifier>(x, 0).name;
+    auto opt = ctx.lookup(name);
+    if (opt.has_value()) {
+      result.hovers.emplace_back(x, "", name + ": " + std::visit(Matcher{
+        [&] (const Core::Type& t) { return Core::showType(t); },
+        [&] (const Core::Expr* e) { return e->toString(ctx); }
+      }, ctx[*opt]));
+      result.tokens.emplace_back(x);
+      auto it = defMap.find(name);
+      if (it != defMap.end()) result.tokens.back().defPos = it->second;
+      return Proof{ makeProofLoc(x, opt.value()) };
+    }
+    throw AnalysisErrorException(x, "Undefined identifier: " + name);
+  });
+/*
+  addRuleFor<Proof, ProofRule>
+  ([this] (const ParseTree* x) { return Proof{ makeProofLoc(x, getChild<ProofRule>(x, 0).tag) }; });
+  addRuleFor<Proof, ProofRule, Proof>
+  ([this] (const ParseTree* x) { return Proof{ makeProofLoc(x, getChild<ProofRule>(x, 0).tag, getChild<Proof>(x, 1).pf) }; });
+  addRuleFor<Proof, ProofRule, Proof, Proof>
+  ([this] (const ParseTree* x) { return Proof{ makeProofLoc(x, getChild<ProofRule>(x, 0).tag, getChild<Proof>(x, 1).pf, getChild<Proof>(x, 2).pf) }; });
+  addRuleFor<Proof, ProofRule, Proof, Proof, Proof>
+  ([this] (const ParseTree* x) { return Proof{ makeProofLoc(x, getChild<ProofRule>(x, 0).tag, getChild<Proof>(x, 1).pf, getChild<Proof>(x, 2).pf, getChild<Proof>(x, 3).pf) }; });
+  addRule([]     (OpLParen, Proof&& pf, OpRParen) -> Proof { return pf; });
+*/
+
   #undef makeExpr
   #undef makeProof
 
@@ -437,6 +540,7 @@ Mu::Mu() {
     try {
       auto t = e->checkType(ctx);
       result.hovers.emplace_back(x, "", e->toString(ctx) + ": " + Core::showType(t));
+      // result.info.emplace_back(x, e->toString(ctx) + ": " + Core::showType(t));
       return WFE{ e, t };
     } catch (Core::CheckFailure& ex) {
       throw AnalysisErrorException(x, e->toString(ctx) + ":\n" + ex.what());
@@ -448,6 +552,18 @@ Mu::Mu() {
     auto [e, t] = getChild<WFE>(x, 0);
     if (t != Core::TFormula) throw AnalysisErrorException(x, "Expected formula, got type " + Core::showType(t));
     return WFF{ e };
+  });
+
+  addRuleFor<WFP, Proof>
+  ([this] (const ParseTree* x) {
+    auto pf = getChild<Proof>(x, 0).pf;
+    try {
+      auto e = pf->check(ctx, exprs);
+      result.hovers.emplace_back(x, "", string("Proves: ") + e->toString(ctx));
+      return WFP{ pf, e };
+    } catch (Core::CheckFailure& ex) {
+      throw AnalysisErrorException(x, string("Error checking proof:\n") + ex.what());
+    }
   });
 
   addRule([]     (Identifier&& id)                            -> NewVar { return { id.name }; });
@@ -510,7 +626,7 @@ Mu::Mu() {
   addRule([]     ()                        -> OptRRArrow { return {}; });
   addRule([]     (OpRRArrow)               -> OptRRArrow { return {}; });
   addRule([]     ()                        -> OptProof { return { nullopt }; });
-  addRule([]     (KwProof, Proof&& pf)     -> OptProof { return { pf.pf }; });
+  addRule([]     (KwProof, WFP&& pf)       -> OptProof { return { pf }; });
   addRule([]     ()                        -> OptName { return { nullopt }; });
   addRule([]     (KwName, Identifier&& id) -> OptName { return { id.name }; });
   addRule([]     ()                        -> OptSemicolon { return {}; });
@@ -518,11 +634,19 @@ Mu::Mu() {
   addRuleFor<Assertion, OptRRArrow, WFF, OptName, OptProof, OptSemicolon>
   ([this] (const ParseTree* x) {
     // TODO: verify or start tableau thread
-    auto e = getChild<WFF>(x, 1);
-    auto name = getChild<OptName>(x, 2);
-    auto pf = getChild<OptProof>(x, 3);
-    ctx.addTheorem(name.name.value_or(""), e.e);
-    defMap[name.name.value_or("")] = { x->startPos, x->endPos };
+    auto e = getChild<WFF>(x, 1).e;
+    auto name = getChild<OptName>(x, 2).name;
+    auto pf = getChild<OptProof>(x, 3).pf;
+    if (!pf) {
+      result.info.emplace_back(x, "No proof");
+      // throw AnalysisErrorException(x, "No proof");
+    } else if (/* e &&*/ pf && *pf->e != *e) {
+      throw AnalysisErrorException(x, 
+          string("Invalid assertion, statement and proof do not match\n")
+        + "Statement: " + e->toString(ctx) + "\n" + "Proof: " + pf->e->toString(ctx));
+    }
+    ctx.addTheorem(name.value_or(""), e);
+    defMap[name.value_or("")] = { x->startPos, x->endPos };
     return Assertion{};
   });
 
@@ -563,10 +687,17 @@ Mu::Mu() {
   addRule([]     (Identifier&& s)                      -> MacroRuleSymbol { return { { false, s.name } }; });
   addRule([]     (MacroRuleSymbol&& s)                 -> MacroRule { return { { s.s } }; });
   addRule([]     (MacroRule&& ss, MacroRuleSymbol&& s) -> MacroRule { ss.ss.push_back(s.s); return ss; });
-  addRuleFor<MacroDef, KwMetaDef, MacroRule, OpColonEq, Expr, KwName, Identifier, OptSemicolon>
+  addRule([]     ()                                    -> OptPrec { return { nullopt }; });
+  addRule([]     (KwPrec, Decimal&& d)                 -> OptPrec { return { d.data }; });
+  addRule([]     ()                                    -> OptAssoc { return { 0 }; });
+  addRule([]     (KwRightmostLongest)                  -> OptAssoc { return { 1 }; });
+  addRule([]     (KwRightmostShortest)                 -> OptAssoc { return { -1 }; });
+  addRuleFor<MacroDef, KwMetaDef, MacroRule, OpColonEq, Expr, KwName, Identifier, OptPrec, OptAssoc, OptSemicolon>
   ([this] (const ParseTree* x) {
-    auto pattern = getChild<MacroRule>(x, 1).ss;
-    string rulename = getChild<Identifier>(x, 5).name;
+    auto pattern          = getChild<MacroRule> (x, 1).ss;
+    string rulename       = getChild<Identifier>(x, 5).name;
+    double prec           = getChild<OptPrec>   (x, 6).prec.value_or(0.5);
+    bool rightmostLongest = getChild<OptAssoc>  (x, 7).f == 1;
     const ParseTree* term = x->c->s->s->s;
     std::unordered_map<string, size_t> positions;
     // Generate new production rule from the given pattern
@@ -596,7 +727,7 @@ Mu::Mu() {
       }
       ParseTree* transformed = replaceVarsByExprs(term, mp);
       return get<Expr>(transformed);
-    }), makePrec(0.5, false));
+    }), makePrec(prec, rightmostLongest));
     // Add record
     customParsingRules[rulename] = { rid, words };
     return MacroDef{};

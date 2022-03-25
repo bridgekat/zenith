@@ -52,10 +52,13 @@ namespace Core {
 
     vector<Entry> a; // All entries
     vector<unsigned int> ind; // Indices of "assumed" entries
-    const unsigned int eq;
+    const unsigned int initial;
+    const unsigned int equals;
 
     // Insert a built-in equality relation during initialization
-    Context(): a(), ind(), eq(static_cast<unsigned int>(addDef("equals", {{ 2, SPROP }}))) {}
+    Context(): a(), ind(),
+      initial(static_cast<unsigned int>(addDef("initial", {{ 0, SVAR }}))),
+      equals(static_cast<unsigned int>(addDef("equals", {{ 2, SPROP }}))) {}
 
     // Add entries...
     size_t addDef         (const string& s, const Type& t) { a.push_back(Entry{ s, t }); return a.size() - 1; }
