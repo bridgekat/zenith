@@ -34,7 +34,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
   - [ ] Language server & VSCode extension (WIP)
     - [x] Boilerplate, IO, etc.
     - [x] Tracking document changes
-    - [ ] Checking (WIP)
+    - [ ] Partial checking
     - [ ] Modify source, fading, etc.
 - [ ] Mathematics
   - [x] PA
@@ -91,7 +91,7 @@ anypred in/2 {
 }
 ```
 
-If everything is fine, some blue squiggles would appear under `forall x, y, x and y have the same elements -> x = y` (update: there are no squiggles now, but mouse hovering should give some pop-ups). Note that proofs are not supported yet.
+If everything is fine, some blue squiggles would appear under `forall x, y, x and y have the same elements -> x = y` (update: there are no longer squiggles now, but mouse hovering should give some pop-ups). Note that proofs are not supported yet (update: proof checking is now supported, see `notes/set_manual.mu`).
 
 You may also try executing `testcore`. It contains some tests for the experimental tableau prover (currently it is rather inefficient, and does not support equational reasoning. Nevertheless, it already proves some first-order propositions that Lean's `finish` tactic cannot prove...)
 

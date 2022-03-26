@@ -61,10 +61,10 @@ namespace Core {
       equals(static_cast<unsigned int>(addDef("equals", {{ 2, SPROP }}))) {}
 
     // Add entries...
-    size_t addDef         (const string& s, const Type& t) { a.push_back(Entry{ s, t }); return a.size() - 1; }
-    size_t addTheorem     (const string& s, const Expr* e) { a.push_back(Entry{ s, e }); return a.size() - 1; }
-    size_t pushVar        (const string& s, const Type& t) { a.push_back(Entry{ s, t }); ind.push_back(a.size() - 1); return a.size() - 1; }
-    size_t pushAssumption (const string& s, const Expr* e) { a.push_back(Entry{ s, e }); ind.push_back(a.size() - 1); return a.size() - 1; }
+    size_t addDef         (const string& s, const Type& t);
+    size_t addTheorem     (const string& s, const Expr* e);
+    size_t pushVar        (const string& s, const Type& t);
+    size_t pushAssumption (const string& s, const Expr* e);
     // Pops the last "assumed" entry, performs appropriate changes to all definitions and theorems in the top layer,
     // storing the new expressions in `pool`.
     // Returns false if there is no "assumed" entry left.

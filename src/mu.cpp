@@ -870,15 +870,23 @@ void Mu::analyze(const string& str) {
   while (!parser.eof()) {
     immediate = false;
     try {
-      Language::nextSentence<Decl>();
+      // TEMP CODE
+      Symbol start = getSymbol<Decl>();
+      ParseTree* x = Language::nextSentenceImpl(start);
+      if (!x) break;
+      symbols[start].action(x);
+      if (!immediate) {
+        try {
+          while (!scopes.empty() && scopes.back().second == 0) {
+            for (size_t i = 0; i < scopes.back().first; i++) ctx.pop(exprs);
+            scopes.pop_back();
+          }
+        } catch (Core::CheckFailure& ex) {
+          throw AnalysisErrorException(x, string("Error when popping, this should not happen...\n") + ex.what());
+        }
+      }
     } catch (AnalysisErrorException& ex) {
       result.errors.push_back(ex);
-    }
-    if (!immediate) {
-      while (!scopes.empty() && scopes.back().second == 0) {
-        for (size_t i = 0; i < scopes.back().first; i++) ctx.pop(exprs);
-        scopes.pop_back();
-      }
     }
   }
 }

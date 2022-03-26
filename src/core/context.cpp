@@ -17,6 +17,30 @@ namespace Core {
     return res;
   }
 
+  size_t Context::addDef(const string& s, const Type& t) { 
+    a.push_back(Entry{ s, t });
+    return a.size() - 1;
+  }
+
+  size_t Context::addTheorem(const string& s, const Expr* e) {
+    e->checkType(*this);
+    a.push_back(Entry{ s, e });
+    return a.size() - 1;
+  }
+
+  size_t Context::pushVar(const string& s, const Type& t) {
+    a.push_back(Entry{ s, t });
+    ind.push_back(a.size() - 1);
+    return a.size() - 1;
+  }
+
+  size_t Context::pushAssumption(const string& s, const Expr* e) {
+    e->checkType(*this);
+    a.push_back(Entry{ s, e });
+    ind.push_back(a.size() - 1);
+    return a.size() - 1;
+  }
+
   // Context-changing rules (implies-intro, forall[func, pred]-intro) here
   bool Context::pop(Allocator<Expr>& pool) {
     using enum Expr::Tag;
@@ -76,15 +100,25 @@ namespace Core {
         // Copy a[i + 1] to a[i], with necessary modifications...
         if (isexpr(a[i + 1].info)) {
           // Forallfunc/pred-intro for theorems
-          auto modify = [index, &pool] (unsigned int n, Expr* x) {
-            // If it is the assumed variable...
+          auto modify = [index, t, &pool] (unsigned int n, Expr* x) {
+            // If it is the assumed variable, make bound...
             if (x->var.vartag == FREE && x->var.id == index) {
               x->var.vartag = BOUND; x->var.id = n;
             }
-            // If defined after the assumed variable...
+            // If defined after the assumed variable, add application...
             else if (x->var.vartag == FREE && x->var.id > index) {
               x->var.id--;
               Expr* arg = nodevar(BOUND, n);
+              // Make sure second-order variables are fully applied
+              arg->var.id += t[0].first;
+              for (unsigned short k = 0; k < t[0].first; k++) {
+                Expr* bound = nodevar(BOUND, k);
+                bound->s = arg->var.c; arg->var.c = bound;
+              }
+              for (unsigned short k = 0; k < t[0].first; k++) {
+                arg = nodebinder(LAMBDA, "", arg);
+              }
+              // Attach new argument at the beginning
               arg->s = x->var.c; x->var.c = arg;
             }
             return x;
@@ -110,6 +144,11 @@ namespace Core {
       a.pop_back();
 
     } else throw NotImplemented();
+
+    // Should not throw, for debugging only
+    for (size_t i = index; i < a.size(); i++) if (isexpr(a[i].info)) {
+      expr(a[i].info)->checkType(*this);
+    }
 
     #undef node2
     #undef nodebinder
