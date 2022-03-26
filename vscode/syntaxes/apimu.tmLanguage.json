@@ -4,15 +4,15 @@
   "patterns": [
     {
       "name": "keyword.control.apimu",
-      "match": "\\b(any|anypred|anyfunc|assume|def|idef|undef|import|任取|任取谓词|任取函数|假设|定义|选取|删除定义|导入)\\b"
+      "match": "\\b(any|anypred|anyfunc|assume|def|idef|undef|任取|任取谓词|任取函数|假设|定义|选取|删除定义)\\b"
     },
     {
       "name": "keyword.control.apimu",
-      "match": "=>|:=|::|:<->"
+      "match": "=>|:=|::"
     },
     {
       "name": "keyword.other.apimu",
-      "match": "\\b(name|by|since|proof|namespace|private|public|prec|right_assoc|left_assoc|记为|根据|命名空间|不公开|公开|记号|前缀记号|后缀记号|中缀记号)\\b"
+      "match": "\\b(name|proof|prec|right_assoc|left_assoc|记为|证明|优先级|左结合|右结合)\\b"
     },
     {
       "name": "constant.numeric.apimu",

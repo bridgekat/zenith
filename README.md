@@ -74,12 +74,6 @@ anypred in/2 {
   #define x "∈" y := in x y
   name in_notation;
 
-  #define x "∉" y := not in x y
-  name notin_notation;
-
-  #define x "⊆" y := forall z, z ∈ x -> z ∈ y
-  name subsetof_notation;
-
   #define x "and" y "have" "the" "same" "elements" := forall a, a ∈ x <-> a ∈ y
   name same_notation;
 
@@ -91,7 +85,7 @@ anypred in/2 {
 }
 ```
 
-If everything is fine, some blue squiggles would appear under `forall x, y, x and y have the same elements -> x = y` (update: there are no longer squiggles now, but mouse hovering should give some pop-ups). Note that proofs are not supported yet (update: proof checking is now supported, see `notes/set_manual.mu`).
+If everything is fine, some blue squiggles would appear under `forall x, y, x and y have the same elements -> x = y` (update: there are no longer squiggles now, but mouse hovering should give some pop-ups). Note that proofs are not supported yet (update: proof checking is now supported, see [`notes/set_manual.mu`](notes/set_manual.mu)).
 
 You may also try executing `testcore`. It contains some tests for the experimental tableau prover (currently it is rather inefficient, and does not support equational reasoning. Nevertheless, it already proves some first-order propositions that Lean's `finish` tactic cannot prove...)
 

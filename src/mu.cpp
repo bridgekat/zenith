@@ -64,6 +64,7 @@ symbol(OpSlash) {};
 symbol(OpVertBar) {};
 symbol(OpColonEq) {};
 symbol(OpColonColon) {};
+symbol(OpEllipsis) {};
 
 symbol(KwAny) {};
 symbol(KwAnyFunc) {};
@@ -138,7 +139,8 @@ symbol(AnyPred) {};
 symbol(Assume) {};
 
 symbol(OptRRArrow) {};
-symbol(OptProof) { optional<WFP> pf; };
+symbol(OptWFE) { optional<WFE> e; };
+symbol(OptWFP) { optional<WFP> pf; };
 symbol(OptName) { optional<string> name; };
 symbol(OptSemicolon) {};
 symbol(Assertion) {};
@@ -310,6 +312,7 @@ Mu::Mu() {
   wordlikePatternRule("|",            OpVertBar{});
   wordlikePatternRule(":=",           OpColonEq{});
   wordlikePatternRule("::",           OpColonColon{});
+  wordlikePatternRule("...",          OpEllipsis{});
 
   wordlikePatternRule("equals",       ConstEquals{});
   wordlikePatternRule("=",            ConstEquals{});
@@ -443,13 +446,26 @@ Mu::Mu() {
           makePrec(0.420, true));
   addRule([this] (Expr&& lhs, ConstIff, Expr&& rhs)     -> Expr { return { makeExpr(Core::Expr::IFF, lhs.e, rhs.e) }; },
           makePrec(0.410, false));
-  
+
+  /*
+  auto updateDefMap = [this] (const string& name, const ParseTree* x) {
+    auto it = defMap.insert({ name, { x->startPos, x->endPos } }).first;
+    result.tokens.emplace_back(x);
+    result.tokens.back().defPos = it->second;
+  };
+  */
+  auto updateDefMap = [this] (const string& name, size_t startPos, size_t endPos) {
+    auto it = defMap.insert_or_assign(name, pair<size_t, size_t>{ startPos, endPos }).first;
+    result.tokens.emplace_back(startPos, endPos);
+    result.tokens.back().defPos = it->second;
+  };
+
   addRuleFor<Expr, Quantifier, NewVar, Expr>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto quantifier = getChild<Quantifier>(x, 0);
     auto name = getChild<NewVar>(x, 1).name;
     boundVars.emplace_back(name, Core::Type{{ 0, Core::Sort::SVAR }});
-    defMap[name] = { x->c->startPos, x->c->s->endPos };
+    updateDefMap(name, x->c->startPos, x->c->s->endPos);
     auto e = getChild<Expr>(x, 2).e;
     e = makeExpr(quantifier.tag, name, 0, Core::Sort::SVAR, e);
     boundVars.pop_back();
@@ -457,12 +473,12 @@ Mu::Mu() {
   }, makePrec(0.101, false));
 
   addRuleFor<Expr, Quantifier, NewVars, OpComma, Expr>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto quantifier = getChild<Quantifier>(x, 0);
     auto names = getChild<NewVars>(x, 1).names;
     for (auto& name: names) {
       boundVars.emplace_back(name, Core::Type{{ 0, Core::Sort::SVAR }});
-      defMap[name] = { x->c->startPos, x->c->s->s->endPos };
+      updateDefMap(name, x->c->startPos, x->c->s->s->endPos);
     }
     auto e = getChild<Expr>(x, 3).e;
     for (auto it = names.rbegin(); it != names.rend(); it++) {
@@ -474,11 +490,11 @@ Mu::Mu() {
   }, makePrec(0.100, false));
 
   addRuleFor<Expr, Quantifier2, NewArity, Expr>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto quantifier = getChild<Quantifier2>(x, 0);
     auto [name, arity] = getChild<NewArity>(x, 1);
     boundVars.emplace_back(name, Core::Type{{ arity, quantifier.sort }});
-    defMap[name] = { x->c->startPos, x->c->s->endPos };
+    updateDefMap(name, x->c->startPos, x->c->s->endPos);
     auto e = getChild<Expr>(x, 2).e;
     e = makeExpr(quantifier.tag, name, arity, quantifier.sort, e);
     boundVars.pop_back();
@@ -486,12 +502,12 @@ Mu::Mu() {
   }, makePrec(0.051, false));
 
   addRuleFor<Expr, Quantifier2, NewArities, OpComma, Expr>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto quantifier = getChild<Quantifier2>(x, 0);
     auto names = getChild<NewArities>(x, 1).names;
     for (auto& [name, arity]: names) {
       boundVars.emplace_back(name, Core::Type{{ arity, quantifier.sort }});
-      defMap[name] = { x->c->startPos, x->c->s->s->endPos };
+      updateDefMap(name, x->c->startPos, x->c->s->s->endPos);
     }
     auto e = getChild<Expr>(x, 3).e;
     for (auto it = names.rbegin(); it != names.rend(); it++) {
@@ -503,11 +519,11 @@ Mu::Mu() {
   }, makePrec(0.050, false));
 
   addRuleFor<Expr, NewVars, OpVertBar, Expr>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto names = getChild<NewVars>(x, 0).names;
     for (auto& name: names) {
       boundVars.emplace_back(name, Core::Type{{ 0, Core::Sort::SVAR }});
-      defMap[name] = { x->c->startPos, x->c->s->endPos };
+      updateDefMap(name, x->c->startPos, x->c->s->endPos);
     }
     auto e = getChild<Expr>(x, 2).e;
     for (auto it = names.rbegin(); it != names.rend(); it++) {
@@ -610,44 +626,44 @@ Mu::Mu() {
   addRule([]     (Assumptions&& as, OpComma)                  -> Assumptions { return as; });
   addRule([]     (Assumptions&& as, OpComma, Assumption&& a)  -> Assumptions { as.as.emplace_back(a.name, a.expr); return as; });
   addRuleFor<Any, KwAny, NewVars>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto names = getChild<NewVars>(x, 1).names;
     for (auto& name: names) {
       ctx.pushVar(name, Core::Type{{ 0, Core::Sort::SVAR }});
-      defMap[name] = { x->startPos, x->endPos };
+      updateDefMap(name, x->startPos, x->endPos);
     }
     scopes.emplace_back(names.size(), 0);
     immediate = true;
     return Any{};
   });
   addRuleFor<AnyFunc, KwAnyFunc, NewArities>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto fs = getChild<NewArities>(x, 1).names;
     for (auto& [name, arity]: fs) {
       ctx.pushVar(name, Core::Type{{ arity, Core::Sort::SVAR }});
-      defMap[name] = { x->startPos, x->endPos };
+      updateDefMap(name, x->startPos, x->endPos);
     }
     scopes.emplace_back(fs.size(), 0);
     immediate = true;
     return AnyFunc{};
   });
   addRuleFor<AnyPred, KwAnyPred, NewArities>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto ps = getChild<NewArities>(x, 1).names;
     for (auto& [name, arity]: ps) {
       ctx.pushVar(name, Core::Type{{ arity, Core::Sort::SPROP }});
-      defMap[name] = { x->startPos, x->endPos };
+      updateDefMap(name, x->startPos, x->endPos);
     }
     scopes.emplace_back(ps.size(), 0);
     immediate = true;
     return AnyPred{};
   });
   addRuleFor<Assume, KwAssume, Assumptions>
-  ([this] (const ParseTree* x) {
+  ([this, updateDefMap] (const ParseTree* x) {
     auto as = getChild<Assumptions>(x, 1).as;
     for (auto& [name, e]: as) {
       ctx.pushAssumption(name, e);
-      defMap[name] = { x->startPos, x->endPos };
+      updateDefMap(name, x->startPos, x->endPos);
     }
     scopes.emplace_back(as.size(), 0);
     immediate = true;
@@ -656,33 +672,37 @@ Mu::Mu() {
 
   addRule([]     ()                        -> OptRRArrow { return {}; });
   addRule([]     (OpRRArrow)               -> OptRRArrow { return {}; });
-  addRule([]     ()                        -> OptProof { return { nullopt }; });
-  addRule([]     (KwProof, WFP&& pf)       -> OptProof { return { pf }; });
+  addRule([]     (OpEllipsis)              -> OptWFE { return { nullopt }; });
+  addRule([]     (WFE&& e)                 -> OptWFE { return { e }; });
+  addRule([]     ()                        -> OptWFP { return { nullopt }; });
+  addRule([]     (KwProof, WFP&& pf)       -> OptWFP { return { pf }; });
   addRule([]     ()                        -> OptName { return { nullopt }; });
   addRule([]     (KwName, Identifier&& id) -> OptName { return { id.name }; });
   addRule([]     ()                        -> OptSemicolon { return {}; });
   addRule([]     (OpSemicolon)             -> OptSemicolon { return {}; });
-  addRuleFor<Assertion, OptRRArrow, WFF, OptName, OptProof, OptSemicolon>
-  ([this] (const ParseTree* x) {
+  addRuleFor<Assertion, OptRRArrow, OptWFE, OptName, OptWFP, OptSemicolon>
+  ([this, updateDefMap] (const ParseTree* x) {
     // TODO: verify or start tableau thread
-    auto e    = getChild<WFF>     (x, 1).e;
-    auto name = getChild<OptName> (x, 2).name;
-    auto pf   = getChild<OptProof>(x, 3).pf;
+    auto e    = getChild<OptWFE> (x, 1).e;
+    auto name = getChild<OptName>(x, 2).name;
+    auto pf   = getChild<OptWFP> (x, 3).pf;
     if (!pf) {
       result.info.emplace_back(x, "No proof");
       // throw AnalysisErrorException(x, "No proof");
-    } else if (/* e &&*/ pf && *pf->e != *e) {
-      throw AnalysisErrorException(x, 
+    } else if (e && pf && *pf->e != *e->e) {
+      throw AnalysisErrorException(x,
           string("Invalid assertion, statement and proof do not match\n")
-        + "Statement: " + e->toString(ctx) + "\n" + "Proof: " + pf->e->toString(ctx));
+        + "Statement: " + e->e->toString(ctx) + "\n" + "Proof: " + pf->e->toString(ctx));
     }
-    ctx.addTheorem(name.value_or(""), e);
-    defMap[name.value_or("")] = { x->startPos, x->endPos };
+    if (e || pf) {
+      ctx.addTheorem(name.value_or(""), e? e->e : pf->e);
+      updateDefMap(name.value_or(""), x->startPos, x->endPos);
+    }
     return Assertion{};
   });
 
   addRuleFor<Def, KwDef, Identifier, OpColonEq, WFE, OptName, OptSemicolon>(
-  [this] (const ParseTree* x) {
+  [this, updateDefMap] (const ParseTree* x) {
     // TODO: verify or start tableau thread
     auto id      = getChild<Identifier>(x, 1);
     auto e       = getChild<WFE>       (x, 3);
@@ -694,44 +714,54 @@ Mu::Mu() {
     Core::Decl decl(tag, id.name, namedef.name.value_or(""), e.e);
     try {
       decl.check(ctx, exprs);
-      defMap[id.name] = { x->startPos, x->endPos };
-      defMap[namedef.name.value_or("")] = { x->startPos, x->endPos };
+      updateDefMap(id.name, x->startPos, x->endPos);
+      updateDefMap(namedef.name.value_or(""), x->startPos, x->endPos);
     } catch (Core::CheckFailure& ex) {
       throw AnalysisErrorException(x, e.e->toString(ctx) + ":\n" + ex.what());
     }
     return Def{};
   });
 
-  addRuleFor<Def, KwDef, Identifier, OpColonColon, WFE, OptName, KwProof, WFP, OptSemicolon>(
-  [this] (const ParseTree* x) {
+  addRuleFor<Def, KwDef, Identifier, OpColonColon, OptWFE, OptName, KwProof, WFP, OptSemicolon>(
+  [this, updateDefMap] (const ParseTree* x) {
     // TODO: verify or start tableau thread
     auto id      = getChild<Identifier>(x, 1);
-    // auto e       = getChild<WFE>       (x, 3);
+    auto e       = getChild<OptWFE>    (x, 3).e;
     auto namedef = getChild<OptName>   (x, 4);
     auto pf      = getChild<WFP>       (x, 6); // TODO: make this optional
     Core::Decl decl(Core::Decl::DDEF, id.name, namedef.name.value_or(""), pf.pf);
+    if (e && *pf.e != *e->e) { // TODO: fix
+      throw AnalysisErrorException(x,
+          string("Invalid assertion, statement and proof do not match\n")
+        + "Statement: " + e->e->toString(ctx) + "\n" + "Proof: " + pf.e->toString(ctx));
+    }
     try {
       decl.check(ctx, exprs);
-      defMap[id.name] = { x->startPos, x->endPos };
-      defMap[namedef.name.value_or("")] = { x->startPos, x->endPos };
+      updateDefMap(id.name, x->startPos, x->endPos);
+      updateDefMap(namedef.name.value_or(""), x->startPos, x->endPos);
     } catch (Core::CheckFailure& ex) {
       throw AnalysisErrorException(x, pf.e->toString(ctx) + ":\n" + ex.what());
     }
     return Def{};
   });
 
-  addRuleFor<Def, KwIDef, Identifier, OpColonColon, WFE, OptName, KwProof, WFP, OptSemicolon>(
-  [this] (const ParseTree* x) {
+  addRuleFor<Def, KwIDef, Identifier, OpColonColon, OptWFE, OptName, KwProof, WFP, OptSemicolon>(
+  [this, updateDefMap] (const ParseTree* x) {
     // TODO: verify or start tableau thread
     auto id      = getChild<Identifier>(x, 1);
-    // auto e       = getChild<WFE>       (x, 3);
+    auto e       = getChild<OptWFE>    (x, 3).e;
     auto namedef = getChild<OptName>   (x, 4);
     auto pf      = getChild<WFP>       (x, 6); // TODO: make this optional
     Core::Decl decl(Core::Decl::IDEF, id.name, namedef.name.value_or(""), pf.pf);
+    if (e && *pf.e != *e->e) { // TODO: fix
+      throw AnalysisErrorException(x,
+          string("Invalid assertion, statement and proof do not match\n")
+        + "Statement: " + e->e->toString(ctx) + "\n" + "Proof: " + pf.e->toString(ctx));
+    }
     try {
       decl.check(ctx, exprs);
-      defMap[id.name] = { x->startPos, x->endPos };
-      defMap[namedef.name.value_or("")] = { x->startPos, x->endPos };
+      updateDefMap(id.name, x->startPos, x->endPos);
+      updateDefMap(namedef.name.value_or(""), x->startPos, x->endPos);
     } catch (Core::CheckFailure& ex) {
       throw AnalysisErrorException(x, pf.e->toString(ctx) + ":\n" + ex.what());
     }
