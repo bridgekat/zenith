@@ -14,7 +14,7 @@ namespace Parsing {
   using std::holds_alternative, std::get, std::visit;
 
   // See: https://en.cppreference.com/w/cpp/utility/variant/visit
-  template <class... Ts> struct Matcher: Ts... { using Ts::operator()...; };
+  template <typename... Ts> struct Matcher: Ts... { using Ts::operator()...; };
 
 
   // Parse greedily, until there is no further possibilities.

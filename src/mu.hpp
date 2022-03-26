@@ -29,8 +29,8 @@ struct HoverInfo: public AnalysisInfo {
 struct TokenInfo {
   size_t startPos, endPos;
   std::optional<std::pair<size_t, size_t>> defPos;
-  TokenInfo(const Parsing::ParseTree* x): startPos(x->startPos), endPos(x->endPos) { defPos = { startPos, endPos }; }
-  TokenInfo(size_t startPos, size_t endPos): startPos(startPos), endPos(endPos) { defPos = { startPos, endPos }; }
+  TokenInfo(const Parsing::ParseTree* x): startPos(x->startPos), endPos(x->endPos), defPos({ x->startPos, x->endPos }) {}
+  TokenInfo(size_t startPos, size_t endPos): startPos(startPos), endPos(endPos), defPos({ startPos, endPos }) {}
 };
 
 struct AnalysisResult {
@@ -64,7 +64,7 @@ private:
 
   std::unordered_map<void*, std::pair<size_t, size_t>> sourceMap{};
   std::unordered_map<std::string, std::pair<size_t, size_t>> defMap{}; // TODO: make correct
-  AnalysisResult result;
+  AnalysisResult result{};
 
   template <typename ...Ts>
   Core::Expr* makeExprLoc(const Parsing::ParseTree* x, const Ts&... args) {

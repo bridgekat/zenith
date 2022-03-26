@@ -18,10 +18,10 @@ namespace Parsing {
   using std::string;
 
 
-  // Symbol ID
+  // Symbol ID (Lean name: "syntactic category")
   using Symbol = unsigned int;
 
-  // Parse tree node (also used as tokens)
+  // Parse tree node, also used as tokens (Lean name: "syntax")
   struct ParseTree {
     ParseTree* s, * c;
     Symbol id;

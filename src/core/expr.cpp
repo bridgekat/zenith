@@ -25,7 +25,7 @@ namespace Core {
         if (conn.l) res->conn.l = (conn.l)->clone(pool);
         if (conn.r) res->conn.r = (conn.r)->clone(pool);
         return res;
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
         if (binder.r) res->binder.r = (binder.r)->clone(pool);
         return res;
     }
@@ -68,7 +68,7 @@ namespace Core {
       case AND: case OR: case IMPLIES: case IFF:
         return *(conn.l) == *(rhs.conn.l) &&
                *(conn.r) == *(rhs.conn.r);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
         return binder.arity == rhs.binder.arity &&
                binder.sort  == rhs.binder.sort  &&
                *(binder.r)  == *(rhs.binder.r);
@@ -104,7 +104,7 @@ namespace Core {
         hash_combine(res, conn.l->hash());
         hash_combine(res, conn.r->hash());
         return res;
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
         hash_combine(res, binder.arity);
         hash_combine(res, binder.sort);
         hash_combine(res, binder.r->hash());
@@ -148,25 +148,25 @@ namespace Core {
                                + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
       case IFF:     return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " iff "
                                + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: {
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: {
         string ch, name = bv.empty() ? newName(stk.size()) : bv;
         switch (tag) {
           case FORALL:  ch = "forall "; break;
           case EXISTS:  ch = "exists "; break;
           case UNIQUE:  ch = "unique "; break;
           case FORALL2: ch = (binder.sort == SVAR ? "forallfunc " : "forallpred "); break;
-          case LAM:     ch = "\\ "; break;
+          case LAMBDA:     ch = "lambda "; break;
           default: break;
         }
         string res = "(" + ch + name;
         // If not an individual variable...
         if (!(binder.arity == 0 && binder.sort == SVAR)) {
           res += "/" + std::to_string(binder.arity);
-          res += (binder.sort == SVAR ? "#" : "$");
+          if (tag != FORALL2) res += (binder.sort == SVAR ? "#" : "$"); // Should not happen
         }
         // Print recursively
         stk.emplace_back(Type{{ binder.arity, binder.sort }}, name);
-        res += ", " + binder.r->toString(ctx, stk) + ")";
+        res += " " + binder.r->toString(ctx, stk) + ")";
         stk.pop_back();
         return res;
       }
@@ -238,7 +238,7 @@ namespace Core {
         else throw InvalidExpr("binder body should be a proposition", ctx, this);
       }
 
-      case LAM: {
+      case LAMBDA: {
         if (binder.arity != 0 || binder.sort != SVAR)
           throw InvalidExpr("binder should bind a term variable", ctx, this);
         if (!binder.r)
@@ -276,7 +276,7 @@ namespace Core {
         return conn.l && conn.l->occurs(vartag, id);
       case AND: case OR: case IMPLIES: case IFF:
         return (conn.l && conn.l->occurs(vartag, id)) || (conn.r && conn.r->occurs(vartag, id));
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: 
         return binder.r && binder.r->occurs(vartag, id);
     }
     throw NotImplemented();
@@ -297,7 +297,7 @@ namespace Core {
         return conn.l? conn.l->numUndetermined() : 0;
       case AND: case OR: case IMPLIES: case IFF:
         return std::max(conn.l? conn.l->numUndetermined() : 0, conn.r? conn.r->numUndetermined() : 0);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: 
         return binder.r? binder.r->numUndetermined() : 0;
     }
     throw NotImplemented();
@@ -317,7 +317,7 @@ namespace Core {
         return !conn.l || conn.l->isGround();
       case AND: case OR: case IMPLIES: case IFF:
         return (!conn.l || conn.l->isGround()) && (!conn.r || conn.r->isGround());
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: 
         return !binder.r || binder.r->isGround();
     }
     throw NotImplemented();
@@ -338,7 +338,7 @@ namespace Core {
         return 1 + (conn.l? conn.l->size() : 0);
       case AND: case OR: case IMPLIES: case IFF:
         return 1 + (conn.l? conn.l->size() : 0) + (conn.r? conn.r->size() : 0);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM: 
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: 
         return 1 + (binder.r? binder.r->size() : 0);
     }
     throw NotImplemented();

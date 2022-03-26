@@ -19,6 +19,10 @@ using Server::Document;
 using namespace Server::LSP;
 
 
+// =================
+// Utility functions
+// =================
+
 void showMessage(JSONRPC2Server* srv, MessageType type, const string& msg) {
   srv->callNotification("window/showMessage", {
     {"type", static_cast<unsigned int>(type)},
@@ -52,9 +56,13 @@ pair<size_t, size_t> toIndices(const Document& doc, Position start, Position end
 }
 
 
+// ===========================
+// Document analysis functions
+// ===========================
+
 struct Entry {
-  Document doc;
-  AnalysisResult result;
+  Document doc{};
+  AnalysisResult result{};
 };
 
 std::unordered_map<DocumentUri, Entry> docs;
@@ -81,6 +89,10 @@ void analyzeDocument(JSONRPC2Server* srv, const DocumentUri& uri) {
 }
 
 
+// ======================
+// Server method handlers
+// ======================
+
 Coroutine<json> initialize(JSONRPC2Server*, const json&) {
   // This is a method.
   // We must send a response to it (`co_return` a json).
@@ -88,7 +100,7 @@ Coroutine<json> initialize(JSONRPC2Server*, const json&) {
     {"capabilities", {
       {"textDocumentSync", {
         {"openClose", true},
-        {"change", 2} // None: 0, Full: 1, Incremental: 2
+        {"change", 2} // None: 0, full: 1, incremental: 2
       }},
       {"hoverProvider", true},
       {"definitionProvider", true},
@@ -147,6 +159,19 @@ Coroutine<void> test2(JSONRPC2Server* srv, const json&) {
   // Valid response, put a message
   showMessage(srv, sel, "Hello, world!");
   logMessage(srv, sel, "Hello, world!");
+  co_return;
+}
+
+Coroutine<json> shutdown(JSONRPC2Server*, const json&) {
+  // This is a method.
+  // According to spec, we must return a `null` result to it
+  // (nlohmann::json uses `nullptr` or just `{}` to represent `null`.)
+  co_return {};
+}
+
+Coroutine<void> stop(JSONRPC2Server* srv, const json&) {
+  // This is a notification.
+  srv->requestStop();
   co_return;
 }
 
@@ -234,24 +259,6 @@ Coroutine<json> definition(JSONRPC2Server* srv, const json& params) {
   co_return {};
 }
 
-Coroutine<json> shutdown(JSONRPC2Server*, const json&) {
-  // This is a method.
-  // According to spec, we must return a `null` result to it
-  // (nlohmann::json uses `nullptr` or just `{}` to represent `null`.)
-  co_return {};
-}
-
-Coroutine<void> stop(JSONRPC2Server* srv, const json&) {
-  // This is a notification.
-  srv->requestStop();
-  co_return;
-}
-
-// You may also throw certain exceptions (namely, of type `JSONRPC2Exception`) in methods:
-//   throw JSONRPC2Exception(JSONRPC2Exception::SERVER_ERROR, "send out");
-// This error information will get sent to the client.
-// But if you throw other kinds of exceptions, std::terminate() will be called (i.e. the program will crash).
-
 
 int main() {
   // Windows automatically converts between "\r\n" and "\n" if cin/cout is in "text mode".
@@ -281,13 +288,13 @@ int main() {
   srv.addMethod       ("test", test);
   srv.addNotification ("test1", test1);
   srv.addNotification ("test2", test2);
+  srv.addMethod       ("shutdown", shutdown);
+  srv.addNotification ("exit", stop);
   srv.addNotification ("textDocument/didOpen", didOpenTextDocument);
   srv.addNotification ("textDocument/didChange", didChangeTextDocument);
   srv.addNotification ("textDocument/didClose", didCloseTextDocument);
   srv.addMethod       ("textDocument/hover", hover);
   srv.addMethod       ("textDocument/definition", definition);
-  srv.addMethod       ("shutdown", shutdown);
-  srv.addNotification ("exit", stop);
 
   // Start the server thread and wait until it was shut down...
   srv.startListen();

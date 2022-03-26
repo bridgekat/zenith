@@ -60,7 +60,7 @@ namespace Elab {
           case EXISTS:  return δ;
           case UNIQUE:  return α;
           case FORALL2: return α; // Change to return φ; when ready
-          case EMPTY: case LAM: return α;
+          case EMPTY: case LAMBDA: return α;
         }
         break;
       case R:
@@ -77,7 +77,7 @@ namespace Elab {
           case EXISTS:  return γ;
           case UNIQUE:  return β;
           case FORALL2: return δ;
-          case EMPTY: case LAM: return α;
+          case EMPTY: case LAMBDA: return α;
         }
         break;
     }
@@ -396,7 +396,7 @@ namespace Elab {
                                         Expr::make(pool, IMPLIES, e->binder.r,
                                         Expr::make(pool, FREE, ctx.equals, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) }))))));
           case FORALL2: return dfs(depth); // "φ" rule is not supported yet...
-          case LAM:     return dfs(depth);
+          case LAMBDA:     return dfs(depth);
         }
         throw Unreachable();
       }
@@ -420,7 +420,7 @@ namespace Elab {
           case EXISTS:  return gamma(R, e, false);
           case UNIQUE:  throw Unreachable();
           case FORALL2: return dfs(depth); // TODO: second-order δ-rule
-          case LAM:     return dfs(depth);
+          case LAMBDA:     return dfs(depth);
         }
         throw Unreachable();
       }

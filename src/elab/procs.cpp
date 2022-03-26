@@ -21,7 +21,7 @@ namespace Elab::Procs {
       case OR:      return  propValue(e->conn.l, fvmap) || propValue(e->conn.r, fvmap);
       case IMPLIES: return !propValue(e->conn.l, fvmap) || propValue(e->conn.r, fvmap);
       case IFF:     return  propValue(e->conn.l, fvmap) == propValue(e->conn.r, fvmap);
-      case FORALL: case EXISTS: case UNIQUE: case EMPTY: case FORALL2: case LAM:
+      case FORALL: case EXISTS: case UNIQUE: case EMPTY: case FORALL2: case LAMBDA:
         throw Unreachable();
     }
     throw NotImplemented();
@@ -79,7 +79,7 @@ namespace Elab::Procs {
           toNNF(&exi, ctx, pool, negated),
           toNNF(&no2, ctx, pool, negated));
       }
-      case EMPTY: case FORALL2: case LAM:
+      case EMPTY: case FORALL2: case LAMBDA:
         throw Unreachable();
     }
     throw NotImplemented();
@@ -113,7 +113,7 @@ namespace Elab::Procs {
       case AND: case OR: case IMPLIES: case IFF:
         return equalAfterSubs(lhs->conn.l, rhs->conn.l, subs) &&
                equalAfterSubs(lhs->conn.r, rhs->conn.r, subs);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
         return lhs->binder.arity == rhs->binder.arity &&
                lhs->binder.sort  == rhs->binder.sort  &&
                equalAfterSubs(lhs->binder.r, rhs->binder.r, subs);
@@ -181,7 +181,7 @@ namespace Elab::Procs {
           return Expr::make(*pool, lhs->tag, dfs(lhs->conn.l, rhs->conn.l));
         case AND: case OR: case IMPLIES: case IFF:
           return Expr::make(*pool, lhs->tag, dfs(lhs->conn.l, rhs->conn.l), dfs(lhs->conn.r, rhs->conn.r));
-        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
           if (lhs->binder.arity != rhs->binder.arity || lhs->binder.sort != rhs->binder.sort) {
             return different();
           }
@@ -272,7 +272,7 @@ namespace Elab::Procs {
             a.emplace_back(lhs->conn.l, rhs->conn.l);
             a.emplace_back(lhs->conn.r, rhs->conn.r);
             break;
-          case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+          case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
             if (lhs->binder.arity != rhs->binder.arity || lhs->binder.sort != rhs->binder.sort) {
               return nullopt;
             }

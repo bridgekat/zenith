@@ -8,10 +8,8 @@ using std::vector;
 using std::pair, std::make_pair;
 using std::optional, std::make_optional, std::nullopt;
 using std::variant, std::get, std::holds_alternative;
+using Core::Matcher;
 using Parsing::SymbolName, Parsing::Symbol, Parsing::ParseTree, Parsing::makePrec;
-
-// See: https://en.cppreference.com/w/cpp/utility/variant/visit
-template <class... Ts> struct Matcher: Ts... { using Ts::operator()...; };
 
 
 // ===================
@@ -74,7 +72,7 @@ symbol(KwAssume) {};
 symbol(KwName) {};
 symbol(KwProof) {};
 symbol(KwDef) {};
-symbol(KwIdef) {};
+symbol(KwIDef) {};
 symbol(KwUndef) {};
 symbol(KwPrec) {};
 symbol(KwRightmostLongest) {};
@@ -94,7 +92,6 @@ symbol(ConstIff) {};
 symbol(Quantifier) { Core::Expr::Tag tag; };
 symbol(Quantifier2) { Core::Expr::Tag tag; Core::Sort sort; };
 
-/*
 symbol(ProofAndI) {};
 symbol(ProofAndL) {};
 symbol(ProofAndR) {};
@@ -119,7 +116,6 @@ symbol(ProofUniqueI) {};
 symbol(ProofUniqueL) {};
 symbol(ProofUniqueR) {};
 symbol(ProofForall2E) {};
-*/
 
 symbol(Var) { Core::Expr* e; };
 symbol(Vars) { vector<Core::Expr*> es; };
@@ -146,10 +142,7 @@ symbol(OptProof) { optional<WFP> pf; };
 symbol(OptName) { optional<string> name; };
 symbol(OptSemicolon) {};
 symbol(Assertion) {};
-
 symbol(Def) {};
-symbol(DDef) {};
-symbol(Idef) {};
 symbol(Undef) {};
 
 symbol(List) {};
@@ -199,7 +192,7 @@ ParseTree* cloneParseTree(const ParseTree* x, Core::Allocator<ParseTree>& pool) 
   return res;
 }
 
-// Ad-hoc...
+// Ad-hoc macro expansion...
 ParseTree* Mu::replaceVarsByExprs(const ParseTree* x, const std::unordered_map<string, const ParseTree*> mp) {
   if (x->id == getSymbol<Var>() && x->c && x->c->id == getSymbol<Identifier>() && mp.contains(*x->c->lexeme)) {
     auto it = mp.find(*x->c->lexeme);
@@ -333,10 +326,10 @@ Mu::Mu() {
   wordlikePatternRule("forall",       Quantifier{ Core::Expr::FORALL });
   wordlikePatternRule("exists",       Quantifier{ Core::Expr::EXISTS });
   wordlikePatternRule("unique",       Quantifier{ Core::Expr::UNIQUE });
+  wordlikePatternRule("lambda",       Quantifier{ Core::Expr::LAMBDA });
   wordlikePatternRule("forallfunc",   Quantifier2{ Core::Expr::FORALL2, Core::Sort::SVAR });
   wordlikePatternRule("forallpred",   Quantifier2{ Core::Expr::FORALL2, Core::Sort::SPROP });
 
-/*
   wordlikePatternRule("and.i",        ProofAndI{});
   wordlikePatternRule("and.l",        ProofAndL{});
   wordlikePatternRule("and.r",        ProofAndR{});
@@ -362,7 +355,6 @@ Mu::Mu() {
   wordlikePatternRule("unique.r",     ProofUniqueR{});
   wordlikePatternRule("forallfunc.e", ProofForall2E{});
   wordlikePatternRule("forallpred.e", ProofForall2E{});
-*/
 
   wordlikePatternRule("any",          KwAny{});
   wordlikePatternRule("anyfunc",      KwAnyFunc{});
@@ -371,7 +363,7 @@ Mu::Mu() {
   wordlikePatternRule("name",         KwName{});
   wordlikePatternRule("proof",        KwProof{});
   wordlikePatternRule("def",          KwDef{});
-  wordlikePatternRule("idef",         KwIdef{});
+  wordlikePatternRule("idef",         KwIDef{});
   wordlikePatternRule("undef",        KwUndef{});
   wordlikePatternRule("prec",         KwPrec{});
   wordlikePatternRule("right_assoc",  KwRightmostLongest{});
@@ -451,6 +443,18 @@ Mu::Mu() {
           makePrec(0.420, true));
   addRule([this] (Expr&& lhs, ConstIff, Expr&& rhs)     -> Expr { return { makeExpr(Core::Expr::IFF, lhs.e, rhs.e) }; },
           makePrec(0.410, false));
+  
+  addRuleFor<Expr, Quantifier, NewVar, Expr>
+  ([this] (const ParseTree* x) {
+    auto quantifier = getChild<Quantifier>(x, 0);
+    auto name = getChild<NewVar>(x, 1).name;
+    boundVars.emplace_back(name, Core::Type{{ 0, Core::Sort::SVAR }});
+    defMap[name] = { x->c->startPos, x->c->s->endPos };
+    auto e = getChild<Expr>(x, 2).e;
+    e = makeExpr(quantifier.tag, name, 0, Core::Sort::SVAR, e);
+    boundVars.pop_back();
+    return Expr{ e };
+  }, makePrec(0.101, false));
 
   addRuleFor<Expr, Quantifier, NewVars, OpComma, Expr>
   ([this] (const ParseTree* x) {
@@ -468,6 +472,18 @@ Mu::Mu() {
     }
     return Expr{ e };
   }, makePrec(0.100, false));
+
+  addRuleFor<Expr, Quantifier2, NewArity, Expr>
+  ([this] (const ParseTree* x) {
+    auto quantifier = getChild<Quantifier2>(x, 0);
+    auto [name, arity] = getChild<NewArity>(x, 1);
+    boundVars.emplace_back(name, Core::Type{{ arity, quantifier.sort }});
+    defMap[name] = { x->c->startPos, x->c->s->endPos };
+    auto e = getChild<Expr>(x, 2).e;
+    e = makeExpr(quantifier.tag, name, arity, quantifier.sort, e);
+    boundVars.pop_back();
+    return Expr{ e };
+  }, makePrec(0.051, false));
 
   addRuleFor<Expr, Quantifier2, NewArities, OpComma, Expr>
   ([this] (const ParseTree* x) {
@@ -496,7 +512,7 @@ Mu::Mu() {
     auto e = getChild<Expr>(x, 2).e;
     for (auto it = names.rbegin(); it != names.rend(); it++) {
       string name = *it;
-      e = makeExpr(Core::Expr::LAM, name, 0, Core::Sort::SVAR, e);
+      e = makeExpr(Core::Expr::LAMBDA, name, 0, Core::Sort::SVAR, e);
       boundVars.pop_back();
     }
     return Expr{ e };
@@ -518,17 +534,32 @@ Mu::Mu() {
     }
     throw AnalysisErrorException(x, "Undefined identifier: " + name);
   });
-/*
-  addRuleFor<Proof, ProofRule>
-  ([this] (const ParseTree* x) { return Proof{ makeProofLoc(x, getChild<ProofRule>(x, 0).tag) }; });
-  addRuleFor<Proof, ProofRule, Proof>
-  ([this] (const ParseTree* x) { return Proof{ makeProofLoc(x, getChild<ProofRule>(x, 0).tag, getChild<Proof>(x, 1).pf) }; });
-  addRuleFor<Proof, ProofRule, Proof, Proof>
-  ([this] (const ParseTree* x) { return Proof{ makeProofLoc(x, getChild<ProofRule>(x, 0).tag, getChild<Proof>(x, 1).pf, getChild<Proof>(x, 2).pf) }; });
-  addRuleFor<Proof, ProofRule, Proof, Proof, Proof>
-  ([this] (const ParseTree* x) { return Proof{ makeProofLoc(x, getChild<ProofRule>(x, 0).tag, getChild<Proof>(x, 1).pf, getChild<Proof>(x, 2).pf, getChild<Proof>(x, 3).pf) }; });
-  addRule([]     (OpLParen, Proof&& pf, OpRParen) -> Proof { return pf; });
-*/
+
+  addRule([this] (ProofAndI, Proof&& p0, Proof&& p1)                -> Proof { return { makeProof(Core::Proof::AND_I, p0.pf, p1.pf) }; });
+  addRule([this] (ProofAndL, Proof&& p0)                            -> Proof { return { makeProof(Core::Proof::AND_L, p0.pf) }; });
+  addRule([this] (ProofAndR, Proof&& p0)                            -> Proof { return { makeProof(Core::Proof::AND_R, p0.pf) }; });
+  addRule([this] (ProofOrL, Proof&& p0, Expr&& p1)                  -> Proof { return { makeProof(Core::Proof::OR_L, p0.pf, makeProof(p1.e)) }; });
+  addRule([this] (ProofOrR, Expr&& p0, Proof&& p1)                  -> Proof { return { makeProof(Core::Proof::OR_R, makeProof(p0.e), p1.pf) }; });
+  addRule([this] (ProofOrE, Proof&& p0, Proof&& p1, Proof&& p2)     -> Proof { return { makeProof(Core::Proof::OR_E, p0.pf, p1.pf, p2.pf) }; });
+  addRule([this] (ProofImpliesE, Proof&& p0, Proof&& p1)            -> Proof { return { makeProof(Core::Proof::IMPLIES_E, p0.pf, p1.pf) }; });
+  addRule([this] (ProofNotI, Proof&& p0)                            -> Proof { return { makeProof(Core::Proof::NOT_I, p0.pf) }; });
+  addRule([this] (ProofNotE, Proof&& p0, Proof&& p1)                -> Proof { return { makeProof(Core::Proof::NOT_E, p0.pf, p1.pf) }; });
+  addRule([this] (ProofIffI, Proof&& p0, Proof&& p1)                -> Proof { return { makeProof(Core::Proof::IFF_I, p0.pf, p1.pf) }; });
+  addRule([this] (ProofIffL, Proof&& p0, Proof&& p1)                -> Proof { return { makeProof(Core::Proof::IFF_L, p0.pf, p1.pf) }; });
+  addRule([this] (ProofIffR, Proof&& p0, Proof&& p1)                -> Proof { return { makeProof(Core::Proof::IFF_R, p0.pf, p1.pf) }; });
+  addRule([this] (ProofTrueI)                                       -> Proof { return { makeProof(Core::Proof::TRUE_I) }; });
+  addRule([this] (ProofFalseE, Proof&& p0, Expr&& p1)               -> Proof { return { makeProof(Core::Proof::FALSE_E, p0.pf, makeProof(p1.e)) }; });
+  addRule([this] (ProofRAA, Proof&& p0)                             -> Proof { return { makeProof(Core::Proof::RAA, p0.pf) }; });
+  addRule([this] (ProofEqualsI, Expr&& p0)                          -> Proof { return { makeProof(Core::Proof::EQUALS_I, makeProof(p0.e)) }; });
+  addRule([this] (ProofEqualsE, Expr&& p0, Proof&& p1, Proof&& p2)  -> Proof { return { makeProof(Core::Proof::EQUALS_E, makeProof(p0.e), p1.pf, p2.pf) }; });
+  addRule([this] (ProofForallE, Proof&& p0, Expr&& p1)              -> Proof { return { makeProof(Core::Proof::FORALL_E, p0.pf, makeProof(p1.e)) }; });
+  addRule([this] (ProofExistsI, Expr&& p0, Expr&& p1, Proof&& p2)   -> Proof { return { makeProof(Core::Proof::EXISTS_I, makeProof(p0.e), makeProof(p1.e), p2.pf) }; });
+  addRule([this] (ProofExistsE, Proof&& p0, Proof&& p1, Expr&& p2)  -> Proof { return { makeProof(Core::Proof::EXISTS_E, p0.pf, p1.pf, makeProof(p2.e)) }; });
+  addRule([this] (ProofUniqueI, Proof&& p0, Proof&& p1)             -> Proof { return { makeProof(Core::Proof::UNIQUE_I, p0.pf, p1.pf) }; });
+  addRule([this] (ProofUniqueL, Proof&& p0)                         -> Proof { return { makeProof(Core::Proof::UNIQUE_L, p0.pf) }; });
+  addRule([this] (ProofUniqueR, Proof&& p0)                         -> Proof { return { makeProof(Core::Proof::UNIQUE_R, p0.pf) }; });
+  addRule([this] (ProofForall2E, Proof&& p0, Expr&& p1)             -> Proof { return { makeProof(Core::Proof::FORALL2_E, p0.pf, makeProof(p1.e)) }; });
+  addRule([]     (OpLParen, Proof&& pf, OpRParen)                   -> Proof { return pf; });
 
   #undef makeExpr
   #undef makeProof
@@ -634,9 +665,9 @@ Mu::Mu() {
   addRuleFor<Assertion, OptRRArrow, WFF, OptName, OptProof, OptSemicolon>
   ([this] (const ParseTree* x) {
     // TODO: verify or start tableau thread
-    auto e = getChild<WFF>(x, 1).e;
-    auto name = getChild<OptName>(x, 2).name;
-    auto pf = getChild<OptProof>(x, 3).pf;
+    auto e    = getChild<WFF>     (x, 1).e;
+    auto name = getChild<OptName> (x, 2).name;
+    auto pf   = getChild<OptProof>(x, 3).pf;
     if (!pf) {
       result.info.emplace_back(x, "No proof");
       // throw AnalysisErrorException(x, "No proof");
@@ -652,9 +683,10 @@ Mu::Mu() {
 
   addRuleFor<Def, KwDef, Identifier, OpColonEq, WFE, OptName, OptSemicolon>(
   [this] (const ParseTree* x) {
-    auto id = getChild<Identifier>(x, 1);
-    auto e = getChild<WFE>(x, 3);
-    auto namedef = getChild<OptName>(x, 4);
+    // TODO: verify or start tableau thread
+    auto id      = getChild<Identifier>(x, 1);
+    auto e       = getChild<WFE>       (x, 3);
+    auto namedef = getChild<OptName>   (x, 4);
     Core::Decl::Tag tag;
     if (e.t == Core::TTerm) tag = Core::Decl::FDEF;
     else if (e.t == Core::TFormula) tag = Core::Decl::PDEF;
@@ -666,6 +698,42 @@ Mu::Mu() {
       defMap[namedef.name.value_or("")] = { x->startPos, x->endPos };
     } catch (Core::CheckFailure& ex) {
       throw AnalysisErrorException(x, e.e->toString(ctx) + ":\n" + ex.what());
+    }
+    return Def{};
+  });
+
+  addRuleFor<Def, KwDef, Identifier, OpColonColon, WFE, OptName, KwProof, WFP, OptSemicolon>(
+  [this] (const ParseTree* x) {
+    // TODO: verify or start tableau thread
+    auto id      = getChild<Identifier>(x, 1);
+    // auto e       = getChild<WFE>       (x, 3);
+    auto namedef = getChild<OptName>   (x, 4);
+    auto pf      = getChild<WFP>       (x, 6); // TODO: make this optional
+    Core::Decl decl(Core::Decl::DDEF, id.name, namedef.name.value_or(""), pf.pf);
+    try {
+      decl.check(ctx, exprs);
+      defMap[id.name] = { x->startPos, x->endPos };
+      defMap[namedef.name.value_or("")] = { x->startPos, x->endPos };
+    } catch (Core::CheckFailure& ex) {
+      throw AnalysisErrorException(x, pf.e->toString(ctx) + ":\n" + ex.what());
+    }
+    return Def{};
+  });
+
+  addRuleFor<Def, KwIDef, Identifier, OpColonColon, WFE, OptName, KwProof, WFP, OptSemicolon>(
+  [this] (const ParseTree* x) {
+    // TODO: verify or start tableau thread
+    auto id      = getChild<Identifier>(x, 1);
+    // auto e       = getChild<WFE>       (x, 3);
+    auto namedef = getChild<OptName>   (x, 4);
+    auto pf      = getChild<WFP>       (x, 6); // TODO: make this optional
+    Core::Decl decl(Core::Decl::IDEF, id.name, namedef.name.value_or(""), pf.pf);
+    try {
+      decl.check(ctx, exprs);
+      defMap[id.name] = { x->startPos, x->endPos };
+      defMap[namedef.name.value_or("")] = { x->startPos, x->endPos };
+    } catch (Core::CheckFailure& ex) {
+      throw AnalysisErrorException(x, pf.e->toString(ctx) + ":\n" + ex.what());
     }
     return Def{};
   });
@@ -752,7 +820,6 @@ Mu::Mu() {
   addRule([]     (AnyFunc)                   -> Decl { return {}; });
   addRule([]     (AnyPred)                   -> Decl { return {}; });
   addRule([]     (Def)                       -> Decl { return {}; });
-  addRule([]     (Idef)                      -> Decl { return {}; });
   addRule([]     (Undef)                     -> Decl { return {}; });
 
   addRuleFor<Decl, OpLBrace>

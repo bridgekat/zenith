@@ -117,20 +117,20 @@ namespace Core {
       case IMPLIES_E: { match2(proved(0), p, IMPLIES, q); asserteq(p, proved(1)); return q; }
       case NOT_I:     { match2(proved(0), p, IMPLIES, f); match0(f, FALSE); return node1(NOT, p); }
       case NOT_E:     { match1(proved(0), NOT, p); asserteq(p, proved(1)); return node0(FALSE); }
-      case IFF_I:     { match2(proved(0), p0, IMPLIES, q0); match2(proved(1), p1, IMPLIES, q1);
+      case IFF_I:     { match2(proved(0), p0, IMPLIES, q0); match2(proved(1), q1, IMPLIES, p1);
                         asserteq(p0, p1); asserteq(q0, q1); return node2(p0, IFF, q0); }
       case IFF_L: { match2(proved(0), p, IFF, q); asserteq(p, proved(1)); return q; }
       case IFF_R: { match2(proved(0), p, IFF, q); asserteq(q, proved(1)); return p; }
       case TRUE_I: return node0(TRUE);
       case FALSE_E: { match0(proved(0), FALSE); return wff(1)->clone(pool); }
       case RAA: { match2(proved(0), np, IMPLIES, f); match1(np, NOT, p); match0(f, FALSE); return p; }
-      case EQ_I: {
+      case EQUALS_I: {
         const Expr* t = wft(0);
         return nodevar(FREE, ctx.equals, t->clone(pool), t->clone(pool));
       }
-      case EQ_E: {
+      case EQUALS_E: {
         auto [p, type] = exprtype(0);
-        if (!(p->tag == LAM && type == Type{{ 1, SPROP }}))
+        if (!(p->tag == LAMBDA && type == Type{{ 1, SPROP }}))
           throw InvalidProof("type mismatch, expected unary predicate", ctx, this);
         Expr* px = p->binder.r, * pa = proved(2);
         matcheq(proved(1), a, b);

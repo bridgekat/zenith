@@ -19,7 +19,7 @@ namespace Core {
     enum class Tag: unsigned char {
       EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
       VAR, TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
-      FORALL, EXISTS, UNIQUE, FORALL2, LAM
+      FORALL, EXISTS, UNIQUE, FORALL2, LAMBDA
     };
     enum class VarTag: unsigned char {
       BOUND = 0, FREE, UNDETERMINED
@@ -67,7 +67,7 @@ namespace Core {
     }
     Expr(Tag tag, const string& bv, unsigned short arity, Sort sort, Expr* r): tag(tag) {
       switch (tag) {
-        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
           this->bv = bv; binder.arity = arity; binder.sort = sort; binder.r = r; return;
         default: throw new NotImplemented();
       }
@@ -151,7 +151,7 @@ namespace Core {
           if (conn.l) res->conn.l = conn.l->updateVars(n, pool, f);
           if (conn.r) res->conn.r = conn.r->updateVars(n, pool, f);
           return res;
-        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAM:
+        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
           if (binder.r) res->binder.r = binder.r->updateVars(n + 1, pool, f);
           return res;
       }
@@ -187,7 +187,7 @@ namespace Core {
     pair<unsigned int, const Expr*> getBody() const noexcept {
       unsigned int res = 0;
       const Expr* p = this;
-      while (p->tag == LAM) p = p->binder.r, res++;
+      while (p->tag == LAMBDA) p = p->binder.r, res++;
       return { res, p };
     }
 
