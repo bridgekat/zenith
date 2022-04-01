@@ -10,7 +10,6 @@ namespace Core {
   Expr* Expr::clone(Allocator<Expr>& pool) const {
     Expr* res = pool.pushBack(*this);
     switch (tag) {
-      case EMPTY: return res;
       case VAR: {
         Expr* last = nullptr;
         for (const Expr* p = var.c; p; p = p->s) {
@@ -50,7 +49,6 @@ namespace Core {
     if (tag != rhs.tag) return false;
     // tag == rhs.tag
     switch (tag) {
-      case EMPTY: return true;
       case VAR: {
         if (var.vartag != rhs.var.vartag || var.id != rhs.var.id) return false;
         const Expr* p = var.c, * prhs = rhs.var.c;
@@ -86,7 +84,6 @@ namespace Core {
   size_t Expr::hash() const noexcept {
     size_t res = static_cast<size_t>(tag);
     switch (tag) {
-      case EMPTY: return res;
       case VAR: {
         hash_combine(res, static_cast<unsigned char>(var.vartag));
         hash_combine(res, var.id);
@@ -126,7 +123,6 @@ namespace Core {
   // Undefined variables and null pointers should be OK, as long as non-null pointers are valid.
   string Expr::toString(const Context& ctx, vector<pair<Type, string>>& stk) const {
     switch (tag) {
-      case EMPTY: return "[?]";
       case VAR: {
         string res =
           var.vartag == BOUND ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id].second : "(" + std::to_string(var.id) + ")") :
@@ -178,8 +174,6 @@ namespace Core {
 
     // Formation rules here
     switch (tag) {
-      case EMPTY:
-        throw InvalidExpr("unexpected empty tag", ctx, this);
 
       case VAR: {
         // Get type of the LHS
@@ -262,8 +256,6 @@ namespace Core {
 
   bool Expr::occurs(VarTag vartag, unsigned int id) const noexcept {
     switch (tag) {
-      case EMPTY:
-        return false;
       case VAR:
         if (var.vartag == vartag && var.id == id) return true;
         for (const Expr* p = var.c; p; p = p->s) {
@@ -284,8 +276,6 @@ namespace Core {
 
   size_t Expr::numUndetermined() const noexcept {
     switch (tag) {
-      case EMPTY:
-        return 0;
       case VAR: {
         size_t res = (var.vartag == UNDETERMINED)? (var.id + 1) : 0;
         for (const Expr* p = var.c; p; p = p->s) res = std::max(res, p->numUndetermined());
@@ -305,8 +295,6 @@ namespace Core {
 
   bool Expr::isGround() const noexcept {
     switch (tag) {
-      case EMPTY:
-        return true;
       case VAR:
         if (var.vartag == UNDETERMINED) return false;
         for (const Expr* p = var.c; p; p = p->s) if (!p->isGround()) return false;
@@ -325,8 +313,6 @@ namespace Core {
 
   size_t Expr::size() const noexcept {
     switch (tag) {
-      case EMPTY:
-        return 1;
       case VAR: {
         size_t res = 1;
         for (const Expr* p = var.c; p; p = p->s) res += p->size();

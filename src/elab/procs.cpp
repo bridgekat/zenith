@@ -21,7 +21,7 @@ namespace Elab::Procs {
       case OR:      return  propValue(e->conn.l, fvmap) || propValue(e->conn.r, fvmap);
       case IMPLIES: return !propValue(e->conn.l, fvmap) || propValue(e->conn.r, fvmap);
       case IFF:     return  propValue(e->conn.l, fvmap) == propValue(e->conn.r, fvmap);
-      case FORALL: case EXISTS: case UNIQUE: case EMPTY: case FORALL2: case LAMBDA:
+      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
         throw Unreachable();
     }
     throw NotImplemented();
@@ -79,7 +79,7 @@ namespace Elab::Procs {
           toNNF(&exi, ctx, pool, negated),
           toNNF(&no2, ctx, pool, negated));
       }
-      case EMPTY: case FORALL2: case LAMBDA:
+      case FORALL2: case LAMBDA:
         throw Unreachable();
     }
     throw NotImplemented();
@@ -96,7 +96,6 @@ namespace Elab::Procs {
     // Normal comparison (refer to the implementation of `Expr::operator==`)
     if (lhs->tag != rhs->tag) return false;
     switch (lhs->tag) {
-      case EMPTY: return true;
       case VAR: {
         if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) return false;
         const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
@@ -158,8 +157,6 @@ namespace Elab::Procs {
       if (lhs->tag != rhs->tag) return different();
       // lhs->tag == rhs->tag
       switch (lhs->tag) {
-        case EMPTY:
-          throw Unreachable();
         case VAR: {
           if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) {
             return different();
@@ -252,8 +249,6 @@ namespace Elab::Procs {
         if (lhs->tag != rhs->tag) return nullopt;
         // lhs->tag == rhs->tag
         switch (lhs->tag) {
-          case EMPTY:
-            throw Unreachable();
           case VAR: {
             if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) return nullopt;
             const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;

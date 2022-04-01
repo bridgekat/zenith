@@ -5,7 +5,6 @@ namespace Core {
 
   Type Proof::checkExpr(const Context& ctx) const {
     switch (tag) {
-      case EMPTY: throw InvalidProof("unexpected empty tag", ctx, this);
       case EXPR:
         if (!expr.p) throw InvalidProof("null pointer", ctx, this);
         return expr.p->checkType(ctx);
@@ -91,7 +90,6 @@ namespace Core {
     #define nodevar(f_, id_, ...) Expr::make(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
     switch (tag) {
-      case EMPTY: throw InvalidProof("unexpected empty tag", ctx, this);
       case EXPR:  throw InvalidProof("type mismatch, expected proof", ctx, this);
       case THM: {
         if (!ctx.valid(thm.id)) throw InvalidProof("referred theorem not in context", ctx, this);
@@ -247,7 +245,6 @@ namespace Core {
     #define nodevar(f_, id_, ...) Expr::make(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
 
     switch (tag) {
-      case EMPTY: throw InvalidDecl("unexpected empty tag", ctx, this);
       case BLOCK:
         for (const Decl* p = block.c; p; p = p->s) p->check(ctx, pool);
         return;

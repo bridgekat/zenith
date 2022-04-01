@@ -61,7 +61,7 @@ namespace Elab {
     // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ" (existential).
     // (TODO: "ε" (equational) and "φ" (second-order universal))
     enum Position: unsigned int { L, R };
-    enum Type: unsigned int { ι, α, β, γ, γre, δ, N }; // Tweak parameters here (1/3)
+    enum Type: unsigned int { ι, α, β, γ, γre, δ, N };
 
     struct Branch {
       vector<const Expr*> cedents[N][2];

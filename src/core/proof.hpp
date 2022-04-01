@@ -14,7 +14,6 @@ namespace Core {
   class Proof {
   public:
     enum class Tag: unsigned char {
-      EMPTY = 0,
       EXPR, THM,
       AND_I, AND_L, AND_R, OR_L, OR_R, OR_E, IMPLIES_E, NOT_I, NOT_E, IFF_I, IFF_L, IFF_R, TRUE_I, FALSE_E, RAA,
       EQUALS_I, EQUALS_E, FORALL_E, EXISTS_I, EXISTS_E, UNIQUE_I, UNIQUE_L, UNIQUE_R, FORALL2_E
@@ -25,7 +24,7 @@ namespace Core {
     // for a discriminated union...
     // Unlike expressions, DAGs are allowed for proofs: each node may be attached to multiple parent nodes at a time.
     // Unused fields/pointers are ignored (will not be checked).
-    Tag tag = EMPTY;
+    Tag tag;
     union {
       struct { const Expr* p; } expr;
       struct { unsigned int id; } thm;
@@ -33,12 +32,12 @@ namespace Core {
     };
 
     // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
-    Proof(): tag(EMPTY) {}
     Proof(Tag tag, Proof* p0 = nullptr, Proof* p1 = nullptr, Proof* p2 = nullptr): tag(tag) {
       switch (tag) {
-        case EMPTY: break;
-        case EXPR: expr.p = nullptr; break;
-        default: subpfs.p[0] = p0; subpfs.p[1] = p1; subpfs.p[2] = p2; break;
+        case EXPR: case THM:
+          throw new NotImplemented();
+        default:
+          subpfs.p[0] = p0; subpfs.p[1] = p1; subpfs.p[2] = p2; return;
       }
     }
     Proof(const Expr* e): tag(EXPR) { expr.p = e; }
@@ -71,14 +70,13 @@ namespace Core {
   class Decl {
   public:
     enum class Tag: unsigned char {
-      EMPTY = 0,
       BLOCK, ASSERTION,
       ASSUME, ANY, POP,
       FDEF, PDEF, DDEF, IDEF, UNDEF
     };
     using enum Tag;
 
-    Tag tag = EMPTY;
+    Tag tag;
     union {
       struct { Decl* c; } block;
       struct { const Expr* e; const Proof* pf; } assertion;
@@ -92,11 +90,10 @@ namespace Core {
     string name = "", namedef = "";
 
     // The constructors below guarantee that all nonzero pointers (in the "active variant") are valid
-    Decl(): tag(EMPTY) {}
     Decl(Tag tag, const string& name = "", const string& namedef = ""):
          tag(tag), name(name), namedef(namedef) {
       switch (tag) {
-        case EMPTY: case ANY: case POP: case UNDEF: break;
+        case ANY: case POP: case UNDEF: break;
         case BLOCK: block.c = nullptr; break;
         case ASSERTION: assertion.e = nullptr; assertion.pf = nullptr; break;
         case ASSUME: assume.e = nullptr; break;

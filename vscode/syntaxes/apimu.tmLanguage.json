@@ -8,7 +8,7 @@
     },
     {
       "name": "keyword.control.apimu",
-      "match": "=>|:=|::"
+      "match": "=>|:=|::|\\.\\.\\."
     },
     {
       "name": "keyword.other.apimu",

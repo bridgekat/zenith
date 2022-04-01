@@ -15,14 +15,12 @@ namespace Core {
   // Will just stick to this old-fashioned tagged union approach before C++ admits a better way to represent sum types
   class Expr {
   public:
-    // Alphabet for a first-order language
     enum class Tag: unsigned char {
-      EMPTY = 0, // For default values only. EMPTY nodes are not well-formed terms or formulas.
       VAR, TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
       FORALL, EXISTS, UNIQUE, FORALL2, LAMBDA
     };
     enum class VarTag: unsigned char {
-      BOUND = 0, FREE, UNDETERMINED
+      BOUND, FREE, UNDETERMINED
     };
     using enum Tag;
     using enum VarTag;
@@ -40,7 +38,6 @@ namespace Core {
     };
 
     // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
-    Expr(): tag(EMPTY) {}
     Expr(VarTag vartag, unsigned int id, const vector<Expr*>& c = {}): tag(VAR) {
       var.vartag = vartag; var.id = id; var.c = nullptr; appendChildren(c);
     }
@@ -129,7 +126,6 @@ namespace Core {
       Expr* res = pool.pushBack(*this);
       using enum Tag;
       switch (tag) {
-        case EMPTY: return res;
         case VAR: {
           // Modify subexpressions
           Expr* last = nullptr;

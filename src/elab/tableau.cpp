@@ -2,7 +2,6 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
-#include <random>
 #include "tableau.hpp"
 
 #define SEMANTIC_BRANCHING
@@ -13,8 +12,8 @@ namespace Elab {
 
   using Procs::Subs;
 
-  std::random_device rd;
-  std::mt19937 e{ rd() };
+  // std::random_device rd;
+  // std::mt19937 e{ rd() };
 
   // Simple case: disjoint
   /*
@@ -42,7 +41,6 @@ namespace Elab {
     return "?";
   }
 
-  // Tweak parameters here (2/3)
   Tableau::Type Tableau::classify(Position antesucc, const Expr* e) noexcept {
     using enum Expr::Tag;
     switch (antesucc) {
@@ -60,7 +58,7 @@ namespace Elab {
           case EXISTS:  return δ;
           case UNIQUE:  return α;
           case FORALL2: return α; // Change to return φ; when ready
-          case EMPTY: case LAMBDA: return α;
+          case LAMBDA:  return α;
         }
         break;
       case R:
@@ -77,7 +75,7 @@ namespace Elab {
           case EXISTS:  return γ;
           case UNIQUE:  return β;
           case FORALL2: return δ;
-          case EMPTY: case LAMBDA: return α;
+          case LAMBDA:  return α;
         }
         break;
     }
@@ -162,9 +160,7 @@ namespace Elab {
         p(p), i(Tableau::classify(pos, e)), pos(pos), ehash(ExprHash(e)), inserted(false), reAdd(reAdd) {
       if (reAdd) i = Tableau::Type::γre;
       inserted = p->branch.hashset[pos].insert(ehash).second;
-      if (inserted) { // TODO: remove if
-        if (p->branch.hashset[Tableau::invert(pos)].contains(ehash)) *closed = true;
-      }
+      if (p->branch.hashset[Tableau::invert(pos)].contains(ehash)) *closed = true;
       if (inserted || reAdd) {
         p->branch.cedents[i][pos].push_back(e);
         p->branch.timestamps[i][pos].push_back(p->branch.numCedents);
@@ -187,7 +183,6 @@ namespace Elab {
     }
   };
 
-  // Pre: all elements of `ante`, `succ`, `anteSet` and `succSet` are valid, well-formed formulas
   // All states will be unmodified/restored
   bool Tableau::dfs(size_t depth) {
     check();
@@ -341,7 +336,7 @@ namespace Elab {
       // If `e` contains undetermined variables, it must be a result of some previous application of γ-rule.
       // In this case, the original template is already re-added, so we may avoid re-adding `e` again.
       // (TODO: try delay this to instantiation time?)
-      if (e->isGround()) {
+      if (e->isGround()) { // TODO: fix "forall, exists, forall"
         WithCedent gre(this, e, pos, &closed, true); // Re-add
         WithValue gd(&branch.depth, closed? branch.depth : reentrant ? (branch.depth + 1) : branch.depth);
         return closed? closing(depth) : dfs(reentrant? (depth + 1) : depth);
@@ -364,7 +359,6 @@ namespace Elab {
       return closed? closing(depth) : dfs(depth);
     };
 
-    // Tweak parameters here (3/3)
     constexpr static unsigned int order[] = { ι, α, δ, γ, /* β, γre */ };
 
     for (unsigned int i: order) {
@@ -377,7 +371,6 @@ namespace Elab {
         WithValue gi(&antei, antei + 1);
         if (!(classify(L, e) == i || (classify(L, e) == γ && i == γre))) throw Unreachable();
         switch (e->tag) {
-          case EMPTY:   return dfs(depth);
           case VAR:     return iota(L, e);
           case TRUE:    return dfs(depth);
           case FALSE:   return closing(depth);
@@ -396,7 +389,7 @@ namespace Elab {
                                         Expr::make(pool, IMPLIES, e->binder.r,
                                         Expr::make(pool, FREE, ctx.equals, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) }))))));
           case FORALL2: return dfs(depth); // "φ" rule is not supported yet...
-          case LAMBDA:     return dfs(depth);
+          case LAMBDA:  return dfs(depth);
         }
         throw Unreachable();
       }
@@ -407,7 +400,6 @@ namespace Elab {
         WithValue gi(&succi, succi + 1);
         if (!(classify(R, e) == i || (classify(R, e) == γ && i == γre))) throw Unreachable();
         switch (e->tag) {
-          case EMPTY:   return dfs(depth);
           case VAR:     return iota(R, e);
           case TRUE:    return closing(depth);
           case FALSE:   return dfs(depth);
@@ -420,7 +412,7 @@ namespace Elab {
           case EXISTS:  return gamma(R, e, false);
           case UNIQUE:  throw Unreachable();
           case FORALL2: return dfs(depth); // TODO: second-order δ-rule
-          case LAMBDA:     return dfs(depth);
+          case LAMBDA:  return dfs(depth);
         }
         throw Unreachable();
       }

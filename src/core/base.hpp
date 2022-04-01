@@ -51,10 +51,10 @@ namespace Core {
       next = 0;
     }
 
-    T* pushBack(const T& obj) {
+    T* pushBack(T obj) {
       if (next == 0) blocks.push_back(alloc.allocate(blockSize));
       T* res = blocks.back() + next;
-      std::construct_at(res, obj);
+      std::construct_at(res, std::move(obj));
       next++;
       if (next >= blockSize) next = 0;
       return res;

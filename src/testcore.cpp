@@ -37,7 +37,7 @@ int main() {
   #define unique(s, a)        N(UNIQUE, s, 0, SVAR, a)
   #define forallpred(s, k, a) N(FORALL2, s, k, SPROP, a)
   #define forallfunc(s, k, a) N(FORALL2, s, k, SVAR, a)
-  #define lam(s, a)           N(LAM, s, 0, SVAR, a)
+  #define lambda(s, a)        N(LAMBDA, s, 0, SVAR, a)
 
   {
     Context ctx;
@@ -55,12 +55,12 @@ int main() {
     unsigned int subset = ctx.addDef("subset", {{ 2, SPROP }, { 1, SVAR }});
     unsigned int issc = ctx.addDef("is_subclass", {{ 1, SPROP }, { 1, SPROP }, { 0, SPROP }});
 
-    Expr* y = lam("x", fv(subset, lam("y", lam("z", TT)), bv(0)));
+    Expr* y = lambda("x", fv(subset, lambda("y", lambda("z", TT)), bv(0)));
 
     cout << y->toString(ctx) << endl;
     cout << showType(y->checkType(ctx)) << endl;
 
-    Expr* z = fv(issc, lam("x", FF), lam("x", TT));
+    Expr* z = fv(issc, lambda("x", FF), lambda("x", TT));
 
     cout << z->toString(ctx) << endl;
     cout << showType(z->checkType(ctx)) << endl;
@@ -69,7 +69,7 @@ int main() {
     cout << (*x == *x) << (*y == *y) << (*z == *z) << endl;
 
     Expr* x1 = x->clone(pool);
-    Expr* xrep = x->binder.r->makeReplaceLam(lam("x", lam("y", fv(eq, bv(1), bv(0)))), pool);
+    Expr* xrep = x->binder.r->makeReplaceLam(lambda("x", lambda("y", fv(eq, bv(1), bv(0)))), pool);
 
     cout << (*x == *x1) << endl;
     cout << xrep->toString(ctx) << endl;

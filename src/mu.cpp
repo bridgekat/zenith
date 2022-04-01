@@ -456,8 +456,8 @@ Mu::Mu() {
   */
   auto updateDefMap = [this] (const string& name, size_t startPos, size_t endPos) {
     auto it = defMap.insert_or_assign(name, pair<size_t, size_t>{ startPos, endPos }).first;
-    result.tokens.emplace_back(startPos, endPos);
-    result.tokens.back().defPos = it->second;
+    // result.tokens.emplace_back(startPos, endPos);
+    // result.tokens.back().defPos = it->second;
   };
 
   addRuleFor<Expr, Quantifier, NewVar, Expr>
