@@ -57,7 +57,7 @@ namespace Elab {
           case FORALL:  return γ;
           case EXISTS:  return δ;
           case UNIQUE:  return α;
-          case FORALL2: return α; // Change to return φ; when ready
+          case FORALL2: return α;
           case LAMBDA:  return α;
         }
         break;

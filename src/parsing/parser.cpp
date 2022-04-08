@@ -17,7 +17,7 @@ namespace Parsing {
   template <typename... Ts> struct Matcher: Ts... { using Ts::operator()...; };
 
 
-  // Parse greedily, until there is no further possibilities.
+  // Parse greedily, until there are no further possibilities.
   // Parsing is considered successful only when the last position contains a completed root symbol.
   // This is sometimes unsound, but I could not think of a better way of doing it.
   // (Trying to parse the whole file in one go makes dynamic parsing rules difficult,

@@ -1,8 +1,10 @@
-# ApiMu (FOL+)
+# ApiMu
 
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
 Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too difficult to learn... (Spent two months trying to make clear everything about its type theory, and then for example [it took me 40 lines to formalize a 5-line proof](https://github.com/bridgekat/lean-notes/blob/e8a9df5fff3feea2c5cc2d0112c101dd8d68f80c/src/2_analysis/1_the_real_and_complex_number_systems.lean#L448), even if I made use of automation tactics like `linarith`... And it seems hard to write new tactics...)
+
+[Metamath One](https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md) looks nice! I did not realize this earlier...
 
 (I am not aiming to make any serious ITP software! This is just a "toy" system for inexperienced users (and AI) to interact with, so I will just try to make the UI as intuitive as possible while keeping the background theory simple. It seems like FOL with equality (natural deduction) + metavariables + extension by definitions are already enough for this...)
 
@@ -15,35 +17,37 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 - [ ] [The verifier](src/testcore.cpp)
   - [x] Core part (almost completed)
   - [ ] Text & binary file formats for FOL and ND trees
-  - [ ] Core API
   - [ ] User-defined connectives (requires "implicit arguments"?)
+  - [ ] "Definition erasure" for exporting proofs
 - [ ] The elaborator
   - [ ] Parser & pretty-printer (WIP)
     - [x] [Parsing algorithms](src/parsing/) (almost completed)
     - [ ] Pretty-printer (WIP)
     - [ ] Customizable syntax
-    - [ ] Notation support (WIP)
+    - [x] Notation support (almost completed)
   - [ ] Interactive proof-searching
     - [x] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
     - [ ] Translation between ND and SC (WIP)
     - [x] [First-order unification](src/elab/procs.hpp) (Robinson's)
     - [ ] Second-order unification
     - [ ] Equational reasoning
-    - [ ] Tactics API
     - [ ] Resolution-based methods (how to translate these to ND?)
   - [ ] Language server & VSCode extension (WIP)
     - [x] Boilerplate, IO, etc.
     - [x] Tracking document changes
     - [ ] Partial checking
-    - [ ] Modify source, fading, etc.
+    - [ ] Modifying, fading, etc.
+  - [ ] MM1-style Scheme interpreter (I just want more flexible notations/macros... not sure if this is necessary)
+  - [ ] Exporting proofs to MM0
+  - [ ] Python API for tactics (if I could make this far...)
 - [ ] Mathematics
   - [x] PA
-  - [x] [ZFC](notes/set.mu)
+  - [x] [ZFC](notes/set_manual.mu)
   - [ ] Naturals, integers and rationals under ZFC
   - [ ] Groups under ZFC
 - [ ] Advanced elaborator features
-  - [ ] Inductive definitions
-  - [ ] Transferring results through isomorphism
+  - [ ] Inductive definitions (i.e. building a model of Martin-Löf type theory in ZFC + ???)
+  - [ ] Transferring results through isomorphism (if I could make this far...)
 
 
 ## Building (experimental)
