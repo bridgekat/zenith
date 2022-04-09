@@ -153,7 +153,7 @@ eval stk (Star) = VStar
 eval stk (Pi e1 e2) = VPi (eval stk e1) (\x -> eval (x : stk) e2)
 eval stk (App e1 e2) =
   case eval stk e1 of
-    (VLam f)     -> f v -- Let Haskell do the beta-reduction... (有必要吗？)
+    (VLam f)     -> f v -- Let Haskell do the beta-reduction...
     (VNeutral f) -> VNeutral (NApp f v)
     _            -> error "Illegal function application during evaluation"
   where

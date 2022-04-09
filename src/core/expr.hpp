@@ -9,81 +9,57 @@
 
 namespace Core {
 
-  // Formula (schema) tree node, and related syntactic operations
-  // Pre (for all methods): there is no "cycle" throughout the tree
+  // Expression node, and related syntactic operations
+  // Pre (for all methods): there is no "cycle" throughout the tree / DAG
   // Pre & invariant (for all methods): all nonzero pointers (in the "active variant") are valid
-  // Will just stick to this old-fashioned tagged union approach before C++ admits a better way to represent sum types
+  // Will just stick to this old-fashioned tagged union approach until C++ admits a better way to represent sum types
+  //   (`std::variant` + `std::visit` are said to have severe performance issues?)
   class Expr {
   public:
-    enum class Tag: unsigned char {
-      VAR, TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF,
-      FORALL, EXISTS, UNIQUE, FORALL2, LAMBDA
-    };
-    enum class VarTag: unsigned char {
-      BOUND, FREE, UNDETERMINED
-    };
-    using enum Tag;
-    using enum VarTag;
+    enum class Tag: uint32_t { Type, Var, App, Lam }; using enum Tag;
+    enum class TypeTag: uint32_t { TKind, TFun, TVar, TProp }; using enum TypeTag;
+    enum class VarTag: uint32_t { VBound, VFree, VMeta }; using enum VarTag;
 
-    Tag tag;
-    Expr* s = nullptr; // Next sibling (for children of VAR nodes only)
-    string bv = "";    // Bound variable name (for binder nodes only)
+    // Switching active variant is not supported yet
+    const Tag tag;
     union {
-      // VAR (`id` stands for context index for free variables, de Brujin index for bound variables)
-      struct { VarTag vartag; unsigned int id; Expr* c; } var;
-      // TRUE, FALSE, NOT, AND, OR, IMPLIES, IFF (`l` is ignored for the first two; `r` is ignored for the first three)
-      struct { Expr* l, * r; } conn;
-      // FORALL, EXISTS, UNIQUE, FORALL2, LAM (`arity` and `sort` must be 0 and SVAR for the first three and the last one)
-      struct { unsigned short arity; Sort sort; Expr* r; } binder;
+      struct { TypeTag tag; Expr* l; Expr* r; } type;
+      struct { VarTag tag; uint64_t id; } var;
+      struct { Expr* l; Expr* r; } app;
+      struct { std::string s; Expr* t; Expr* r; } lam;
     };
 
     // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
-    Expr(VarTag vartag, unsigned int id, const vector<Expr*>& c = {}): tag(VAR) {
-      var.vartag = vartag; var.id = id; var.c = nullptr; appendChildren(c);
-    }
-    Expr(Tag tag): tag(tag) {
+    Expr(TypeTag typetag, Expr* l = nullptr, Expr* r = nullptr): tag(Type), type{ typetag, l, r } {}
+    Expr(VarTag vartag, uint64_t id): tag(Var), var{ vartag, id } {}
+    Expr(Expr* l, Expr* r): tag(App), app{ l, r } {}
+    Expr(const std::string& s, Expr* t, Expr* r): tag(Lam), lam{ s, t, r } {}
+
+    // Copy constructor is shallow copy
+    Expr(const Expr& r): tag(r.tag) {
       switch (tag) {
-        case TRUE: case FALSE:
-          conn.l = conn.r = nullptr; return;
-        default: throw new NotImplemented();
+        case Type: type = r.type; break;
+        case Var: var = r.var; break;
+        case App: app = r.app; break;
+        case Lam: new (&lam.s) std::string(r.lam.s); lam.t = r.lam.t; lam.r = r.lam.r; break;
       }
     }
-    Expr(Tag tag, Expr* l): tag(tag) {
+
+    // Destructor needed for std::string in union
+    ~Expr() {
       switch (tag) {
-        case NOT:
-          conn.l = l; conn.r = nullptr; return;
-        default: throw new NotImplemented();
+        case Type: case Var: case App: break;
+        case Lam: lam.s.~basic_string(); break;
       }
     }
-    Expr(Tag tag, Expr* l, Expr* r): tag(tag) {
-      switch (tag) {
-        case AND: case OR: case IMPLIES: case IFF:
-          conn.l = l; conn.r = r; return;
-        default: throw new NotImplemented();
-      }
-    }
-    Expr(Tag tag, const string& bv, unsigned short arity, Sort sort, Expr* r): tag(tag) {
-      switch (tag) {
-        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-          this->bv = bv; binder.arity = arity; binder.sort = sort; binder.r = r; return;
-        default: throw new NotImplemented();
-      }
-    }
-    // Assignment is shallow copy
-    Expr(const Expr&) = default;
-    Expr& operator=(const Expr&) = default;
 
     // Deep copy
     // Pre: all nonzero pointers are valid
     // O(size)
     Expr* clone(Allocator<Expr>& pool) const;
 
-    // Append children (no-copy)
-    // Each node may only be attached to **one** parent node at a time!
-    void appendChildren(const vector<Expr*>& nodes) noexcept;
-
     // Syntactical equality and hash code (up to alpha-renaming!)
-    // Pre: { `this`, `rhs` } is arity-consistent
+    // Pre: all nonzero pointers are valid
     // O(size)
     bool operator==(const Expr& rhs) const noexcept;
     bool operator!=(const Expr& rhs) const noexcept { return !(*this == rhs); }
@@ -93,140 +69,84 @@ namespace Core {
     // Pre: all nonzero pointers are valid
     // `stk` will be unchanged
     // O(size)
-    string toString(const Context& ctx, vector<pair<Type, string>>& stk) const;
-    string toString(const Context& ctx) const { vector<pair<Type, string>> stk; return toString(ctx, stk); }
+    std::string toString(const Context& ctx, std::vector<std::string>& stk) const;
+    std::string toString(const Context& ctx) const {
+      std::vector<std::string> stk;
+      return toString(ctx, stk);
+    }
 
-    // Check if the subtree is well-formed, and return its type
+    // Check if the subtree is well-formed, and return its type (returned type expression is allocated in `pool`)
     // Throws exception on failure
     // Pre: all nonzero pointers are valid
     // `stk` will be unchanged
     // O(size)
-    Type checkType(const Context& ctx, vector<Type>& stk) const;
-    Type checkType(const Context& ctx) const { vector<Type> stk; return checkType(ctx, stk); }
+    const Expr* checkType(const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk) const;
+    const Expr* checkType(const Context& ctx, Allocator<Expr>& pool) const {
+      std::vector<const Expr*> stk;
+      return checkType(ctx, pool, stk);
+    }
 
-    // Check if given variable is in the subtree
-    // Pre: all nonzero pointers are valid
-    bool occurs(VarTag vartag, unsigned int id) const noexcept;
-
-    // DEBUG CODE
-    size_t numUndetermined() const noexcept;
-
-    // Check if the formula does not contain undetermined variables
-    bool isGround() const noexcept;
-
-    // Returns the number of symbols of the formula
-    size_t size() const noexcept;
-
-    // Modification (deep copying whole expression)
+    // Modification (deep copying whole expression to `pool`)
     // Pre: all nonzero pointers are valid
     // n = (number of binders on top of current node)
     template <typename F>
-    Expr* updateVars(unsigned int n, Allocator<Expr>& pool, const F& f) const {
-      // First shallow copy to pool
-      Expr* res = pool.pushBack(*this);
+    Expr* updateVars(uint64_t n, Allocator<Expr>& pool, const F& f) const {
       using enum Tag;
       switch (tag) {
-        case VAR: {
-          // Modify subexpressions
-          Expr* last = nullptr;
-          for (const Expr* p = var.c; p; p = p->s) {
-            Expr* q = p->updateVars(n, pool, f);
-            (last? last->s : res->var.c) = q;
-            last = q;
-          }
-          (last? last->s : res->var.c) = nullptr;
-          // Apply f on the newly created node and return
-          return f(n, res);
-        }
-        case TRUE: case FALSE:
-          return res;
-        case NOT:
-          if (conn.l) res->conn.l = conn.l->updateVars(n, pool, f);
-          return res;
-        case AND: case OR: case IMPLIES: case IFF:
-          if (conn.l) res->conn.l = conn.l->updateVars(n, pool, f);
-          if (conn.r) res->conn.r = conn.r->updateVars(n, pool, f);
-          return res;
-        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-          if (binder.r) res->binder.r = binder.r->updateVars(n + 1, pool, f);
-          return res;
+        case Type: return make(pool, type.tag, type.l? type.l->updateVars(n, pool, f) : nullptr, type.r? type.r->updateVars(n, pool, f) : nullptr);
+        case Var: return f(n, this);
+        case App: return make(pool, app.l? app.l->updateVars(n, pool, f) : nullptr, app.r? app.r->updateVars(n, pool, f) : nullptr);
+        case Lam: return make(pool, lam.s, lam.t? lam.t->updateVars(n, pool, f) : nullptr, lam.r? lam.r->updateVars(n + 1, pool, f) : nullptr);
       }
       throw NotImplemented();
     }
 
-    // Make a free variable into an overflow variable (deep copying whole expression)
-    Expr* makeBound(unsigned int id, Allocator<Expr>& pool) const {
-      return updateVars(0, pool, [id] (unsigned int n, Expr* x) {
-        if (x->var.vartag == FREE && x->var.id == id) { x->var.vartag = BOUND; x->var.id = n; }
-        return x;
+    // Make a free variable into an overflow variable (deep copying whole expression to `pool`)
+    Expr* makeBound(uint64_t id, Allocator<Expr>& pool) const {
+      return updateVars(0, pool, [id, &pool] (uint64_t n, const Expr* x) {
+        return (x->var.tag == VFree && x->var.id == id)? make(pool, VBound, n) : x->clone(pool);
       });
     }
 
-    // Replace one overflow variable by an expression (deep copying whole expression)
+    // Replace one overflow variable by an expression (deep copying whole expression to `pool`)
     Expr* makeReplace(const Expr* t, Allocator<Expr>& pool) const {
-      return updateVars(0, pool, [t, &pool] (unsigned int n, Expr* x) {
-        if (x->var.vartag == BOUND && x->var.id == n) return t->clone(pool);
-        return x;
+      return updateVars(0, pool, [t, &pool] (uint64_t n, const Expr* x) {
+        return (x->var.tag == VBound && x->var.id == n)? t->clone(pool) : x->clone(pool);
       });
     }
 
-    // Prepare to insert k binders around a subexpression with overflow variables (deep copying whole expression)
-    Expr* makeGap(unsigned int k, Allocator<Expr>& pool) const {
-      return updateVars(0, pool, [k] (unsigned int n, Expr* x) {
-        if (x->var.vartag == BOUND && x->var.id >= n) x->var.id += k;
-        return x;
-      });
-    }
+    // Performs applicative-order beta-reduction (deep copying whole expression to `pool`)
+    // Pre: all nonzero pointers are valid
+    // If moreover the original expression is well-typed, the resulting expression will have the same type.
+    // Note that this function is only a syntactic operation, and does not check well-formedness.
+    // It does not terminate on inputs like (\x => x x x) (\x => x x x).
+    // If expression is well-typed, worst case time complexity is O(size * 2^size).
+    Expr* reduce(Allocator<Expr>& pool) const;
 
-    // Skip through lambda binders
-    // Pre: expression must be arity-consistent
-    pair<unsigned int, const Expr*> getBody() const noexcept {
-      unsigned int res = 0;
-      const Expr* p = this;
-      while (p->tag == LAMBDA) p = p->binder.r, res++;
-      return { res, p };
-    }
+    // Returns the number of symbols of the expression
+    size_t size() const noexcept;
 
-    // Replace k overflow variables simultaneously, with t's possibly containing overflow variables...
-    // (Deep copying whole expression)
-    // Pre: ts.size() >= "maximum index overflow" (x->var.id - n + 1)
-    Expr* makeReplaceK(vector<const Expr*> ts, Allocator<Expr>& pool) const {
-      std::reverse(ts.begin(), ts.end()); // Leftmost arguments are used to substitute highest lambdas
-      return updateVars(0, pool, [&ts, &pool] (unsigned int n, Expr* x) {
-        if (x->var.vartag == BOUND && x->var.id >= n) return ts[x->var.id - n]->makeGap(n, pool);
-        return x;
-      });
-    }
+    // Check if given variable is in the subtree
+    // Pre: all nonzero pointers are valid
+    bool occurs(VarTag vartag, uint64_t id) const noexcept;
 
-    // Substitute in a lambda function (deep copying whole expression).
-    // Pre: the 2nd argument is a lambda function/predicate with k lambda binders
-    // Pre: in the 3rd argument, all applications of the "overflow-bound" function/predicate must have k arguments
-    // To ensure that the resulting expression is well-formed, functions must be replaced by functions and
-    // predicates must be replaced by predicates (i.e. types must match)
-    Expr* makeReplaceLam(const Expr* lam, Allocator<Expr>& pool) const {
-      auto [k, body] = lam->getBody();
-      return updateVars(0, pool, [k, body, &pool] (unsigned int n, Expr* x) {
-        if (x->var.vartag == BOUND && x->var.id == n) {
-          vector<const Expr*> args;
-          for (const Expr* p = x->var.c; p; p = p->s) args.push_back(p);
-          if (k != args.size()) throw Unreachable();
-          return body->makeReplaceK(args, pool);
-        }
-        return x;
-      });
-    }
+    // Returns the maximum undetermined variable ID + 1
+    size_t numUndetermined() const noexcept;
 
-    // TODO: pretty print (infixl, infixr, precedence, etc.)
+    // Check if the expression does not contain undetermined variables
+    bool isGround() const noexcept { return numUndetermined() == 0; }
 
-    template <typename ...Ts>
-    inline static Expr* make(Allocator<Expr>& pool, const Ts&... args) {
-      return pool.pushBack(Expr(args...));
+    // Convenient constructor
+    template <typename... Ts>
+    inline static Expr* make(Allocator<Expr>& pool, Ts&&... args) {
+      return pool.emplaceBack(std::forward<Ts...>(args...));
     }
   };
 
   // An exception class representing checking failure
+  // TODO: refactor this
   struct InvalidExpr: public CheckFailure {
-    InvalidExpr(const string& s, const Context& ctx, const Expr* e): CheckFailure("Invalid expression, " + s + ": " + e->toString(ctx)) {}
+    InvalidExpr(const string& s, const Context& ctx, const Expr* e): CheckFailure("Invalid expression, " + s + ": " + e->toString(ctx), e) {}
   };
 
 }

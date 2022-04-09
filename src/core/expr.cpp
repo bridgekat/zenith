@@ -1,76 +1,39 @@
 #include "expr.hpp"
+#include <type_traits>
 
 
 namespace Core {
+
+  using std::string;
+  using std::vector;
+
 
   // Allow throwing in `noexcept` functions; we really intend to terminate with an error message
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wterminate"
 
   Expr* Expr::clone(Allocator<Expr>& pool) const {
-    Expr* res = pool.pushBack(*this);
     switch (tag) {
-      case VAR: {
-        Expr* last = nullptr;
-        for (const Expr* p = var.c; p; p = p->s) {
-          Expr* q = p->clone(pool);
-          (last? last->s : res->var.c) = q;
-          last = q;
-        }
-        (last? last->s : res->var.c) = nullptr;
-        return res;
-      }
-      case TRUE: case FALSE: case NOT: case AND: case OR: case IMPLIES: case IFF:
-        if (conn.l) res->conn.l = (conn.l)->clone(pool);
-        if (conn.r) res->conn.r = (conn.r)->clone(pool);
-        return res;
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-        if (binder.r) res->binder.r = (binder.r)->clone(pool);
-        return res;
+      case Type: return make(pool, type.tag, type.l? type.l->clone(pool) : nullptr, type.r? type.r->clone(pool) : nullptr);
+      case Var: return make(pool, var.tag, var.id);
+      case App: return make(pool, app.l? app.l->clone(pool) : nullptr, app.r? app.r->clone(pool) : nullptr);
+      case Lam: return make(pool, lam.s, lam.t? lam.t->clone(pool) : nullptr, lam.r? lam.r->clone(pool) : nullptr);
     }
     throw NotImplemented();
   }
 
-  void Expr::appendChildren(const vector<Expr*>& nodes) noexcept {
-    if (tag != VAR) return;
-    Expr* last = nullptr, * next = var.c;
-    while (next) {
-      last = next;
-      next = next->s;
-    }
-    for (Expr* q: nodes) {
-      (last? last->s : var.c) = q;
-      last = q;
-    }
-    (last? last->s : var.c) = nullptr;
-  }
-
   bool Expr::operator==(const Expr& rhs) const noexcept {
+    if (this == &rhs) return true;
     if (tag != rhs.tag) return false;
     // tag == rhs.tag
+    #define nullorsame(x) (!x && !rhs.x || x && rhs.x && *x == *rhs.x)
     switch (tag) {
-      case VAR: {
-        if (var.vartag != rhs.var.vartag || var.id != rhs.var.id) return false;
-        const Expr* p = var.c, * prhs = rhs.var.c;
-        for (; p && prhs; p = p->s, prhs = prhs->s) {
-          if (!(*p == *prhs)) return false;
-        }
-        // Both pointers must be null at the same time
-        if (p || prhs) return false;
-        return true;
-      }
-      case TRUE: case FALSE:
-        return true;
-      case NOT:
-        return *(conn.l) == *(rhs.conn.l);
-      case AND: case OR: case IMPLIES: case IFF:
-        return *(conn.l) == *(rhs.conn.l) &&
-               *(conn.r) == *(rhs.conn.r);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-        return binder.arity == rhs.binder.arity &&
-               binder.sort  == rhs.binder.sort  &&
-               *(binder.r)  == *(rhs.binder.r);
+      case Type: return type.tag == rhs.type.tag && nullorsame(type.l) && nullorsame(type.r);
+      case Var: return var.tag == rhs.var.tag && var.id == rhs.var.id;
+      case App: return nullorsame(app.l) && nullorsame(app.r);
+      case Lam: return nullorsame(lam.t) && nullorsame(lam.r); // Ignore bound variable names
     }
+    #undef nullorsame
     throw NotImplemented();
   }
 
@@ -84,35 +47,31 @@ namespace Core {
   size_t Expr::hash() const noexcept {
     size_t res = static_cast<size_t>(tag);
     switch (tag) {
-      case VAR: {
-        hash_combine(res, static_cast<unsigned char>(var.vartag));
+      case Type:
+        hash_combine(res, static_cast<std::underlying_type_t<TypeTag>>(type.tag));
+        hash_combine(res, type.l? type.l->hash() : 0);
+        hash_combine(res, type.r? type.r->hash() : 0);
+        return res;
+      case Var:
+        hash_combine(res, static_cast<std::underlying_type_t<VarTag>>(var.tag));
         hash_combine(res, var.id);
-        for (const Expr* p = var.c; p; p = p->s) {
-          hash_combine(res, p->hash());
-        }
         return res;
-      }
-      case TRUE: case FALSE:
+      case App:
+        hash_combine(res, app.l? app.l->hash() : 0);
+        hash_combine(res, app.r? app.r->hash() : 0);
         return res;
-      case NOT:
-        hash_combine(res, conn.l->hash());
-        return res;
-      case AND: case OR: case IMPLIES: case IFF:
-        hash_combine(res, conn.l->hash());
-        hash_combine(res, conn.r->hash());
-        return res;
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-        hash_combine(res, binder.arity);
-        hash_combine(res, binder.sort);
-        hash_combine(res, binder.r->hash());
+      case Lam:
+        // Ignore bound variable names
+        hash_combine(res, lam.t? lam.t->hash() : 0);
+        hash_combine(res, lam.r? lam.r->hash() : 0);
         return res;
     }
     throw NotImplemented();
   }
 
-  // Give unnamed bound variables a name
+  // Give unnamed bound variables a random name
   inline string newName(size_t i) {
-    string res = "";
+    string res = "__";
     do {
       res.push_back('a' + i % 26);
       i /= 26;
@@ -121,48 +80,21 @@ namespace Core {
   }
 
   // Undefined variables and null pointers should be OK, as long as non-null pointers are valid.
-  string Expr::toString(const Context& ctx, vector<pair<Type, string>>& stk) const {
+  string Expr::toString(const Context& ctx, vector<string>& stk) const {
     switch (tag) {
-      case VAR: {
-        string res =
-          var.vartag == BOUND ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id].second : "(" + std::to_string(var.id) + ")") :
-          var.vartag == FREE  ? (ctx.valid(var.id)   ? ctx.nameOf(var.id)                  : "[" + std::to_string(var.id) + "]") :
-          var.vartag == UNDETERMINED ? "{" + std::to_string(var.id) + "}" : "[?]";
-        for (const Expr* p = var.c; p; p = p->s) {
-          res += " " + p->toString(ctx, stk);
-        }
-        return var.c ? "(" + res + ")" : res;
-      }
-      case TRUE:    return "true";
-      case FALSE:   return "false";
-      case NOT:     return "(not " + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + ")";
-      case AND:     return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " and "
-                               + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
-      case OR:      return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " or "
-                               + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
-      case IMPLIES: return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " implies "
-                               + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
-      case IFF:     return "(" + (conn.l ? conn.l->toString(ctx, stk) : "[?]") + " iff "
-                               + (conn.r ? conn.r->toString(ctx, stk) : "[?]") + ")";
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: {
-        string ch, name = bv.empty() ? newName(stk.size()) : bv;
-        switch (tag) {
-          case FORALL:  ch = "forall "; break;
-          case EXISTS:  ch = "exists "; break;
-          case UNIQUE:  ch = "unique "; break;
-          case FORALL2: ch = (binder.sort == SVAR ? "forallfunc " : "forallpred "); break;
-          case LAMBDA:     ch = "lambda "; break;
-          default: break;
-        }
-        string res = "(" + ch + name;
-        // If not an individual variable...
-        if (!(binder.arity == 0 && binder.sort == SVAR)) {
-          res += "/" + std::to_string(binder.arity);
-          if (tag != FORALL2) res += (binder.sort == SVAR ? "#" : "$"); // Should not happen
-        }
-        // Print recursively
-        stk.emplace_back(Type{{ binder.arity, binder.sort }}, name);
-        res += " " + binder.r->toString(ctx, stk) + ")";
+      case Type: return
+        type.tag == TFun ? "(" + (type.l? type.l->toString(ctx, stk) : "@Null") + " -> " + (type.r? type.r->toString(ctx, stk) : "@Null") + ")":
+        type.tag == TVar ? "var" :
+        type.tag == TProp ? "prop" : "@Null";
+      case Var: return
+        var.tag == VBound ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : "@B" + std::to_string(var.id)) :
+        var.tag == VFree  ? (ctx.valid(var.id)   ? ctx.nameOf(var.id)           : "@F" + std::to_string(var.id)) :
+        var.tag == VMeta  ? "@M" + std::to_string(var.id) : "@Null";
+      case App: return (app.l? app.l->toString(ctx, stk) : "@Null") + " " + (app.r? app.r->toString(ctx, stk) : "@Null");
+      case Lam: {
+        string name = lam.s.empty()? newName(stk.size()) : lam.s;
+        string res = "(fun" + name + " : " + (lam.t? lam.t->toString(ctx, stk) : "@Null");
+        stk.push_back(name); res += " => " + (lam.r? lam.r->toString(ctx, stk) : "@Null") + ")";
         stk.pop_back();
         return res;
       }
@@ -170,162 +102,95 @@ namespace Core {
     throw NotImplemented();
   }
 
-  Type Expr::checkType(const Context& ctx, vector<Type>& stk) const {
-
-    // Formation rules here
+  const Expr* Expr::checkType(const Context& ctx, Allocator<Expr>& pool, vector<const Expr*>& stk) const {
     switch (tag) {
-
-      case VAR: {
-        // Get type of the LHS
-        const Type* t_ =
-          var.vartag == BOUND ? (var.id < stk.size() ? &stk[stk.size() - 1 - var.id] : nullptr) :
-          var.vartag == FREE  ? (ctx.valid(var.id)   ? get_if<Type>(&ctx[var.id])    : nullptr) :
+      case Type: {
+        switch (type.tag) {
+          case TKind: throw InvalidExpr("\"kind\" does not have a type", ctx, this);
+          case TFun:
+            if (!type.l || !type.r) throw InvalidExpr("unexpected null pointer", ctx, this);
+            if (*type.l->checkType(ctx, pool, stk) != Expr(TKind)) throw InvalidExpr("type expected", ctx, type.l);
+            if (*type.r->checkType(ctx, pool, stk) != Expr(TKind)) throw InvalidExpr("type expected", ctx, type.r);
+            return pool.emplaceBack(TKind);
+          case TVar:  return pool.emplaceBack(TKind);
+          case TProp: return pool.emplaceBack(TKind);
+        }
+      }
+      case Var: {
+        const Expr* t =
+          var.tag == VBound ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : nullptr) :
+          var.tag == VFree  ? (ctx.valid(var.id)   ? ctx[var.id]                  : nullptr) :
           nullptr;
-        if (!t_ || t_->empty())
+        if (!t)
           throw InvalidExpr(
-            var.vartag == BOUND ? "de Brujin index too large" :
-            var.vartag == FREE  ? "free variable not in context" :
-            var.vartag == UNDETERMINED ? "unexpected undetermined variable" :
-            "unknown variable tag: " + static_cast<unsigned char>(var.vartag), ctx, this
-          );
-        const Type& t = *t_;
-
-        // Try applying arguments one by one
-        size_t i = 0, j = 0;
-        for (const Expr* p = var.c; p; p = p->s) {
-          const Type& tp = p->checkType(ctx, stk);
-          if      (i + 1  < t.size() && tp.size() == 1 && tp[0] == t[i] ) i++; // Schema instantiation
-          else if (i + 1 == t.size() && tp == TTerm    && j < t[i].first) j++; // Function application
-          else throw InvalidExpr("argument type mismatch", ctx, this);
-        }
-
-        if (i + 1 == t.size() && j == t[i].first) return Type{{ 0, t[i].second }}; // Fully applied
-        else throw InvalidExpr("function or predicate not fully applied", ctx, this);
+            var.tag == VBound ? "de Bruijn index too large" :
+            var.tag == VFree  ? "free variable not in context" :
+            var.tag == VMeta  ? "unexpected metavariable" :
+            "unknown variable tag: " + static_cast<std::underlying_type_t<VarTag>>(var.tag), ctx, this);
+        return t->clone(pool);
       }
-
-      case TRUE: case FALSE:
-        return TFormula;
-
-      case NOT:
-        if (conn.l && conn.l->checkType(ctx, stk) == TFormula) return TFormula;
-        else throw InvalidExpr("connective should connect propositions", ctx, this);
-
-      case AND: case OR: case IMPLIES: case IFF:
-        if (conn.l && conn.l->checkType(ctx, stk) == TFormula &&
-            conn.r && conn.r->checkType(ctx, stk) == TFormula) return TFormula;
-        else throw InvalidExpr("connective should connect propositions", ctx, this);
-
-      case FORALL: case EXISTS: case UNIQUE:
-        if (binder.arity != 0 || binder.sort != SVAR)
-          throw InvalidExpr("binder should bind a term variable", ctx, this);
-        [[fallthrough]];
-      case FORALL2: {
-        if (!binder.r)
-          throw InvalidExpr("null pointer", ctx, this);
-
-        // Check recursively
-        stk.push_back(Type{{ binder.arity, binder.sort }});
-        auto t = binder.r->checkType(ctx, stk);
+      case App: {
+        if (!app.l || !app.r) throw InvalidExpr("unexpected null pointer", ctx, this);
+        const Expr* tl = app.l->checkType(ctx, pool, stk);
+        const Expr* tr = app.r->checkType(ctx, pool, stk);
+        if (tl->tag != Type || tl->type.tag != TFun) throw InvalidExpr("function expected, term has type " + tl->toString(ctx), ctx, app.l);
+        if (!tl->type.l || !tl->type.r) throw Unreachable(); // By postcondition of checkType(), returned type expression is well-formed
+        if (*tl->type.l != *tr) throw InvalidExpr("argument type mismatch, expected " + tl->type.l->toString(ctx) + ", got " + tr->toString(ctx), ctx, app.r);
+        return tl->type.r;
+      }
+      case Lam: {
+        if (!lam.t || !lam.r) throw InvalidExpr("unexpected null pointer", ctx, this);
+        if (*lam.t->checkType(ctx, pool, stk) != Expr(TKind)) throw InvalidExpr("type expected", ctx, lam.t);
+        stk.push_back(lam.t);
+        const Expr* tr = lam.r->checkType(ctx, pool, stk);
         stk.pop_back();
-
-        if (t == TFormula) return TFormula;
-        else throw InvalidExpr("binder body should be a proposition", ctx, this);
+        return pool.emplaceBack(TFun, lam.t->clone(pool), tr);
       }
-
-      case LAMBDA: {
-        if (binder.arity != 0 || binder.sort != SVAR)
-          throw InvalidExpr("binder should bind a term variable", ctx, this);
-        if (!binder.r)
-          throw InvalidExpr("null pointer", ctx, this);
-
-        // Check recursively
-        stk.push_back(Type{{ binder.arity, binder.sort }});
-        auto t = binder.r->checkType(ctx, stk);
-        stk.pop_back();
-
-        if (t.size() == 1) {
-          auto [k, s] = t[0];
-          return Type{{ k + 1, s }};
-        }
-        else throw InvalidExpr("function body has invalid type", ctx, this);
-      }
-    }
-
-    throw NotImplemented();
-  }
-
-  bool Expr::occurs(VarTag vartag, unsigned int id) const noexcept {
-    switch (tag) {
-      case VAR:
-        if (var.vartag == vartag && var.id == id) return true;
-        for (const Expr* p = var.c; p; p = p->s) {
-          if (p->occurs(vartag, id)) return true;
-        }
-        return false;
-      case TRUE: case FALSE:
-        return false;
-      case NOT:
-        return conn.l && conn.l->occurs(vartag, id);
-      case AND: case OR: case IMPLIES: case IFF:
-        return (conn.l && conn.l->occurs(vartag, id)) || (conn.r && conn.r->occurs(vartag, id));
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: 
-        return binder.r && binder.r->occurs(vartag, id);
     }
     throw NotImplemented();
   }
 
-  size_t Expr::numUndetermined() const noexcept {
+  Expr* Expr::reduce(Allocator<Expr>& pool) const {
     switch (tag) {
-      case VAR: {
-        size_t res = (var.vartag == UNDETERMINED)? (var.id + 1) : 0;
-        for (const Expr* p = var.c; p; p = p->s) res = std::max(res, p->numUndetermined());
-        return res;
+      case Type: return make(pool, type.tag, type.l? type.l->reduce(pool) : nullptr, type.r? type.r->reduce(pool) : nullptr);
+      case Var: return make(pool, var.tag, var.id);
+      case App: {
+        Expr* l = app.l? app.l->reduce(pool) : nullptr;
+        Expr* r = app.r? app.r->reduce(pool) : nullptr;
+        if (l && r && l->tag == Lam) return l->lam.r->makeReplace(r, pool)->reduce(pool);
+        return make(pool, l, r);
       }
-      case TRUE: case FALSE:
-        return 0;
-      case NOT:
-        return conn.l? conn.l->numUndetermined() : 0;
-      case AND: case OR: case IMPLIES: case IFF:
-        return std::max(conn.l? conn.l->numUndetermined() : 0, conn.r? conn.r->numUndetermined() : 0);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: 
-        return binder.r? binder.r->numUndetermined() : 0;
-    }
-    throw NotImplemented();
-  }
-
-  bool Expr::isGround() const noexcept {
-    switch (tag) {
-      case VAR:
-        if (var.vartag == UNDETERMINED) return false;
-        for (const Expr* p = var.c; p; p = p->s) if (!p->isGround()) return false;
-        return true;
-      case TRUE: case FALSE:
-        return true;
-      case NOT:
-        return !conn.l || conn.l->isGround();
-      case AND: case OR: case IMPLIES: case IFF:
-        return (!conn.l || conn.l->isGround()) && (!conn.r || conn.r->isGround());
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: 
-        return !binder.r || binder.r->isGround();
+      case Lam: return make(pool, lam.s, lam.t? lam.t->reduce(pool) : nullptr, lam.r? lam.r->reduce(pool) : nullptr);
     }
     throw NotImplemented();
   }
 
   size_t Expr::size() const noexcept {
     switch (tag) {
-      case VAR: {
-        size_t res = 1;
-        for (const Expr* p = var.c; p; p = p->s) res += p->size();
-        return res;
-      }
-      case TRUE: case FALSE:
-        return 1;
-      case NOT:
-        return 1 + (conn.l? conn.l->size() : 0);
-      case AND: case OR: case IMPLIES: case IFF:
-        return 1 + (conn.l? conn.l->size() : 0) + (conn.r? conn.r->size() : 0);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA: 
-        return 1 + (binder.r? binder.r->size() : 0);
+      case Type: return 1 + (type.l? type.l->size() : 0) + (type.r? type.r->size() : 0);
+      case Var: return 1;
+      case App: return 1 + (app.l? app.l->size() : 0) + (app.r? app.r->size() : 0);
+      case Lam: return 1 + (lam.t? lam.t->size() : 0) + (lam.r? lam.r->size() : 0);
+    }
+    throw NotImplemented();
+  }
+
+  bool Expr::occurs(VarTag vartag, uint64_t id) const noexcept {
+    switch (tag) {
+      case Type: return (type.l && type.l->occurs(vartag, id)) || (type.r && type.r->occurs(vartag, id));
+      case Var: return var.tag == vartag && var.id == id;
+      case App: return (app.l && app.l->occurs(vartag, id)) || (app.r && app.r->occurs(vartag, id));
+      case Lam: return (lam.t && lam.t->occurs(vartag, id)) || (lam.r && lam.r->occurs(vartag, id));
+    }
+    throw NotImplemented();
+  }
+
+  size_t Expr::numUndetermined() const noexcept {
+    switch (tag) {
+      case Type: return std::max(type.l? type.l->numUndetermined() : 0, type.r? type.r->numUndetermined() : 0);
+      case Var: return var.tag == VMeta? (var.id + 1) : 0;
+      case App: return std::max(app.l? app.l->numUndetermined() : 0, app.r? app.r->numUndetermined() : 0);
+      case Lam: return std::max(lam.t? lam.t->numUndetermined() : 0, lam.r? lam.r->numUndetermined() : 0);
     }
     throw NotImplemented();
   }

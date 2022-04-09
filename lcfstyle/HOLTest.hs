@@ -36,34 +36,10 @@ e2 = Lam "x" TVar (Lam "y" TVar (App (App (var "<") (App (App (var "+") (var "x"
 wff2 = convertAndCheck ctx e2
 -- (ι → (ι → *))
 
-ctx' :: Context
-ctx' =
-  ctxNewVar "exists" (TFun (TFun TVar TProp) TProp) $
-  ctxNewVar "forall" (TFun (TFun TVar TProp) TProp) $
-  ctxNewVar "iff" (TFun TProp (TFun TProp TProp)) $
-  ctxNewVar "implies" (TFun TProp (TFun TProp TProp)) $
-  ctxNewVar "or" (TFun TProp (TFun TProp TProp)) $
-  ctxNewVar "and" (TFun TProp (TFun TProp TProp)) $
-  ctxNewVar "not" (TFun TProp TProp) $
-  ctxNewVar "false" TProp $
-  ctxNewVar "true" TProp $
-  ctxNewVar "eq" (TFun TVar (TFun TVar TProp)) ctx
+e3 = Forall "x" (Top `And` ((var "x" `Equals` var "x") `Implies` Bottom))
+wff3 = convertAndCheck ctx e3
 
-eq = App . (var "eq" `App`)
-true = var "true"
-false = var "false"
-not = (var "not" `App`)
-and = App . (var "and" `App`)
-or = App . (var "or" `App`)
-implies = App . (var "implies" `App`)
-iff = App . (var "iff" `App`)
-forall id = (var "forall" `App`) . Lam id TVar
-exists id = (var "exists" `App`) . Lam id TVar
-
-e3 = forall "x" (true `and` ((var "x" `eq` var "x") `implies` false))
-wff3 = convertAndCheck ctx' e3
-
-e4 = exists "x" (forall "y" (var "x" `App` var "y"))
-wff4 = convertAndCheck ctx' e4 -- Should fail
+e4 = Exists "x" (Forall "y" (var "x" `App` var "y"))
+wff4 = convertAndCheck ctx e4 -- Should fail
 
 

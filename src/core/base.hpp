@@ -51,13 +51,18 @@ namespace Core {
       next = 0;
     }
 
-    T* pushBack(T obj) {
+    template <typename... Ts>
+    T* emplaceBack(Ts&&... args) {
       if (next == 0) blocks.push_back(alloc.allocate(blockSize));
       T* res = blocks.back() + next;
-      std::construct_at(res, std::move(obj));
+      std::construct_at(res, std::forward<Ts...>(args...));
       next++;
       if (next >= blockSize) next = 0;
       return res;
+    }
+
+    T* pushBack(T&& obj) {
+      return emplaceBack(std::move(obj));
     }
 
     std::size_t size() const noexcept {
@@ -89,8 +94,9 @@ namespace Core {
       std::logic_error("\"Not implemented\" code was called" + (s.empty() ? "" : ": " + s)) {}
   };
   struct CheckFailure: public std::logic_error {
-    explicit CheckFailure(const std::string& s):
-      std::logic_error(s) {}
+    const void* pos;
+    explicit CheckFailure(const std::string& s, const void* pos):
+      std::logic_error(s), pos(pos) {}
   };
 
 }

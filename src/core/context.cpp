@@ -5,160 +5,107 @@
 
 namespace Core {
 
-  string showType(const Type& t) {
-    string res = "";
-    for (size_t i = 0; i < t.size(); i++) {
-      string curr = "";
-      for (int j = 0; j < t[i].first; j++) curr += "var -> ";
-      curr += (t[i].second == SVAR ? "var" : "wff");
-      if (i + 1 < t.size()) curr = "(" + curr + ") -> ";
-      res += curr;
-    }
-    return res;
+  using std::string;
+  using std::vector;
+
+
+  #define pool pools.back()
+  #define assert(expr) if (!(expr)) throw Core::Unreachable()
+
+  Context::Context(): pools(1), entries(), indices() {
+    #define var       Expr::make(pool, Expr::TVar)
+    #define prop      Expr::make(pool, Expr::TProp)
+    #define fun(l, r) Expr::make(pool, Expr::TFun, l, r)
+
+    assert(Initial == addDefinition("initial", var));
+    assert(Equals  == addDefinition("equals",  fun(var, fun(var, prop))));
+    assert(True    == addDefinition("true",    prop));
+    assert(False   == addDefinition("false",   prop));
+    assert(Not     == addDefinition("not",     fun(prop, prop)));
+    assert(And     == addDefinition("and",     fun(prop, fun(prop, prop))));
+    assert(Or      == addDefinition("or",      fun(prop, fun(prop, prop))));
+    assert(Implies == addDefinition("implies", fun(prop, fun(prop, prop))));
+    assert(Iff     == addDefinition("iff",     fun(prop, fun(prop, prop))));
+    assert(Forall  == addDefinition("forall",  fun(fun(var, prop), prop)));
+    assert(Exists  == addDefinition("exists",  fun(fun(var, prop), prop)));
+    assert(Unique  == addDefinition("unique",  fun(fun(var, prop), prop)));
+
+    #undef var
+    #undef prop
+    #undef fun
   }
 
-  size_t Context::addDef(const string& s, const Type& t) { 
-    a.push_back(Entry{ s, t });
-    return a.size() - 1;
-  }
-
-  size_t Context::addTheorem(const string& s, const Expr* e) {
-    e->checkType(*this);
-    a.push_back(Entry{ s, e });
-    return a.size() - 1;
-  }
-
-  size_t Context::pushVar(const string& s, const Type& t) {
-    a.push_back(Entry{ s, t });
-    ind.push_back(a.size() - 1);
-    return a.size() - 1;
+  size_t Context::addDefinition(const string& s, const Expr* e) {
+    e->checkType(*this, pool); // TODO: make a temporary pool
+    entries.emplace_back(s, e);
+    return entries.size() - 1;
   }
 
   size_t Context::pushAssumption(const string& s, const Expr* e) {
-    e->checkType(*this);
-    a.push_back(Entry{ s, e });
-    ind.push_back(a.size() - 1);
-    return a.size() - 1;
+    e->checkType(*this, pool); // TODO: make a temporary pool
+    pools.emplace_back();
+    entries.emplace_back(s, e);
+    indices.push_back(entries.size() - 1);
+    return entries.size() - 1;
   }
 
-  // Context-changing rules (implies-intro, forall[func, pred]-intro) here
-  bool Context::pop(Allocator<Expr>& pool) {
+  // Context-changing rules (implies-intro, forall-intro) here
+  bool Context::pop() {
     using enum Expr::Tag;
+    using enum Expr::TypeTag;
     using enum Expr::VarTag;
 
-    if (ind.empty()) return false;
-    size_t index = ind.back(); ind.pop_back();
-    auto entry = a[index];
+    if (pools.empty() || indices.empty()) return false;
+    const size_t index = indices.back(); indices.pop_back();
+    const auto [s, x] = entries[index];
 
-    // Some helper functions and macros
-    auto concat = [] (Type a, const Type& b) {
-      for (auto x: b) a.push_back(x);
-      return a;
+    #define expr(...) Expr::make(pool, __VA_ARGS__)
+
+    // TODO: more flexible index remapping
+    auto modify = [this, index] (unsigned int n, const Expr* x) {
+      if (x->var.tag == VFree && x->var.id == index) return expr(VBound, n);
+      if (x->var.tag == VFree && x->var.id > index) return expr(expr(VFree, x->var.id - 1), expr(VBound, n));
+      return x->clone(pool);
     };
 
-    #define node2(l_, tag_, r_)   Expr::make(pool, tag_, l_, r_)
-    #define nodebinder(tag_, name_, r_) \
-                                  Expr::make(pool, tag_, name_, 0, SVAR, r_) // This binds term variables only
-    #define nodebinderks(tag_, name_, k_, s_, r_) \
-                                  Expr::make(pool, tag_, name_, k_, s_, r_)
-    #define nodevar(f_, id_, ...) Expr::make(pool, f_, id_, std::initializer_list<Expr*>{__VA_ARGS__})
-    #define isexpr(info)          holds_alternative<const Expr*>(info)
-    #define istype(info)          holds_alternative<Type>(info)
-    #define expr(info)            get<const Expr*>(info)
-    #define type(info)            get<Type>(info)
-
-    // Which kind of assumption?
-    if (isexpr(entry.info)) {
-      const Expr* hyp = expr(entry.info);
-
-      for (size_t i = index; i + 1 < a.size(); i++) {
-        // Copy a[i + 1] to a[i], with necessary modifications...
-        if (isexpr(a[i + 1].info)) {
-          // Implies-intro for theorems
-          auto modify = [index, &pool] (unsigned int, Expr* x) {
-            // If defined after the hypothesis...
-            if (x->var.vartag == FREE && x->var.id > index) x->var.id--;
-            return x;
-          };
-          a[i] = {
-            a[i + 1].name,
-            node2(hyp->clone(pool), IMPLIES, expr(a[i + 1].info)->updateVars(0, pool, modify))
-          };
-        } else if (istype(a[i + 1].info)) {
-          // No change for definitions
-          a[i] = a[i + 1];
-        } else throw NotImplemented();
+    for (size_t i = index; i + 1 < entries.size(); i++) {
+      const auto [t, y] = entries[i + 1];
+      if (x->tag == Type) {
+        if (y->tag == Type) {
+          // (X: kind, Y: kind)
+          // If   Γ ∪ {s: X} ⊢ t: Y
+          // Then Γ          ⊢ t: (X → Y)
+          entries[i] = { t, expr(TFun, x->clone(pool), y->updateVars(0, pool, modify)) };
+        } else {
+          // (X: kind, Y: prop)
+          // If   Γ ∪ {s: X} ⊢ t: Y
+          // Then Γ          ⊢ t: (∀ s: X, Y)
+          entries[i] = { t, expr(expr(VFree, Forall), expr(s, x->clone(pool), y->updateVars(0, pool, modify))) };
+        }
+      } else {
+        if (y->tag == Type) {
+          // (X: prop, Y: kind)
+          // If   Γ ∪ {s: X} ⊢ t: Y
+          // Then Γ          ⊢ t: Y
+          entries[i] = { t, y->updateVars(0, pool, modify) };
+        } else {
+          // (X: prop, Y: prop)
+          // If   Γ ∪ {s: X} ⊢ t: Y
+          // Then Γ          ⊢ t: (X → Y)
+          entries[i] = { t, expr(expr(expr(VFree, Implies), x->clone(pool)), y->updateVars(0, pool, modify)) };
+        }
       }
-      a.pop_back();
+    }
+    entries.pop_back();
 
-    } else if (istype(entry.info)) {
-      const Type& t = type(entry.info);
-      // Assumed variable must be first- or second-order
-      if (t.size() != 1) throw NotImplemented();
-
-      for (size_t i = index; i + 1 < a.size(); i++) {
-        // Copy a[i + 1] to a[i], with necessary modifications...
-        if (isexpr(a[i + 1].info)) {
-          // Forallfunc/pred-intro for theorems
-          auto modify = [index, t, &pool] (unsigned int n, Expr* x) {
-            // If it is the assumed variable, make bound...
-            if (x->var.vartag == FREE && x->var.id == index) {
-              x->var.vartag = BOUND; x->var.id = n;
-            }
-            // If defined after the assumed variable, add application...
-            else if (x->var.vartag == FREE && x->var.id > index) {
-              x->var.id--;
-              Expr* arg = nodevar(BOUND, n);
-              // Make sure second-order variables are fully applied
-              arg->var.id += t[0].first;
-              for (unsigned short k = 0; k < t[0].first; k++) {
-                Expr* bound = nodevar(BOUND, k);
-                bound->s = arg->var.c; arg->var.c = bound;
-              }
-              for (unsigned short k = 0; k < t[0].first; k++) {
-                arg = nodebinder(LAMBDA, "", arg);
-              }
-              // Attach new argument at the beginning
-              arg->s = x->var.c; x->var.c = arg;
-            }
-            return x;
-          };
-          const Expr* ei = expr(a[i + 1].info);
-          a[i] = {
-            a[i + 1].name,
-            (t == TTerm && ei->tag != FORALL2) ?
-              nodebinder(FORALL, entry.name, ei->updateVars(0, pool, modify)) :
-              nodebinderks(FORALL2, entry.name, t[0].first, t[0].second, ei->updateVars(0, pool, modify))
-          };
-        } else if (istype(a[i + 1].info)) {
-          // Add abstraction for definitions
-          const Type& ti = type(a[i + 1].info);
-          a[i] = {
-            a[i + 1].name,
-            (t == TTerm && ti.size() == 1) ?
-              Type{{ ti[0].first + 1, ti[0].second }} :
-              concat(t, ti)
-          };
-        } else throw NotImplemented();
-      }
-      a.pop_back();
-
-    } else throw NotImplemented();
+    #undef expr
 
     // Should not throw, for debugging only
-    for (size_t i = index; i < a.size(); i++) if (isexpr(a[i].info)) {
-      expr(a[i].info)->checkType(*this);
-    }
-
-    #undef node2
-    #undef nodebinder
-    #undef nodebinderks
-    #undef nodevar
-    #undef isexpr
-    #undef istype
-    #undef expr
-    #undef type
+    for (size_t i = index; i < entries.size(); i++) entries[i].expr->checkType(*this, pool);
     return true;
   }
+
+  #undef assert
+  #undef pool
 
 }

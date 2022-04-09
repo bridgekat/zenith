@@ -2,10 +2,12 @@
 -- This variant of HOL ~~is~~ was largely based on William M. Farmer's *The Seven Virtues of Simple Type Theory*...
 
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module HOL where
 
 import Data.List
+import Data.Maybe
 
 
 -- The context is stored as a stack (a list whose first element denotes the topmost layer).
@@ -20,8 +22,25 @@ instance Show Context where
   show ctx@(Context a) =
     foldr (\defs acc -> acc ++ foldl (\acc (id, c) -> acc ++ id ++ " : " ++ show c ++ "\n  | ") "" defs ++ "\n") "" a
 
+-- Pre-defined term constructor goes here
 ctxEmpty :: Context
-ctxEmpty = Context []
+ctxEmpty =
+  ctxNewVar "forallpred1" (TFun (TFun TProp TProp) TProp) $
+  ctxNewVar "forallpred0" (TFun (TFun TProp TProp) TProp) $
+  ctxNewVar "forallfunc1" (TFun (TFun TProp TProp) TProp) $
+  ctxNewVar "unique" (TFun (TFun TVar TProp) TProp) $
+  ctxNewVar "exists" (TFun (TFun TVar TProp) TProp) $
+  ctxNewVar "forall" (TFun (TFun TVar TProp) TProp) $
+  ctxNewVar "iff" (TFun TProp (TFun TProp TProp)) $
+  ctxNewVar "implies" (TFun TProp (TFun TProp TProp)) $
+  ctxNewVar "or" (TFun TProp (TFun TProp TProp)) $
+  ctxNewVar "and" (TFun TProp (TFun TProp TProp)) $
+  ctxNewVar "not" (TFun TProp TProp) $
+  ctxNewVar "false" TProp $
+  ctxNewVar "true" TProp $
+  ctxNewVar "equals" (TFun TVar (TFun TVar TProp)) $
+  ctxNewVar "initial" TVar
+  (Context [])
 
 ctxNewVar :: String -> Type -> Context -> Context
 ctxNewVar id t ctx@(Context a)
@@ -44,7 +63,7 @@ ctxAddDef _ _ _ = error "ctxAddDef"
 -- Returns True if the first context is an extension of the second one (used in the weakening rule)
 isExtensionOf :: Context -> Context -> Bool
 isExtensionOf (Context a') (Context a) =
-  length a' >= length a && and (zipWith isPrefixOf (reverse a) (reverse a'))
+  length a' >= length a && Data.List.and (zipWith isPrefixOf (reverse a) (reverse a'))
 
 -- Get all names
 ctxAllNames :: Context -> [String]
@@ -64,19 +83,13 @@ ctxLookup s (Context a) = ctxLookup' a
 data VarName = Free String | Bound Int
   deriving (Eq)
 
-data Type =
-    TVar
-  | TProp
-  | TFun Type Type
+data Type = TVar | TProp | TFun Type Type
   deriving (Eq)
 
-showT :: Type -> String
-showT TVar = "ι"
-showT TProp = "*"
-showT (TFun t1 t2) = "(" ++ showT t1 ++ " → " ++ showT t2 ++ ")"
-
 instance Show Type where
-  show = showT
+  show TVar = "ι"
+  show TProp = "*"
+  show (TFun t1 t2) = "(" ++ show t1 ++ " → " ++ show t2 ++ ")"
 
 data Expr =
     Type Type
@@ -106,7 +119,7 @@ showE used stk e = case e of
   (Type t)     -> show t
   (Var x)      -> showName stk x
   (App e1 e2)  -> "(" ++ showE used stk e1 ++ " " ++ showE used stk e2 ++ ")"
-  (Lam x t e)  -> "(λ " ++ x' ++ " : " ++ showT t ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
+  (Lam x t e)  -> "(λ " ++ x' ++ " : " ++ show t ++ ", " ++ showE (x' : used) (x' : stk) e ++ ")" where x' = newName x used
 
 inContextShowE :: Context -> Expr -> String
 inContextShowE ctx = showE (ctxAllNames ctx) []
@@ -176,24 +189,60 @@ varMk ctx id = case ctxLookup id ctx of
 
 appMk :: Theorem -> Theorem -> Theorem
 appMk (Theorem (ctx, HasType e1 (TFun l r))) (Theorem (ctx', HasType e2 l'))
-  | ctx == ctx' && l == l' =
-    Theorem (ctx, HasType (App e1 e2) r)
+      | ctx == ctx' && l == l' =
+       Theorem (ctx, HasType (App e1 e2) r)
 appMk _ _ = error "appMk"
 
 lamMk :: Theorem -> Theorem
 lamMk (Theorem (ctx,  HasType e te)) =
        Theorem (ctx', HasType (Lam x tx e') (TFun tx te))
-  where (ctx', x, tx, e') = ctxPop ctx e
+  where (ctx', x, Type tx, e') = ctxPop ctx e
 lamMk _ = error "lamMk"
 
--- Definition generalization rules (executed in context-changing rules)
+-- Introduction & elimination rules
+-- Pre & post: `Provable p` => `HasType p TProp`
 
-ctxPop :: Context -> Expr -> (Context, String, Type, Expr)
+assumption :: Context -> String -> Theorem
+assumption ctx id =
+  case fromJust (ctxLookup id ctx) of
+    Type _ -> error "assumption: assumption should be a formula, not variable"
+    p      -> Theorem (ctx, Provable p)
+
+-- (Context-changing rule)
+impliesIntro :: Theorem -> Theorem
+impliesIntro (Theorem (ctx,  Provable q)) =
+              Theorem (ctx', Provable (p `Implies` q))
+  where (ctx', _, p, Initial) = ctxPop ctx Initial
+impliesIntro _ = error "impliesIntro"
+
+impliesElim :: Theorem -> Theorem -> Theorem
+impliesElim (Theorem (ctx,  Provable (p `Implies` q)))
+            (Theorem (ctx', Provable p'))
+            | ctx == ctx' && p == p' =
+             Theorem (ctx,  Provable q)
+impliesElim _ _ = error "impliesElim"
+
+-- (Context-changing rule)
+forallIntro :: Theorem -> Theorem
+forallIntro (Theorem (ctx,  Provable p)) =
+             Theorem (ctx', Provable (Forall x p'))
+  where (ctx', x, Type TVar, p') = ctxPop ctx p
+forallIntro _ = error "forallIntro"
+
+forallElim :: Theorem -> Theorem -> Theorem
+forallElim (Theorem (ctx,  Provable (Forall x q)))
+           (Theorem (ctx', HasType t TVar))
+           | ctx == ctx' =
+            Theorem (ctx,  Provable (makeReplace t q))
+forallElim _ _ = error "forallElim"
+
+-- Definition generalization rules (executed in context-changing rules)
+ctxPop :: Context -> Expr -> (Context, String, Expr, Expr)
 ctxPop (Context (((name, hyp) : defs) : l' : ls)) e =
   case hyp of
     -- Add the definitions in the topmost layer into the second-to-top layer,
     -- adding abstraction over the hypothesized variable.
-    (Type t) -> (Context ((l' ++ newdefs) : ls), name, t, modify e)
+    (Type t) -> (Context ((l' ++ newdefs) : ls), name, hyp, modify e)
       where
         newdefs = map (\(name, Type t') -> (name, Type (TFun t t'))) defs
         ids = map fst defs -- The names of definitions in the last layer (excluding the hypothesized one)
@@ -205,5 +254,23 @@ ctxPop (Context (((name, hyp) : defs) : l' : ls)) e =
             _                 -> Var x)
     -- Add the definitions in the topmost layer into the second-to-top layer,
     -- prepending the assumption to every theorem (not implemented here).
-    _ -> (Context ((l' ++ defs) : ls), name, TVar, e)
+    _ -> (Context ((l' ++ defs) : ls), name, hyp, e)
 ctxPop _ _ = error "ctxPop"
+
+-- Shorthands
+pattern Initial = Var (Free "initial")
+pattern Equals x y = Var (Free "equals") `App` x `App` y
+pattern Top = Var (Free "true")
+pattern Bottom = Var (Free "false")
+pattern Not p = Var (Free "not") `App` p
+pattern And p q = Var (Free "and") `App` p `App` q
+pattern Or p q = Var (Free "or") `App` p `App` q
+pattern Implies p q = Var (Free "implies") `App` p `App` q
+pattern Iff p q = Var (Free "iff") `App` p `App` q
+pattern Forall id e = (Var (Free "forall") `App` (Lam id TVar e))
+pattern Exists id e = (Var (Free "exists") `App` (Lam id TVar e))
+pattern Unique id e = (Var (Free "unique") `App` (Lam id TVar e))
+-- TEMP CODE
+pattern ForallFunc1 id e = (Var (Free "forallfunc1") `App` (Lam id TProp e))
+pattern ForallPred0 id e = (Var (Free "forallpred0") `App` (Lam id TProp e))
+pattern ForallPred1 id e = (Var (Free "forallpred1") `App` (Lam id TProp e))

@@ -3,40 +3,14 @@
 #ifndef CONTEXT_HPP_
 #define CONTEXT_HPP_
 
+#include <cstdint>
 #include <vector>
-#include <utility>
 #include <string>
-#include <variant>
 #include <optional>
 #include "base.hpp"
 
 
 namespace Core {
-
-  using std::vector;
-  using std::pair, std::make_pair;
-  using std::string;
-  using std::variant, std::holds_alternative, std::get, std::monostate;
-  using std::optional, std::make_optional, std::nullopt;
-
-
-  // Possible "types" of expressions (ι means Var, * means Prop):
-  //   Terms:      {{ 0, SVAR }}  (ι)
-  //   Functions:  {{ k, SVAR }}  (ι → ... → ι → ι)
-  //   Formulas:   {{ 0, SPROP }} (*)
-  //   Predicates: {{ k, SPROP }} (ι → ... → ι → *)
-  // Function/predicate schemas have "second-order parameters":
-  //   {{ k1, s1 }, { k2, s2 }} means ((ι → ... → ι → s1) → ι → ... → ι → s2), etc.
-  // (This is similar to Metamath definition checkers, according to Mario Carneiro!)
-
-  enum class Sort: unsigned char { SVAR, SPROP };
-  using enum Sort;
-  typedef vector<pair<unsigned short, Sort>> Type;
-
-  const Type TTerm    = {{ 0, SVAR }};
-  const Type TFormula = {{ 0, SPROP }};
-
-  string showType(const Type& t);
 
   class Expr;
 
@@ -44,45 +18,47 @@ namespace Core {
   // Here, "assumed" and "defined" entries are interleaved, stored linearly in one array.
   class Context {
   public:
+    // Pre-defined logical constants in a second-order language
+    // Code consistency (checked at runtime): if you change this, you may have to update `Context::Context()`.
+    enum Constant: uint64_t {
+      Initial, Equals, True, False, Not, And, Or, Implies, Iff, Forall, Exists, Unique,
+      // ForallFunc,
+      // ForallPred = ForallFunc + 256
+    };
     // Context entry
     struct Entry {
-      string name;
-      variant<Type, const Expr*> info;
+      std::string name;
+      const Expr* expr;
     };
+    // All entries
+    std::vector<Allocator<Expr>> pools;
+    std::vector<Entry> entries;
+    // Indices of "assumed" entries
+    std::vector<uint64_t> indices;
 
-    vector<Entry> a; // All entries
-    vector<unsigned int> ind; // Indices of "assumed" entries
-    const unsigned int initial;
-    const unsigned int equals;
-
-    // Insert a built-in equality relation during initialization
-    Context(): a(), ind(),
-      initial(static_cast<unsigned int>(addDef("initial", {{ 0, SVAR }}))),
-      equals(static_cast<unsigned int>(addDef("equals", {{ 2, SPROP }}))) {}
+    // Built-in constants are inserted during initialization
+    Context();
 
     // Add entries...
-    size_t addDef         (const string& s, const Type& t);
-    size_t addTheorem     (const string& s, const Expr* e);
-    size_t pushVar        (const string& s, const Type& t);
-    size_t pushAssumption (const string& s, const Expr* e);
+    size_t addDefinition(const std::string& s, const Expr* e);
+    size_t pushAssumption(const std::string& s, const Expr* e);
     // Pops the last "assumed" entry, performs appropriate changes to all definitions and theorems in the top layer,
     // storing the new expressions in `pool`.
     // Returns false if there is no "assumed" entry left.
-    bool pop(Allocator<Expr>& pool);
+    bool pop();
 
     // Look up by index.
     // Use `valid(i)` to perform bound checks before accessing, and throw appropriate exception if index is too large.
-    size_t size() const { return a.size(); }
-    bool valid(size_t index) const { return index < a.size(); }
-    const variant<Type, const Expr*>& operator[](size_t index) const { return a.at(index).info; }
-    const string& nameOf(size_t index) const { return a.at(index).name; }
+    size_t size() const { return entries.size(); }
+    bool valid(size_t index) const { return index < entries.size(); }
+    const Expr* operator[](size_t index) const { return entries.at(index).expr; }
+    std::string nameOf(size_t index) const { return entries.at(index).name; }
 
     // Look up by literal name. (Slow, not commonly used)
-    optional<unsigned int> lookup(const string& s) const {
+    std::optional<uint64_t> lookup(const std::string& s) const {
       // Unsigned count down: https://nachtimwald.com/2019/06/02/unsigned-count-down/
-      for (unsigned int i = static_cast<unsigned int>(a.size()); i --> 0;)
-        if (a[i].name == s) return i;
-      return nullopt;
+      for (uint64_t i = static_cast<uint64_t>(entries.size()); i --> 0;) if (entries[i].name == s) return i;
+      return std::nullopt;
     }
   };
 
