@@ -10,6 +10,7 @@
 
 namespace Core {
 
+  /*
   // Derivation trees (aka. proof terms)
   class Proof {
   public:
@@ -64,6 +65,7 @@ namespace Core {
   struct InvalidProof: public CheckFailure {
     InvalidProof(const string& s, const Context&, const Proof*): CheckFailure("Invalid proof, " + s) {}
   };
+  */
 
   // Pre (for all methods): there is no "cycle" throughout the tree
   // Pre & invariant (for all methods): all nonzero pointers (in the "active variant") are valid

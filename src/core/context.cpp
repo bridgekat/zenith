@@ -13,22 +13,24 @@ namespace Core {
   #define assert(expr) if (!(expr)) throw Core::Unreachable()
 
   Context::Context(): pools(1), entries(), indices() {
-    #define var       Expr::make(pool, Expr::TVar)
-    #define prop      Expr::make(pool, Expr::TProp)
-    #define fun(l, r) Expr::make(pool, Expr::TFun, l, r)
+    #define prop        Expr::make(pool, Expr::SProp)
+    #define type        Expr::make(pool, Expr::SType)
+    #define setvar      Expr::make(pool, Expr::VFree, SetVar)
+    #define pi(s, t, r) Expr::make(pool, Expr::PPi, s, t, r)
 
-    assert(Initial == addDefinition("initial", var));
-    assert(Equals  == addDefinition("equals",  fun(var, fun(var, prop))));
+    assert(SetVar  == addDefinition("setvar",  type));
+    assert(Initial == addDefinition("initial", setvar));
+    assert(Equals  == addDefinition("equals",  pi("x", setvar, pi("y", setvar, prop))));
     assert(True    == addDefinition("true",    prop));
     assert(False   == addDefinition("false",   prop));
-    assert(Not     == addDefinition("not",     fun(prop, prop)));
-    assert(And     == addDefinition("and",     fun(prop, fun(prop, prop))));
-    assert(Or      == addDefinition("or",      fun(prop, fun(prop, prop))));
-    assert(Implies == addDefinition("implies", fun(prop, fun(prop, prop))));
-    assert(Iff     == addDefinition("iff",     fun(prop, fun(prop, prop))));
-    assert(Forall  == addDefinition("forall",  fun(fun(var, prop), prop)));
-    assert(Exists  == addDefinition("exists",  fun(fun(var, prop), prop)));
-    assert(Unique  == addDefinition("unique",  fun(fun(var, prop), prop)));
+    assert(Not     == addDefinition("not",     pi("P", prop, prop)));
+    assert(And     == addDefinition("and",     pi("P", prop, pi("Q", prop, prop))));
+    assert(Or      == addDefinition("or",      pi("P", prop, pi("Q", prop, prop))));
+    assert(Implies == addDefinition("implies", pi("P", prop, pi("Q", prop, prop))));
+    assert(Iff     == addDefinition("iff",     pi("P", prop, pi("Q", prop, prop))));
+    assert(Forall  == addDefinition("forall",  pi("P", pi("x", setvar, prop), prop)));
+    assert(Exists  == addDefinition("exists",  pi("P", pi("x", setvar, prop), prop)));
+    assert(Unique  == addDefinition("unique",  pi("P", pi("x", setvar, prop), prop)));
 
     #undef var
     #undef prop
@@ -49,25 +51,28 @@ namespace Core {
     return entries.size() - 1;
   }
 
-  // Context-changing rules (implies-intro, forall-intro) here
+  // Context-changing rules (implies/forall-intro) & definition generalization rules here
   bool Context::pop() {
     using enum Expr::Tag;
-    using enum Expr::TypeTag;
+    using enum Expr::SortTag;
     using enum Expr::VarTag;
+    using enum Expr::LamTag;
+    using enum Expr::PiTag;
 
     if (pools.empty() || indices.empty()) return false;
-    const size_t index = indices.back(); indices.pop_back();
+    const size_t index = indices.back();
     const auto [s, x] = entries[index];
 
     #define expr(...) Expr::make(pool, __VA_ARGS__)
 
     // TODO: more flexible index remapping
-    auto modify = [this, index] (unsigned int n, const Expr* x) {
+    auto modify = [this, index] (uint64_t n, const Expr* x) {
       if (x->var.tag == VFree && x->var.id == index) return expr(VBound, n);
       if (x->var.tag == VFree && x->var.id > index) return expr(expr(VFree, x->var.id - 1), expr(VBound, n));
       return x->clone(pool);
     };
 
+    /*
     for (size_t i = index; i + 1 < entries.size(); i++) {
       const auto [t, y] = entries[i + 1];
       if (x->tag == Type) {
@@ -97,11 +102,14 @@ namespace Core {
       }
     }
     entries.pop_back();
+    */
 
     #undef expr
 
     // Should not throw, for debugging only
-    for (size_t i = index; i < entries.size(); i++) entries[i].expr->checkType(*this, pool);
+    for (size_t i = index; i < entries.size(); i++) entries[i].second->checkType(*this, pool);
+
+    indices.pop_back();
     return true;
   }
 

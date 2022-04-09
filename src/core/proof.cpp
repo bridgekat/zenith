@@ -3,6 +3,7 @@
 
 namespace Core {
 
+  /*
   Type Proof::checkExpr(const Context& ctx) const {
     switch (tag) {
       case EXPR:
@@ -69,7 +70,7 @@ namespace Core {
       Expr* x_ = a_; \
       if (x_->tag != VAR || x_->var.vartag != FREE || x_->var.id != ctx.equals) \
         throw InvalidProof("expected proof of equality", ctx, this); \
-      l_ = x_->var.c; r_ = l_->s; /* x_ is well-formed so we can expect exactly two child nodes here*/ \
+      l_ = x_->var.c; r_ = l_->s; \
     }
     #define matchbinder(a_, tag_, name_, r_) \
     [[maybe_unused]] string name_; \
@@ -202,6 +203,8 @@ namespace Core {
     #undef nodevar
     throw NotImplemented();
   }
+
+  */
 
   void Decl::attachChildren(const vector<Decl*>& nodes) {
     if (tag != BLOCK) return;

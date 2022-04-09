@@ -16,40 +16,46 @@ namespace Core {
   //   (`std::variant` + `std::visit` are said to have severe performance issues?)
   class Expr {
   public:
-    enum class Tag: uint32_t { Type, Var, App, Lam }; using enum Tag;
-    enum class TypeTag: uint32_t { TKind, TFun, TVar, TProp }; using enum TypeTag;
+    enum class Tag: uint32_t { Sort, Var, App, Lam, Pi }; using enum Tag;
+    enum class SortTag: uint32_t { SProp, SType }; using enum SortTag; 
     enum class VarTag: uint32_t { VBound, VFree, VMeta }; using enum VarTag;
+    enum class LamTag: uint32_t { LLam }; using enum LamTag;
+    enum class PiTag: uint32_t { PPi }; using enum PiTag;
 
     // Switching active variant is not supported yet
     const Tag tag;
     union {
-      struct { TypeTag tag; Expr* l; Expr* r; } type;
+      struct { SortTag tag; } sort;
       struct { VarTag tag; uint64_t id; } var;
       struct { Expr* l; Expr* r; } app;
       struct { std::string s; Expr* t; Expr* r; } lam;
+      struct { std::string s; Expr* t; Expr* r; } pi;
     };
 
     // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
-    Expr(TypeTag typetag, Expr* l = nullptr, Expr* r = nullptr): tag(Type), type{ typetag, l, r } {}
+    Expr(SortTag sorttag): tag(Sort), sort{ sorttag } {}
     Expr(VarTag vartag, uint64_t id): tag(Var), var{ vartag, id } {}
     Expr(Expr* l, Expr* r): tag(App), app{ l, r } {}
-    Expr(const std::string& s, Expr* t, Expr* r): tag(Lam), lam{ s, t, r } {}
+    Expr(LamTag, const std::string& s, Expr* t, Expr* r): tag(Lam), lam{ s, t, r } {}
+    Expr(PiTag, const std::string& s, Expr* t, Expr* r): tag(Pi), pi{ s, t, r } {}
 
     // Copy constructor is shallow copy
     Expr(const Expr& r): tag(r.tag) {
       switch (tag) {
-        case Type: type = r.type; break;
+        case Sort: sort = r.sort; break;
         case Var: var = r.var; break;
         case App: app = r.app; break;
         case Lam: new (&lam.s) std::string(r.lam.s); lam.t = r.lam.t; lam.r = r.lam.r; break;
+        case Pi: new (&pi.s) std::string(r.pi.s); pi.t = r.pi.t; pi.r = r.pi.r; break;
       }
     }
 
     // Destructor needed for std::string in union
     ~Expr() {
       switch (tag) {
-        case Type: case Var: case App: break;
+        case Sort: case Var: case App: break;
         case Lam: lam.s.~basic_string(); break;
+        case Pi: pi.s.~basic_string(); break;
       }
     }
 
@@ -67,7 +73,7 @@ namespace Core {
 
     // Print
     // Pre: all nonzero pointers are valid
-    // `stk` will be unchanged
+    // `names` will be unchanged
     // O(size)
     std::string toString(const Context& ctx, std::vector<std::string>& stk) const;
     std::string toString(const Context& ctx) const {
@@ -75,15 +81,18 @@ namespace Core {
       return toString(ctx, stk);
     }
 
-    // Check if the subtree is well-formed, and return its type (returned type expression is allocated in `pool`)
+    // Check if the subtree is a well-formed term (1), type (2) or proof (3).
+    // (1) Returns a well-formed, beta-reduced expression of type `Type`, representing the type of the term;
+    // (2) Returns `Type` itself;
+    // (3) Returns a well-formed, beta-reduced expression of type `Prop`, representing the proposition it proves.
     // Throws exception on failure
     // Pre: all nonzero pointers are valid
-    // `stk` will be unchanged
-    // O(size)
-    const Expr* checkType(const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk) const;
-    const Expr* checkType(const Context& ctx, Allocator<Expr>& pool) const {
+    // `stk` and `names` will be unchanged
+    Expr* checkType(const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk, std::vector<std::string>& names) const;
+    Expr* checkType(const Context& ctx, Allocator<Expr>& pool) const {
       std::vector<const Expr*> stk;
-      return checkType(ctx, pool, stk);
+      std::vector<std::string> names;
+      return checkType(ctx, pool, stk, names);
     }
 
     // Modification (deep copying whole expression to `pool`)
@@ -93,10 +102,11 @@ namespace Core {
     Expr* updateVars(uint64_t n, Allocator<Expr>& pool, const F& f) const {
       using enum Tag;
       switch (tag) {
-        case Type: return make(pool, type.tag, type.l? type.l->updateVars(n, pool, f) : nullptr, type.r? type.r->updateVars(n, pool, f) : nullptr);
+        case Sort: return make(pool, sort.tag);
         case Var: return f(n, this);
         case App: return make(pool, app.l? app.l->updateVars(n, pool, f) : nullptr, app.r? app.r->updateVars(n, pool, f) : nullptr);
         case Lam: return make(pool, lam.s, lam.t? lam.t->updateVars(n, pool, f) : nullptr, lam.r? lam.r->updateVars(n + 1, pool, f) : nullptr);
+        case Pi: return make(pool, pi.s, pi.t? pi.t->updateVars(n, pool, f) : nullptr, pi.r? pi.r->updateVars(n + 1, pool, f) : nullptr);
       }
       throw NotImplemented();
     }
@@ -124,16 +134,20 @@ namespace Core {
     Expr* reduce(Allocator<Expr>& pool) const;
 
     // Returns the number of symbols of the expression
+    // O(size)
     size_t size() const noexcept;
 
     // Check if given variable is in the subtree
     // Pre: all nonzero pointers are valid
+    // O(size)
     bool occurs(VarTag vartag, uint64_t id) const noexcept;
 
     // Returns the maximum undetermined variable ID + 1
+    // O(size)
     size_t numUndetermined() const noexcept;
 
     // Check if the expression does not contain undetermined variables
+    // O(size)
     bool isGround() const noexcept { return numUndetermined() == 0; }
 
     // Convenient constructor
@@ -146,7 +160,10 @@ namespace Core {
   // An exception class representing checking failure
   // TODO: refactor this
   struct InvalidExpr: public CheckFailure {
-    InvalidExpr(const string& s, const Context& ctx, const Expr* e): CheckFailure("Invalid expression, " + s + ": " + e->toString(ctx), e) {}
+    InvalidExpr(const std::string& s, const Context& ctx, const Expr* e): CheckFailure("Invalid expression, " + s + ": " + e->toString(ctx), e) {}
+  };
+  struct InvalidProof: public CheckFailure {
+    InvalidProof(const std::string& s, const Context& ctx, const Expr* e): CheckFailure("Invalid proof, " + s + ": " + e->toString(ctx), e) {}
   };
 
 }

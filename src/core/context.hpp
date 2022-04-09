@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <utility>
 #include <optional>
 #include "base.hpp"
 
@@ -21,18 +22,14 @@ namespace Core {
     // Pre-defined logical constants in a second-order language
     // Code consistency (checked at runtime): if you change this, you may have to update `Context::Context()`.
     enum Constant: uint64_t {
-      Initial, Equals, True, False, Not, And, Or, Implies, Iff, Forall, Exists, Unique,
+      SetVar, Initial, Equals, True, False, Not, And, Or, Implies, Iff, Forall, Exists, Unique,
       // ForallFunc,
       // ForallPred = ForallFunc + 256
     };
-    // Context entry
-    struct Entry {
-      std::string name;
-      const Expr* expr;
-    };
+
     // All entries
     std::vector<Allocator<Expr>> pools;
-    std::vector<Entry> entries;
+    std::vector<std::pair<std::string, const Expr*>> entries;
     // Indices of "assumed" entries
     std::vector<uint64_t> indices;
 
@@ -51,13 +48,13 @@ namespace Core {
     // Use `valid(i)` to perform bound checks before accessing, and throw appropriate exception if index is too large.
     size_t size() const { return entries.size(); }
     bool valid(size_t index) const { return index < entries.size(); }
-    const Expr* operator[](size_t index) const { return entries.at(index).expr; }
-    std::string nameOf(size_t index) const { return entries.at(index).name; }
+    const Expr* operator[](size_t index) const { return entries.at(index).second; }
+    std::string nameOf(size_t index) const { return entries.at(index).first; }
 
     // Look up by literal name. (Slow, not commonly used)
     std::optional<uint64_t> lookup(const std::string& s) const {
       // Unsigned count down: https://nachtimwald.com/2019/06/02/unsigned-count-down/
-      for (uint64_t i = static_cast<uint64_t>(entries.size()); i --> 0;) if (entries[i].name == s) return i;
+      for (uint64_t i = static_cast<uint64_t>(entries.size()); i --> 0;) if (entries[i].first == s) return i;
       return std::nullopt;
     }
   };
