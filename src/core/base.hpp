@@ -61,8 +61,8 @@ namespace Core {
       return res;
     }
 
-    T* pushBack(T&& obj) {
-      return emplaceBack(std::move(obj));
+    T* pushBack(const T& obj) {
+      return emplaceBack(obj);
     }
 
     std::size_t size() const noexcept {

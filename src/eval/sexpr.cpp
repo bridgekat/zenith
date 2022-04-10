@@ -10,10 +10,10 @@ namespace Eval {
   SExpr* SExpr::clone(Core::Allocator<SExpr>& pool) const {
     return visit(Matcher{
       [&] (Nil)               { return pool.emplaceBack(Nil{}); },
-      [&] (const Cons& cons)  { return pool.emplaceBack(cons.head->clone(pool), cons.tail->clone(pool)); },
-      [&] (const Symbol& sym) { return pool.emplaceBack(sym); },
-      [&] (const Number& num) { return pool.emplaceBack(num); },
-      [&] (const String& str) { return pool.emplaceBack(str); },
+      [&] (Cons const& cons)  { return pool.emplaceBack(cons.head->clone(pool), cons.tail->clone(pool)); },
+      [&] (Symbol const& sym) { return pool.emplaceBack(sym); },
+      [&] (Number const& num) { return pool.emplaceBack(num); },
+      [&] (String const& str) { return pool.emplaceBack(str); },
       [&] (Boolean boolean)   { return pool.emplaceBack(boolean); },
       [&] (Undefined)         { return pool.emplaceBack(Undefined{}); }
     }, v);
@@ -22,7 +22,7 @@ namespace Eval {
   std::string SExpr::toString() const {
     return visit(Matcher{
       [] (Nil)               { return string("()"); },
-      [] (const Cons& cons)  {
+      [] (Cons const& cons)  {
         string res = "(" + cons.head->toString();
         const SExpr* p = cons.tail;
         while (holds_alternative<Cons>(p->v)) {
@@ -33,9 +33,9 @@ namespace Eval {
         if (!holds_alternative<Nil>(p->v)) res += " . " + p->toString();
         return res + ")";
       },
-      [] (const Symbol& sym) { return sym.s; },
-      [] (const Number& num) { return std::to_string(num); },
-      [] (const String& str) { return "\"" + str + "\""; }, // TODO: escape
+      [] (Symbol const& sym) { return sym.s; },
+      [] (Number const& num) { return std::to_string(num); },
+      [] (String const& str) { return "\"" + str + "\""; }, // TODO: escape
       [] (Boolean boolean)   { return string(boolean? "true" : "false"); },
       [] (Undefined)         { return string("undefined"); }
     }, v);

@@ -8,7 +8,6 @@ using std::vector;
 using std::pair, std::make_pair;
 using std::optional, std::make_optional, std::nullopt;
 using std::variant, std::get, std::holds_alternative;
-using Core::Matcher;
 using Parsing::SymbolName, Parsing::Symbol, Parsing::ParseTree, Parsing::makePrec;
 
 

@@ -43,10 +43,10 @@ namespace Eval {
     SExpr(): VarType{} {}
     SExpr(SExpr* l, SExpr* r): VarType{ Cons{ l, r } } {}
     SExpr(Nil): VarType{} {}
-    SExpr(const Cons& cons): VarType{ cons } {}
-    SExpr(const Symbol& sym): VarType{ sym } {}
-    SExpr(const Number& num): VarType{ num } {}
-    SExpr(const String& str): VarType{ str } {}
+    SExpr(Cons const& cons): VarType{ cons } {}
+    SExpr(Symbol const& sym): VarType{ sym } {}
+    SExpr(Number const& num): VarType{ num } {}
+    SExpr(String const& str): VarType{ str } {}
     SExpr(Boolean boolean): VarType{ boolean } {}
     SExpr(Undefined): VarType{ Undefined{} } {}
 
