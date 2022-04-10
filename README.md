@@ -52,6 +52,8 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 
 ## Building (experimental)
 
+> **Rewriting is in progress; the content below is temporarily invalid.**
+
 Make sure a C++20 compiler (I'm using GCC 11.2) and CMake 3.12+ is available on your computer. In the root directory, run:
 
 ```sh

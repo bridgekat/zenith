@@ -38,7 +38,7 @@ namespace Parsing {
       s += "(Alternative parse tree display has not been implemented yet;"
            " you can try adding commas and parentheses or modifying notations to eliminate ambiguity."
            " If you cannot get rid of this message, it is likely that the base grammar is incorrect;"
-           " please contact zhanrong.qiao21@imperial.ac.uk for this issue.)";
+           " you may submit an issue on GitHub.)";
       res.emplace_back(e.startPos, e.endPos, s);
     }
     return res;

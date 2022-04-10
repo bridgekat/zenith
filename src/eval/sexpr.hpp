@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <variant>
+#include <utility>
 #include <core/base.hpp>
 
 
@@ -21,7 +22,7 @@ namespace Eval {
   // (C++23 will allow direct visitation on classes derived from `std::variant`...)
   template <typename T, typename... Ts> struct BasicSExpr;
   template <typename T, typename... Ts> struct BasicNil {};
-  template <typename T, typename... Ts> struct BasicCons { T* head{}, * tail{}; };
+  template <typename T, typename... Ts> struct BasicCons { const T* head{}, * tail{}; };
   template <typename T, typename... Ts> struct BasicSExpr { std::variant<BasicNil<T, Ts...>, BasicCons<T, Ts...>, Ts...> v{}; };
 
   // Concrete atom types for SExpr
@@ -41,7 +42,7 @@ namespace Eval {
   public:
     // Convenient constructors
     SExpr(): VarType{} {}
-    SExpr(SExpr* l, SExpr* r): VarType{ Cons{ l, r } } {}
+    SExpr(const SExpr* l, const SExpr* r): VarType{ Cons{ l, r } } {}
     SExpr(Nil): VarType{} {}
     SExpr(Cons const& cons): VarType{ cons } {}
     SExpr(Symbol const& sym): VarType{ sym } {}
@@ -51,10 +52,16 @@ namespace Eval {
     SExpr(Undefined): VarType{ Undefined{} } {}
 
     // Pre: all pointers must be valid (no nullptrs allowed)
-    SExpr* clone(Core::Allocator<SExpr>& pool) const;
+    const SExpr* clone(Core::Allocator<SExpr>& pool) const;
 
     // Pre: all pointers must be valid (no nullptrs allowed)
     std::string toString() const;
+
+    // Pre: all pointers must be valid (no nullptrs allowed)
+    std::pair<bool, std::string> toStringUntil(const SExpr* p) const;
+
+    static std::string escapeString(const std::string& s);
+    static std::string unescapeString(const std::string& s);
   };
 
 }

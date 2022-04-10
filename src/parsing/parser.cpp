@@ -223,9 +223,9 @@ namespace Parsing {
           }
         } else {
           // Perform nonempty completion
-          if (derived.empty()) continue;
           Symbol sym = rules[s.ruleIndex].lhs;
           size_t posj = s.startPos;
+          if (posj == pos) continue;
           for (size_t j = 0; j < dpa[posj].size(); j++) {
             State t = dpa[posj][j].state;
             const auto& tderived = rules[t.ruleIndex].rhs;
