@@ -605,7 +605,7 @@ Mu::Mu() {
   ([this] (const ParseTree* x) {
     auto pf = getChild<Proof>(x, 0).pf;
     try {
-      auto e = pf->check(ctx, exprs);
+      auto e = pf->check(ctx, pool);
       result.hovers.emplace_back(x, "", string("Proves: ") + e->toString(ctx));
       return WFP{ pf, e };
     } catch (Core::CheckFailure& ex) {
@@ -713,7 +713,7 @@ Mu::Mu() {
     else throw AnalysisErrorException(x, "Expected term or formula, got type " + Core::showType(e.t));
     Core::Decl decl(tag, id.name, namedef.name.value_or(""), e.e);
     try {
-      decl.check(ctx, exprs);
+      decl.check(ctx, pool);
       updateDefMap(id.name, x->startPos, x->endPos);
       updateDefMap(namedef.name.value_or(""), x->startPos, x->endPos);
     } catch (Core::CheckFailure& ex) {
@@ -736,7 +736,7 @@ Mu::Mu() {
         + "Statement: " + e->e->toString(ctx) + "\n" + "Proof: " + pf.e->toString(ctx));
     }
     try {
-      decl.check(ctx, exprs);
+      decl.check(ctx, pool);
       updateDefMap(id.name, x->startPos, x->endPos);
       updateDefMap(namedef.name.value_or(""), x->startPos, x->endPos);
     } catch (Core::CheckFailure& ex) {
@@ -759,7 +759,7 @@ Mu::Mu() {
         + "Statement: " + e->e->toString(ctx) + "\n" + "Proof: " + pf.e->toString(ctx));
     }
     try {
-      decl.check(ctx, exprs);
+      decl.check(ctx, pool);
       updateDefMap(id.name, x->startPos, x->endPos);
       updateDefMap(namedef.name.value_or(""), x->startPos, x->endPos);
     } catch (Core::CheckFailure& ex) {
@@ -908,7 +908,7 @@ void Mu::analyze(const string& str) {
       if (!immediate) {
         try {
           while (!scopes.empty() && scopes.back().second == 0) {
-            for (size_t i = 0; i < scopes.back().first; i++) ctx.pop(exprs);
+            for (size_t i = 0; i < scopes.back().first; i++) ctx.pop(pool);
             scopes.pop_back();
           }
         } catch (Core::CheckFailure& ex) {

@@ -55,7 +55,7 @@ namespace Core {
     T* emplaceBack(Ts&&... args) {
       if (next == 0) blocks.push_back(alloc.allocate(blockSize));
       T* res = blocks.back() + next;
-      std::construct_at(res, std::forward<Ts...>(args...));
+      std::construct_at(res, std::forward<Ts>(args)...);
       next++;
       if (next >= blockSize) next = 0;
       return res;
@@ -92,11 +92,6 @@ namespace Core {
   struct NotImplemented: public std::logic_error {
     explicit NotImplemented(const std::string& s = ""):
       std::logic_error("\"Not implemented\" code was called" + (s.empty() ? "" : ": " + s)) {}
-  };
-  struct CheckFailure: public std::logic_error {
-    const void* pos;
-    explicit CheckFailure(const std::string& s, const void* pos):
-      std::logic_error(s), pos(pos) {}
   };
 
 }

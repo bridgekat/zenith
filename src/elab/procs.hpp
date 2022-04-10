@@ -3,6 +3,8 @@
 #ifndef PROCS_HPP_
 #define PROCS_HPP_
 
+#if 0
+
 #include <vector>
 #include <utility>
 #include <algorithm>
@@ -14,6 +16,7 @@
 // Some potentially useful proof procedures
 namespace Elab::Procs {
 
+  using std::string;
   using std::vector;
   using std::pair, std::make_pair;
   using std::tuple, std::make_tuple, std::get;
@@ -26,7 +29,7 @@ namespace Elab::Procs {
 
   // Pre: `fvs.size()` <= 63
   template <typename F>
-  inline void foreachValuation(const vector<unsigned int>& fvs, F f) {
+  inline void foreachValuation(const vector<uint64_t>& fvs, F f) {
     size_t n = fvs.size(), m = *std::max_element(fvs.cbegin(), fvs.cend()) + 1;
     uint64_t final = 1ull << n, mask = 0;
     do {
@@ -48,12 +51,12 @@ namespace Elab::Procs {
 
   // See this for details.
   inline Expr* applySubs(const Expr* e, const Subs& subs, Allocator<Expr>& pool) {
-    return e->updateVars(0, pool, [&subs, &pool] (unsigned int, Expr* x) {
-      if (x->var.vartag == Expr::VarTag::UNDETERMINED && x->var.id < subs.size()) {
+    return e->updateVars(0, pool, [&subs, &pool] (uint64_t, const Expr* x) {
+      if (x->var.tag == Expr::VMeta && x->var.id < subs.size()) {
         const Expr* t = subs[x->var.id];
         if (t) return applySubs(t->clone(pool), subs, pool);
       }
-      return x;
+      return x->clone(pool);
     });
   }
 
@@ -74,5 +77,7 @@ namespace Elab::Procs {
   optional<Subs> unify(vector<pair<const Expr*, const Expr*>> eqs, Allocator<Expr>& pool);
 
 }
+
+#endif
 
 #endif // PROCS_HPP_

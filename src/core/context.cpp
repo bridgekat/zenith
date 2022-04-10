@@ -38,13 +38,13 @@ namespace Core {
   }
 
   size_t Context::addDefinition(const string& s, const Expr* e) {
-    e->checkType(*this, pool); // TODO: make a temporary pool
+    if (*e != Expr(Expr::SType)) e->checkType(*this, pool); // TODO: make a temporary pool
     entries.emplace_back(s, e);
     return entries.size() - 1;
   }
 
   size_t Context::pushAssumption(const string& s, const Expr* e) {
-    e->checkType(*this, pool); // TODO: make a temporary pool
+    if (*e != Expr(Expr::SType)) e->checkType(*this, pool); // TODO: make a temporary pool
     pools.emplace_back();
     entries.emplace_back(s, e);
     indices.push_back(entries.size() - 1);
@@ -65,6 +65,7 @@ namespace Core {
 
     #define expr(...) Expr::make(pool, __VA_ARGS__)
 
+    /*
     // TODO: more flexible index remapping
     auto modify = [this, index] (uint64_t n, const Expr* x) {
       if (x->var.tag == VFree && x->var.id == index) return expr(VBound, n);
@@ -72,7 +73,6 @@ namespace Core {
       return x->clone(pool);
     };
 
-    /*
     for (size_t i = index; i + 1 < entries.size(); i++) {
       const auto [t, y] = entries[i + 1];
       if (x->tag == Type) {

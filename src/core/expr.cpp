@@ -17,8 +17,8 @@ namespace Core {
       case Sort: return make(pool, sort.tag);
       case Var: return make(pool, var.tag, var.id);
       case App: return make(pool, app.l? app.l->clone(pool) : nullptr, app.r? app.r->clone(pool) : nullptr);
-      case Lam: return make(pool, lam.s, lam.t? lam.t->clone(pool) : nullptr, lam.r? lam.r->clone(pool) : nullptr);
-      case Pi: return make(pool, pi.s, pi.t? pi.t->clone(pool) : nullptr, pi.r? pi.r->clone(pool) : nullptr);
+      case Lam: return make(pool, LLam, lam.s, lam.t? lam.t->clone(pool) : nullptr, lam.r? lam.r->clone(pool) : nullptr);
+      case Pi: return make(pool, PPi, pi.s, pi.t? pi.t->clone(pool) : nullptr, pi.r? pi.r->clone(pool) : nullptr);
     }
     throw NotImplemented();
   }
@@ -27,7 +27,7 @@ namespace Core {
     if (this == &rhs) return true;
     if (tag != rhs.tag) return false;
     // tag == rhs.tag
-    #define nullorsame(x) (!x && !rhs.x || x && rhs.x && *x == *rhs.x)
+    #define nullorsame(x) ((!x && !rhs.x) || (x && rhs.x && *x == *rhs.x))
     switch (tag) {
       case Sort: return sort.tag == rhs.sort.tag;
       case Var: return var.tag == rhs.var.tag && var.id == rhs.var.id;
@@ -97,8 +97,8 @@ namespace Core {
         var.tag == VMeta  ? "@M" + std::to_string(var.id) :
         "@N";
       case App: return
-        (app.l? app.l->toString(ctx, stk) : "@N") + " " +
-        (app.r? app.r->toString(ctx, stk) : "@N");
+        "(" + (app.l? app.l->toString(ctx, stk) : "@N") +
+        " " + (app.r? app.r->toString(ctx, stk) : "@N") + ")";
       case Lam: {
         string res, name = lam.s.empty()? newName(stk.size()) : lam.s;
         res = "(\\" + name + ": " + (lam.t? lam.t->toString(ctx, stk) : "@N");
@@ -109,7 +109,7 @@ namespace Core {
       }
       case Pi: {
         string res, name = pi.s.empty()? newName(stk.size()) : pi.s;
-        res = "(" + name + ": " + (pi.t? pi.t->toString(ctx, stk) : "@N");
+        res = "((" + name + ": " + (pi.t? pi.t->toString(ctx, stk) : "@N") + ")";
         stk.push_back(name);
         res += " -> " + (pi.r? pi.r->toString(ctx, stk) : "@N") + ")";
         stk.pop_back();
@@ -136,6 +136,7 @@ namespace Core {
           case SProp: return pool.emplaceBack(SType);
           case SType: throw InvalidExpr("\"Type\" does not have a type", ctx, this);
         }
+        throw NotImplemented();
       }
       case Var: {
         const Expr* t =
@@ -196,8 +197,8 @@ namespace Core {
         if (l && r && l->tag == Lam) return l->lam.r->makeReplace(r, pool)->reduce(pool);
         return make(pool, l, r);
       }
-      case Lam: return make(pool, lam.s, lam.t? lam.t->reduce(pool) : nullptr, lam.r? lam.r->reduce(pool) : nullptr);
-      case Pi: return make(pool, pi.s, pi.t? pi.t->reduce(pool) : nullptr, pi.r? pi.r->reduce(pool) : nullptr);
+      case Lam: return make(pool, LLam, lam.s, lam.t? lam.t->reduce(pool) : nullptr, lam.r? lam.r->reduce(pool) : nullptr);
+      case Pi: return make(pool, PPi, pi.s, pi.t? pi.t->reduce(pool) : nullptr, pi.r? pi.r->reduce(pool) : nullptr);
     }
     throw NotImplemented();
   }

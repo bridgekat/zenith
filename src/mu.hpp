@@ -48,13 +48,12 @@ public:
   AnalysisResult popResults();
 
 private:
-  Core::Allocator<Core::Expr> exprs{};
-  Core::Allocator<Core::Proof> proofs{};
+  Core::Allocator<Core::Expr> pool{};
 
   Core::Context ctx{};
   bool immediate{};
   std::vector<std::pair<size_t, size_t>> scopes{};
-  std::vector<std::pair<std::string, Core::Type>> boundVars{};
+  std::vector<std::pair<std::string, const Core::Expr*>> boundVars{};
 
   size_t lparenPattern{}, rparenPattern{}, parenRule{};
   // Word -> (pattern ID, ref count)
@@ -68,14 +67,7 @@ private:
 
   template <typename ...Ts>
   Core::Expr* makeExprLoc(const Parsing::ParseTree* x, const Ts&... args) {
-    Core::Expr* res = exprs.pushBack(Core::Expr(args...));
-    sourceMap[res] = { x->startPos, x->endPos };
-    return res;
-  }
-
-  template <typename ...Ts>
-  Core::Proof* makeProofLoc(const Parsing::ParseTree* x, const Ts&... args) {
-    Core::Proof* res = proofs.pushBack(Core::Proof(args...));
+    Core::Expr* res = pool.emplaceBack(std::forward<Ts>(args)...);
     sourceMap[res] = { x->startPos, x->endPos };
     return res;
   }

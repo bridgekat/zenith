@@ -101,12 +101,14 @@ namespace Core {
     template <typename F>
     Expr* updateVars(uint64_t n, Allocator<Expr>& pool, const F& f) const {
       using enum Tag;
+      using enum LamTag;
+      using enum PiTag;
       switch (tag) {
         case Sort: return make(pool, sort.tag);
         case Var: return f(n, this);
         case App: return make(pool, app.l? app.l->updateVars(n, pool, f) : nullptr, app.r? app.r->updateVars(n, pool, f) : nullptr);
-        case Lam: return make(pool, lam.s, lam.t? lam.t->updateVars(n, pool, f) : nullptr, lam.r? lam.r->updateVars(n + 1, pool, f) : nullptr);
-        case Pi: return make(pool, pi.s, pi.t? pi.t->updateVars(n, pool, f) : nullptr, pi.r? pi.r->updateVars(n + 1, pool, f) : nullptr);
+        case Lam: return make(pool, LLam, lam.s, lam.t? lam.t->updateVars(n, pool, f) : nullptr, lam.r? lam.r->updateVars(n + 1, pool, f) : nullptr);
+        case Pi: return make(pool, PPi, pi.s, pi.t? pi.t->updateVars(n, pool, f) : nullptr, pi.r? pi.r->updateVars(n + 1, pool, f) : nullptr);
       }
       throw NotImplemented();
     }
@@ -153,12 +155,18 @@ namespace Core {
     // Convenient constructor
     template <typename... Ts>
     inline static Expr* make(Allocator<Expr>& pool, Ts&&... args) {
-      return pool.emplaceBack(std::forward<Ts...>(args...));
+      return pool.emplaceBack(std::forward<Ts>(args)...);
     }
   };
 
   // An exception class representing checking failure
   // TODO: refactor this
+  struct CheckFailure: public std::runtime_error {
+    const Expr* e;
+    explicit CheckFailure(const std::string& s, const Expr* e): std::runtime_error(s), e(e) {}
+    CheckFailure(const CheckFailure&) = default;
+    CheckFailure& operator=(const CheckFailure&) = default;
+  };
   struct InvalidExpr: public CheckFailure {
     InvalidExpr(const std::string& s, const Context& ctx, const Expr* e): CheckFailure("Invalid expression, " + s + ": " + e->toString(ctx), e) {}
   };

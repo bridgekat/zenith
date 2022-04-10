@@ -1,5 +1,6 @@
 #include "procs.hpp"
 
+#if 0
 
 namespace Elab::Procs {
 
@@ -11,18 +12,13 @@ namespace Elab::Procs {
     using enum Expr::Tag;
     using enum Expr::VarTag;
     switch (e->tag) {
-      case VAR:
-        if (e->var.vartag != FREE) throw Unreachable();
+      case Var:
+        if (e->var.tag != VFree) throw Unreachable();
         return e->var.id < fvmap.size() ? fvmap[e->var.id] : false;
-      case TRUE:    return true;
-      case FALSE:   return false;
-      case NOT:     return !propValue(e->conn.l, fvmap);
-      case AND:     return  propValue(e->conn.l, fvmap) && propValue(e->conn.r, fvmap);
-      case OR:      return  propValue(e->conn.l, fvmap) || propValue(e->conn.r, fvmap);
-      case IMPLIES: return !propValue(e->conn.l, fvmap) || propValue(e->conn.r, fvmap);
-      case IFF:     return  propValue(e->conn.l, fvmap) == propValue(e->conn.r, fvmap);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-        throw Unreachable();
+      case App:
+        return false;
+      default:
+        break;
     }
     throw NotImplemented();
   }
@@ -31,7 +27,7 @@ namespace Elab::Procs {
     using enum Expr::Tag;
     using enum Expr::VarTag;
     switch (e->tag) {
-      case VAR:
+      case Var:
         return negated ? Expr::make(pool, NOT, e->clone(pool)) : e->clone(pool);
       case TRUE:
         return Expr::make(pool, negated ? FALSE : TRUE);
@@ -318,3 +314,5 @@ namespace Elab::Procs {
   */
 
 }
+
+#endif

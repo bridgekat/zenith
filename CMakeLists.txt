@@ -61,6 +61,16 @@ if (ipo_supprted)
   set_target_oproperties        (testcore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()
 
+add_executable (testeval
+  src/eval/sexpr.cpp
+  src/eval/environment.cpp
+  src/testeval.cpp)
+target_default_compile_options  (testeval)
+target_include_directories      (testeval PRIVATE src)
+if (ipo_supprted)
+  set_target_oproperties        (testeval PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif ()
+
 add_executable (testparsing
   src/core/context.cpp
   src/core/expr.cpp

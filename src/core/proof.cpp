@@ -204,8 +204,6 @@ namespace Core {
     throw NotImplemented();
   }
 
-  */
-
   void Decl::attachChildren(const vector<Decl*>& nodes) {
     if (tag != BLOCK) return;
     Decl* last = nullptr;
@@ -299,5 +297,6 @@ namespace Core {
     #undef nodevar
     throw NotImplemented();
   }
+  */
 
 }

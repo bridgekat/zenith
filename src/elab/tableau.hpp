@@ -3,6 +3,8 @@
 #ifndef TABLEAU_HPP_
 #define TABLEAU_HPP_
 
+#if 0
+
 #include <vector>
 #include <utility>
 #include <unordered_set>
@@ -158,5 +160,7 @@ namespace Elab {
   };
 
 }
+
+#endif
 
 #endif // TABLEAU_HPP_

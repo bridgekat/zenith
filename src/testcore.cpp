@@ -15,67 +15,73 @@ using namespace Core;
 
 int main() {
   using enum Expr::Tag;
+  using enum Expr::SortTag;
   using enum Expr::VarTag;
+  using enum Context::Constant;
 
   cout << sizeof(string) << endl;
   cout << sizeof(Expr) << endl;
-  cout << sizeof(Proof) << endl;
-  cout << sizeof(Decl) << endl;
 
   #define N(...) Expr::make(pool, __VA_ARGS__)
 
-  #define fv(id, ...) N(FREE,         id, std::initializer_list<Expr*>{__VA_ARGS__})
-  #define bv(id, ...) N(BOUND,        id, std::initializer_list<Expr*>{__VA_ARGS__})
-  #define uv(id, ...) N(UNDETERMINED, id, std::initializer_list<Expr*>{__VA_ARGS__})
+  #define fv(id)          N(VFree,  id)
+  #define bv(id)          N(VBound, id)
+  #define uv(id)          N(VMeta,  id)
+  #define prop            N(SProp)
+  #define type            N(SType)
+  #define setvar          fv(SetVar)
+  #define app(l, r)       N(l, r)
+  #define lam(s, t, r)    N(Expr::LLam, s, t, r)
+  #define pi(s, t, r)     N(Expr::PPi, s, t, r)
 
-  #define TT                  N(TRUE)
-  #define FF                  N(FALSE)
-  #define un(tag, a)          N(tag, a)
-  #define bin(a, tag, b)      N(tag, a, b)
-  #define forall(s, a)        N(FORALL, s, 0, SVAR, a)
-  #define exists(s, a)        N(EXISTS, s, 0, SVAR, a)
-  #define unique(s, a)        N(UNIQUE, s, 0, SVAR, a)
-  #define forallpred(s, k, a) N(FORALL2, s, k, SPROP, a)
-  #define forallfunc(s, k, a) N(FORALL2, s, k, SVAR, a)
-  #define lambda(s, a)        N(LAMBDA, s, 0, SVAR, a)
+  #define tt              fv(True)
+  #define ff              fv(False)
+  #define un(var, a)      app(fv(var), a)
+  #define bin(a, var, b)  app(app(fv(var), a), b)
+  #define forall(s, a)    app(fv(Forall), lam(s, setvar, a))
+  #define exists(s, a)    app(fv(Exists), lam(s, setvar, a))
+  #define unique(s, a)    app(fv(Unique), lam(s, setvar, a))
 
   {
     Context ctx;
     Allocator<Expr> pool;
 
-    unsigned int eq = ctx.equals;
-    unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
+    auto in = ctx.pushAssumption("in", pi("x", setvar, pi("y", setvar, prop)));
 
     // The axiom schema of separation...
-    Expr* x = forallpred("phi", 2, forall("x", exists("y", forall("a", bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
+    Expr* x =
+      lam("phi", pi("", setvar, pi("", setvar, prop)),
+        forall("x", exists("y", forall("a", bin(bin(bv(0), in, bv(1)), Iff, bin(bin(bv(0), in, bv(2)), And, app(app(bv(3), bv(2)), bv(0))))))));
 
     cout << x->toString(ctx) << endl;
-    cout << showType(x->checkType(ctx)) << endl;
+    cout << x->checkType(ctx, pool)->toString(ctx) << endl;
 
-    unsigned int subset = ctx.addDef("subset", {{ 2, SPROP }, { 1, SVAR }});
-    unsigned int issc = ctx.addDef("is_subclass", {{ 1, SPROP }, { 1, SPROP }, { 0, SPROP }});
+    auto subset = ctx.pushAssumption("subset", pi("P", pi("x", setvar, pi("a", setvar, prop)), pi("x", setvar, setvar)));
+    auto issc = ctx.pushAssumption("is_subclass", pi("P", pi("x", setvar, prop), pi("Q", pi("x", setvar, prop), prop)));
 
-    Expr* y = lambda("x", fv(subset, lambda("y", lambda("z", TT)), bv(0)));
+    Expr* y = lam("x", setvar, bin(lam("y", setvar, lam("z", setvar, tt)), subset, bv(0)));
 
     cout << y->toString(ctx) << endl;
-    cout << showType(y->checkType(ctx)) << endl;
+    cout << y->checkType(ctx, pool)->toString(ctx) << endl;
 
-    Expr* z = fv(issc, lambda("x", FF), lambda("x", TT));
+    Expr* z = bin(lam("x", setvar, ff), issc, lam("x", setvar, tt));
 
     cout << z->toString(ctx) << endl;
-    cout << showType(z->checkType(ctx)) << endl;
+    cout << z->checkType(ctx, pool)->toString(ctx) << endl;
 
     cout << (*x == *y) << (*y == *z) << (*z == *x) << endl;
     cout << (*x == *x) << (*y == *y) << (*z == *z) << endl;
 
     Expr* x1 = x->clone(pool);
-    Expr* xrep = x->binder.r->makeReplaceLam(lambda("x", lambda("y", fv(eq, bv(1), bv(0)))), pool);
+    Expr* xrep = Expr(x, lam("x", setvar, lam("y", setvar, bin(bv(1), Equals, bv(0))))).reduce(pool);
 
     cout << (*x == *x1) << endl;
     cout << xrep->toString(ctx) << endl;
-    cout << showType(xrep->checkType(ctx)) << endl;
+    cout << xrep->checkType(ctx, pool)->toString(ctx) << endl;
     cout << endl;
   }
+
+#if 0
 
   {
     Context ctx;
@@ -510,6 +516,8 @@ int main() {
     cout << tableau.printStats() << endl;
     tableau.clear();
   }
+
+#endif
 
   return 0;
 }
