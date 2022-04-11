@@ -4,6 +4,7 @@
 #define FOL_HPP_
 
 #include <string>
+#include <utility>
 #include "../context.hpp"
 #include "../expr.hpp"
 
@@ -63,10 +64,22 @@ namespace Core {
     }
     FOLForm(const FOLForm&) = default;
 
-    // Pre: `e` is well-typed expression
+    // Try matching on an expression.
+    // If it has first-order form (e.g. the principal connective is "and") then return it.
+    // Otherwise returns `Other`.
     static FOLForm fromExpr(const Expr* e) noexcept;
+
+    // Convert to expresssion (lifetime bounded by subexpression pointers and `pool`)
     // Pre (checked): `tag` is not `Other`
     const Expr* toExpr(Allocator<Expr>& pool) const;
+
+    // Splits "P iff Q" into "P implies Q" and "Q implies P"
+    // Pre (checked): `tag` is `Iff`
+    std::pair<const Expr*, const Expr*> splitIff(Allocator<Expr>& pool) const;
+
+    // Splits "unique x, P" into "exists x, P" and "forall x, P implies (forall y, P implies x = y)"
+    // Pre (checked): `tag` is `Unique`
+    std::pair<const Expr*, const Expr*> splitUnique(Allocator<Expr>& pool) const;
   };
 
 }

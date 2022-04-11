@@ -84,15 +84,15 @@ int main() {
 #if 0
 
   {
-    Context ctx;
+    FOLContext ctx;
     Allocator<Expr> pool;
     Allocator<Proof> ps;
     Allocator<Decl> ds;
 
     #define block std::initializer_list<Decl*>
 
-    unsigned int eq = ctx.equals;
-    unsigned int i = ctx.size();
+    uint64_t eq = ctx.equals;
+    uint64_t i = ctx.size();
 
     Decl* d =
       Decl::make(ds, block{
@@ -171,13 +171,13 @@ int main() {
   }
 
   {
-    Context ctx;
+    FOLContext ctx;
     Allocator<Expr> pool;
     Allocator<Proof> ps;
     Allocator<Decl> ds;
 
-    unsigned int eq = ctx.equals;
-    unsigned int i = ctx.size();
+    uint64_t eq = ctx.equals;
+    uint64_t i = ctx.size();
 
     Decl* d =
       Decl::make(ds, block{
@@ -219,21 +219,22 @@ int main() {
     cout << endl;
   }
 
+#endif
+
   {
     using namespace Elab;
     Allocator<Expr> pool;
-    Context ctx;
+    FOLContext ctx;
     Tableau tableau(ctx);
 
-    // unsigned int eq = ctx.eq;
-    unsigned int in = ctx.addDef("in", {{ 2, SPROP }});
-    unsigned int p = ctx.pushVar("p", {{ 0, SPROP }});
-    unsigned int q = ctx.pushVar("q", {{ 0, SPROP }});
-    unsigned int r = ctx.pushVar("r", {{ 0, SPROP }});
-    unsigned int s = ctx.pushVar("s", {{ 0, SPROP }});
+    uint64_t in = ctx.addVariable("in", pi("x", setvar, pi("y", setvar, prop)));
+    uint64_t p = ctx.pushAssumption("p", prop);
+    uint64_t q = ctx.pushAssumption("q", prop);
+    uint64_t r = ctx.pushAssumption("r", prop);
+    uint64_t s = ctx.pushAssumption("s", prop);
 
-    Expr* e = bin(bin(fv(p), IFF, fv(q)), IFF, un(NOT, bin(fv(r), IMPLIES, fv(s))));
-    Expr* nnf = Elab::Procs::toNNF(e, ctx, pool);
+    auto e = bin(bin(fv(p), Iff, fv(q)), Iff, un(Not, bin(fv(r), Implies, fv(s))));
+    auto nnf = Elab::Procs::nnf(e, pool);
     cout << e->toString(ctx) << endl;
     cout << nnf->toString(ctx) << endl;
     Elab::Procs::foreachValuation({ p, q, r, s }, [&e, &nnf] (const vector<bool>& fvmap) {
@@ -243,23 +244,11 @@ int main() {
     cout << endl;
     cout << endl;
 
-    e = forallpred("phi", 2, forall("x", exists("y", forall("a", bin(fv(in, bv(0), bv(1)), IFF, bin(fv(in, bv(0), bv(2)), AND, bv(3, bv(2), bv(0))))))));
-    /*
-    cout << e->hash() << endl;
-    cout << e->binder.r->hash() << endl;
-    cout << e->binder.r->binder.r->hash() << endl;
-    cout << e->binder.r->binder.r->binder.r->binder.r->hash() << endl;
-    cout << e->binder.r->binder.r->binder.r->binder.r->conn.l->hash() << endl;
-    */
+    e = lam("phi", pi("", setvar, pi("", setvar, prop)), forall("x", exists("y", forall("a", bin(bin(bv(0), in, bv(1)), Iff, bin(bin(bv(0), in, bv(2)), And, app(app(bv(3), bv(2)), bv(0))))))));
 
     cout << "(Not provable)" << endl;
-    e = un(NOT, bin(fv(p), OR, un(NOT, fv(p))));
-    /*
-    cout << e->hash() << endl;
-    cout << e->conn.l->hash() << endl;
-    cout << e->conn.l->conn.l->hash() << endl;
-    cout << e->conn.l->conn.r->conn.l->hash() << endl;
-    */
+    e = un(Not, bin(fv(p), Or, un(Not, fv(p))));
+
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
@@ -267,12 +256,8 @@ int main() {
     tableau.clear();
 
     cout << "(Provable)" << endl;
-    e = bin(fv(p), OR, un(NOT, fv(p)));
-    /*
-    cout << e->hash() << endl;
-    cout << e->conn.l->hash() << endl;
-    cout << e->conn.r->conn.l->hash() << endl;
-    */
+    e = bin(fv(p), Or, un(Not, fv(p)));
+
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
@@ -281,7 +266,7 @@ int main() {
 
     // ¬(p ↔ ¬p)
     cout << "(Provable)" << endl;
-    e = un(NOT, bin(fv(p), IFF, un(NOT, fv(p))));
+    e = un(Not, bin(fv(p), Iff, un(Not, fv(p))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
@@ -292,26 +277,25 @@ int main() {
   {
     using namespace Elab::Procs;
     Allocator<Expr> pool;
-    Context ctx;
+    FOLContext ctx;
 
-    unsigned int eq = ctx.equals;
-    unsigned int f = ctx.pushVar("f", {{ 2, SVAR }});
-    unsigned int g = ctx.pushVar("g", {{ 2, SVAR }});
-    unsigned int h = ctx.pushVar("h", {{ 2, SVAR }});
-    unsigned int a = ctx.pushVar("a", TTerm);
-    unsigned int b = ctx.pushVar("b", TTerm);
-    unsigned int x = ctx.pushVar("x", TTerm);
-    unsigned int y = ctx.pushVar("y", TTerm);
-    unsigned int z = ctx.pushVar("z", TTerm);
-    unsigned int u = ctx.pushVar("u", TTerm);
-    unsigned int v = ctx.pushVar("v", TTerm);
+    uint64_t f = ctx.pushAssumption("f", pi("x", setvar, pi("y", setvar, setvar)));
+    uint64_t g = ctx.pushAssumption("g", pi("x", setvar, pi("y", setvar, setvar)));
+    uint64_t h = ctx.pushAssumption("h", pi("x", setvar, pi("y", setvar, setvar)));
+    uint64_t a = ctx.pushAssumption("a", setvar);
+    uint64_t b = ctx.pushAssumption("b", setvar);
+    uint64_t x = ctx.pushAssumption("x", setvar);
+    uint64_t y = ctx.pushAssumption("y", setvar);
+    uint64_t z = ctx.pushAssumption("z", setvar);
+    uint64_t u = ctx.pushAssumption("u", setvar);
+    uint64_t v = ctx.pushAssumption("v", setvar);
 
-    enum Undetermined : unsigned int { X, Y, Z, U, V };
+    enum Meta: uint64_t { X, Y, Z, U, V };
 
-    const Expr* lhs = fv(eq, fv(f, uv(X), fv(g, uv(X), uv(Y))), fv(h, uv(Z), uv(Y)));
-    const Expr* rhs = fv(eq, uv(Z), fv(h, fv(f, uv(U), uv(V)), fv(f, fv(a), fv(b))));
-    const Expr* lhs1 = fv(f, uv(X), uv(Y));
-    const Expr* rhs1 = fv(f, uv(X), fv(f, uv(X), uv(Y)));
+    auto lhs = bin(app(app(fv(f), uv(X)), app(app(fv(g), uv(X)), uv(Y))), Equals, app(app(fv(h), uv(Z)), uv(Y)));
+    auto rhs = bin(uv(Z), Equals, app(app(fv(h), app(app(fv(f), uv(U)), uv(V))), app(app(fv(f), fv(a)), fv(b))));
+    auto lhs1 = app(app(fv(f), uv(X)), uv(Y));
+    auto rhs1 = app(app(fv(f), uv(X)), app(app(fv(f), uv(X)), uv(Y)));
 
     cout << "First-order unification:" << endl;
     cout << lhs1->toString(ctx) << endl;
@@ -331,8 +315,8 @@ int main() {
     cout << (*lhs == *rhs) << " " << equalAfterSubs(lhs, rhs, Subs()) << " " << equalAfterSubs(lhs, rhs, subs) << endl;
     cout << endl;
 
-    const Expr* lhs2 = fv(eq, fv(f, fv(x), fv(g, fv(x), fv(y))), fv(h, fv(z), fv(y)));
-    const Expr* rhs2 = fv(eq, fv(z), fv(h, fv(f, fv(u), fv(v)), fv(f, fv(a), fv(b))));
+    auto lhs2 = bin(app(app(fv(f), fv(x)), app(app(fv(g), fv(x)), fv(y))), Equals, app(app(fv(h), fv(z)), fv(y)));
+    auto rhs2 = bin(fv(z), Equals, app(app(fv(h), app(app(fv(f), fv(u)), fv(v))), app(app(fv(f), fv(a)), fv(b))));
 
     cout << "First-order anti-unification:" << endl;
     auto [tmpl, lsub, rsub] = antiunify(lhs2, rhs2, pool);
@@ -344,8 +328,8 @@ int main() {
     cout << endl;
 
     // Extra tests
-    lhs = fv(f, uv(X), uv(Y));
-    rhs = fv(f, uv(Y), uv(X));
+    lhs = app(app(fv(f), uv(X)), uv(Y));
+    rhs = app(app(fv(f), uv(Y)), uv(X));
     subs = unify({{ lhs, rhs }}, pool).value();
     cout << showSubs(subs, ctx);
     cout << applySubs(lhs, subs, pool)->toString(ctx) << endl;
@@ -356,20 +340,19 @@ int main() {
   {
     using namespace Elab;
     Allocator<Expr> pool;
-    Context ctx;
+    FOLContext ctx;
     Tableau tableau(ctx);
 
-    unsigned int eq = ctx.equals;
-    unsigned int P = ctx.addDef("P", {{ 2, SPROP }});
-    unsigned int R = ctx.addDef("R", {{ 1, SPROP }});
-    unsigned int F = ctx.addDef("F", {{ 1, SPROP }});
-    unsigned int G = ctx.addDef("G", {{ 1, SPROP }});
-    unsigned int L = ctx.addDef("Loves", {{ 2, SPROP }});
-    unsigned int B = ctx.addDef("BetterThan", {{ 3, SPROP }});
-    unsigned int Q = ctx.addDef("QZR", TTerm);
+    uint64_t P = ctx.addVariable("P", pi("x", setvar, pi("y", setvar, prop)));
+    uint64_t R = ctx.addVariable("R", pi("x", setvar, prop));
+    uint64_t F = ctx.addVariable("F", pi("x", setvar, prop));
+    uint64_t G = ctx.addVariable("G", pi("x", setvar, prop));
+    uint64_t L = ctx.addVariable("Loves", pi("x", setvar, pi("y", setvar, prop)));
+    uint64_t B = ctx.addVariable("BetterThan", pi("x", setvar, pi("y", setvar, pi("z", setvar, prop))));
+    uint64_t Q = ctx.addVariable("QZR", setvar);
 
-    Expr* lhs = exists("y", forall("x", fv(P, bv(0), bv(1))));
-    Expr* rhs = forall("x", exists("y", fv(P, bv(1), bv(0))));
+    auto lhs = exists("y", forall("x", app(app(fv(P), bv(0)), bv(1))));
+    auto rhs = forall("x", exists("y", app(app(fv(P), bv(1)), bv(0))));
 
     cout << "(Provable)" << endl;
     tableau.addAntecedent(lhs);
@@ -388,7 +371,7 @@ int main() {
     tableau.clear();
 
     cout << "(Provable)" << endl;
-    Expr* e = exists("x", forall("y", bin(fv(R, bv(1)), IMPLIES, fv(R, bv(0)))));
+    auto e = exists("x", forall("y", bin(app(fv(R), bv(1)), Implies, app(fv(R), bv(0)))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
@@ -396,8 +379,8 @@ int main() {
     tableau.clear();
 
     cout << "(Provable)" << endl;
-    e = bin(exists("y", exists("z", forall("x", bin(bin(fv(F, bv(0)), IMPLIES, fv(G, bv(2))), AND, bin(fv(G, bv(1)), IMPLIES, fv(F, bv(0))))))),
-      IMPLIES, forall("x", exists("y", bin(fv(F, bv(1)), IFF, fv(G, bv(0))))));
+    e = bin(exists("y", exists("z", forall("x", bin(bin(app(fv(F), bv(0)), Implies, app(fv(G), bv(2))), And, bin(app(fv(G), bv(1)), Implies, app(fv(F), bv(0))))))),
+      Implies, forall("x", exists("y", bin(app(fv(F), bv(1)), Iff, app(fv(G), bv(0))))));
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
@@ -405,10 +388,10 @@ int main() {
     tableau.clear();
 
     cout << "(Provable)" << endl;
-    Expr* exclusiveness = forall("x", forall("y", bin(fv(L, bv(1), bv(0)), IMPLIES, forall("z", bin(un(NOT, fv(eq, bv(0), bv(1))), IMPLIES, un(NOT, fv(L, bv(2), bv(0))))))));
-    Expr* preference = forall("x", forall("y", forall("z", bin(fv(B, bv(2), bv(1), bv(0)), IMPLIES, bin(fv(L, bv(2), bv(0)), IMPLIES, fv(L, bv(2), bv(1)))))));
-    Expr* shadowing = exists("y", bin(un(NOT, fv(eq, bv(0), fv(Q))), AND, forall("x", fv(B, bv(0), bv(1), fv(Q)))));
-    Expr* goal = un(NOT, exists("x", fv(L, bv(0), fv(Q))));
+    auto exclusiveness = forall("x", forall("y", bin(app(app(fv(L), bv(1)), bv(0)), Implies, forall("z", bin(un(Not, bin(bv(0), Equals, bv(1))), Implies, un(Not, app(app(fv(L), bv(2)), bv(0))))))));
+    auto preference = forall("x", forall("y", forall("z", bin(app(app(app(fv(B), bv(2)), bv(1)), bv(0)), Implies, bin(app(app(fv(L), bv(2)), bv(0)), Implies, app(app(fv(L), bv(2)), bv(1)))))));
+    auto shadowing = exists("y", bin(un(Not, bin(bv(0), Equals, fv(Q))), And, forall("x", app(app(app(fv(B), bv(0)), bv(1)), fv(Q)))));
+    auto goal = un(Not, exists("x", app(app(fv(L), bv(0)), fv(Q))));
     tableau.addAntecedent(exclusiveness);
     tableau.addAntecedent(preference);
     tableau.addAntecedent(shadowing);
@@ -422,24 +405,24 @@ int main() {
   {
     using namespace Elab;
     Allocator<Expr> pool;
-    Context ctx;
+    FOLContext ctx;
     Tableau tableau(ctx);
 
-    unsigned int P = ctx.pushVar("P", {{ 1, SPROP }});
-    unsigned int Q = ctx.pushVar("Q", {{ 1, SPROP }});
-    unsigned int R = ctx.pushVar("R", {{ 1, SPROP }});
-    unsigned int f = ctx.pushVar("f", {{ 1, SVAR }});
-    unsigned int g = ctx.pushVar("g", {{ 1, SVAR }});
-    unsigned int a = ctx.pushVar("a", {{ 0, SVAR }});
-    unsigned int b = ctx.pushVar("b", {{ 0, SVAR }});
-    unsigned int rel = ctx.pushVar("R", {{ 2, SPROP }});
-    unsigned int le = ctx.pushVar("<=", {{ 2, SPROP }});
+    uint64_t P = ctx.pushAssumption("P", pi("x", setvar, prop));
+    uint64_t Q = ctx.pushAssumption("Q", pi("x", setvar, prop));
+    uint64_t R = ctx.pushAssumption("R", pi("x", setvar, prop));
+    uint64_t f = ctx.pushAssumption("f", pi("x", setvar, setvar));
+    uint64_t g = ctx.pushAssumption("g", pi("x", setvar, setvar));
+    uint64_t a = ctx.pushAssumption("a", pi("x", setvar, setvar));
+    uint64_t b = ctx.pushAssumption("b", pi("x", setvar, setvar));
+    uint64_t rel = ctx.pushAssumption("R", pi("x", setvar, pi("y", setvar, prop)));
+    uint64_t le = ctx.pushAssumption("<=", pi("x", setvar, pi("y", setvar, prop)));
 
     cout << "(Provable)" << endl;
-    Expr* e1 = bin(fv(P, fv(a)), OR, fv(Q, fv(b)));
-    Expr* e2 = forall("x", bin(fv(P, bv(0)), IMPLIES, fv(R, bv(0))));
-    Expr* e3 = forall("x", bin(fv(Q, bv(0)), IMPLIES, fv(R, fv(f, bv(0)))));
-    Expr* goal = exists("x", fv(R, bv(0)));
+    auto e1 = bin(app(fv(P), fv(a)), Or, app(fv(Q), fv(b)));
+    auto e2 = forall("x", bin(app(fv(P), bv(0)), Implies, app(fv(R), bv(0))));
+    auto e3 = forall("x", bin(app(fv(Q), bv(0)), Implies, app(fv(R), app(fv(f), bv(0)))));
+    auto goal = exists("x", app(fv(R), bv(0)));
     tableau.addAntecedent(e1);
     tableau.addAntecedent(e2);
     tableau.addAntecedent(e3);
@@ -452,9 +435,9 @@ int main() {
     // This one is taking too long
     /*
     cout << "(Not provable)" << endl;
-    e1 = forall("x", bin(fv(Q, bv(0)), OR, un(NOT, fv(P, bv(0)))));
-    e2 = fv(P, fv(a));
-    goal = fv(Q, fv(b));
+    e1 = forall("x", bin(app(fv(Q), bv(0)), Or, un(Not, app(fv(P), bv(0)))));
+    e2 = app(fv(P), fv(a));
+    goal = app(fv(Q), fv(b));
     tableau.addAntecedent(e1);
     tableau.addAntecedent(e2);
     tableau.addSuccedent(goal);
@@ -465,23 +448,23 @@ int main() {
     */
 
     cout << "(Provable!)" << endl;
-    Expr* e = bin(
+    auto e = bin(
       forall("x", bin(
-        bin(fv(P, fv(a)), AND, bin(fv(P, bv(0)), IMPLIES, exists("y", bin(fv(P, bv(0)), AND, fv(rel, bv(1), bv(0)))))),
-        IMPLIES,
-        exists("z", exists("w", bin(bin(fv(P, bv(1)), AND, fv(rel, bv(2), bv(0))), AND, fv(rel, bv(0), bv(1)))))
+        bin(app(fv(P), fv(a)), And, bin(app(fv(P), bv(0)), Implies, exists("y", bin(app(fv(P), bv(0)), And, app(app(fv(rel), bv(1)), bv(0)))))),
+        Implies,
+        exists("z", exists("w", bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))))
       )),
-      IFF,
+      Iff,
       forall("x", bin(
         bin(
-          bin(un(NOT, fv(P, fv(a))), OR, fv(P, bv(0))),
-          OR,
-          exists("z", exists("w", bin(bin(fv(P, bv(1)), AND, fv(rel, bv(2), bv(0))), AND, fv(rel, bv(0), bv(1)))))),
-        AND,
+          bin(un(Not, app(fv(P), fv(a))), Or, app(fv(P), bv(0))),
+          Or,
+          exists("z", exists("w", bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))))),
+        And,
         bin(
-          bin(un(NOT, fv(P, fv(a))), OR, un(NOT, exists("y", bin(fv(P, bv(0)), AND, fv(rel, bv(1), bv(0)))))),
-          OR,
-          exists("z", exists("w", bin(bin(fv(P, bv(1)), AND, fv(rel, bv(2), bv(0))), AND, fv(rel, bv(0), bv(1)))))
+          bin(un(Not, app(fv(P), fv(a))), Or, un(Not, exists("y", bin(app(fv(P), bv(0)), And, app(app(fv(rel), bv(1)), bv(0)))))),
+          Or,
+          exists("z", exists("w", bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))))
         )
       ))
     );
@@ -492,19 +475,19 @@ int main() {
     tableau.clear();
 
     cout << "(Provable!)" << endl;
-    e1 = forall("x", fv(le, bv(0), bv(0)));
-    e2 = forall("x", forall("y", forall("z", bin(bin(fv(le, bv(2), bv(1)), AND, fv(le, bv(1), bv(0))), IMPLIES, fv(le, bv(2), bv(0))))));
-    e3 = forall("x", forall("y", bin(fv(le, fv(f, bv(1)), bv(0)), IFF, fv(le, bv(1), fv(g, bv(0))))));
+    e1 = forall("x", app(app(fv(le), bv(0)), bv(0)));
+    e2 = forall("x", forall("y", forall("z", bin(bin(app(app(fv(le), bv(2)), bv(1)), And, app(app(fv(le), bv(1)), bv(0))), Implies, app(app(fv(le), bv(2)), bv(0))))));
+    e3 = forall("x", forall("y", bin(app(app(fv(le), app(fv(f), bv(1))), bv(0)), Iff, app(app(fv(le), bv(1)), app(fv(g), bv(0))))));
     goal = bin(
-      forall("x", forall("y", bin(fv(le, bv(1), bv(0)), IMPLIES, fv(le, fv(f, bv(1)), fv(f, bv(0)))))),
-      AND,
-      forall("x", forall("y", bin(fv(le, bv(1), bv(0)), IMPLIES, fv(le, fv(g, bv(1)), fv(g, bv(0))))))
+      forall("x", forall("y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(f), bv(1))), app(fv(f), bv(0)))))),
+      And,
+      forall("x", forall("y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(g), bv(1))), app(fv(g), bv(0))))))
     );
     /*
-    tableau.addAntecedent(Procs::toNNF(e1, ctx, pool));
-    tableau.addAntecedent(Procs::toNNF(e2, ctx, pool));
-    tableau.addAntecedent(Procs::toNNF(e3, ctx, pool));
-    tableau.addSuccedent(Procs::toNNF(goal, ctx, pool));
+    tableau.addAntecedent(Procs::nnf(e1, ctx, pool));
+    tableau.addAntecedent(Procs::nnf(e2, ctx, pool));
+    tableau.addAntecedent(Procs::nnf(e3, ctx, pool));
+    tableau.addSuccedent(Procs::nnf(goal, ctx, pool));
     */
     tableau.addAntecedent(e1);
     tableau.addAntecedent(e2);
@@ -516,8 +499,6 @@ int main() {
     cout << tableau.printStats() << endl;
     tableau.clear();
   }
-
-#endif
 
   return 0;
 }

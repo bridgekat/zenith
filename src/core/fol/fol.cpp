@@ -42,27 +42,27 @@ namespace Core {
       case Sort: return FOLForm(Other);
       case Var: {
         if (e->var.tag == VFree) {
-          if (e->var.id == Constant::True) return FOLForm(True);
-          if (e->var.id == Constant::False) return FOLForm(False);
+          if (e->var.id == Constant::True)  return FOLForm(True);  // (true)
+          if (e->var.id == Constant::False) return FOLForm(False); // (false)
         }
         return FOLForm(Other);
       }
       case App: {
         if (e->app.l->tag == Var) {
           if (e->app.l->var.tag == VFree) {
-            if (e->app.l->var.id == Constant::Not) return FOLForm(Not, e->app.r);
-            if (e->app.r->tag == Lam) {
-              if (e->app.l->var.id == Constant::Forall) return FOLForm(Forall, e->app.r->lam.s, e->app.r->lam.r);
-              if (e->app.l->var.id == Constant::Exists) return FOLForm(Exists, e->app.r->lam.s, e->app.r->lam.r);
-              if (e->app.l->var.id == Constant::Unique) return FOLForm(Unique, e->app.r->lam.s, e->app.r->lam.r);
+            if (e->app.l->var.id == Constant::Not) return FOLForm(Not, e->app.r); // ((not) (...))
+            if (e->app.r->tag == Lam && *e->app.r->lam.t == Expr(VFree, Constant::SetVar)) {
+              if (e->app.l->var.id == Constant::Forall) return FOLForm(Forall, e->app.r->lam.s, e->app.r->lam.r); // ((forall) (\(x): (setvar) => (...)))
+              if (e->app.l->var.id == Constant::Exists) return FOLForm(Exists, e->app.r->lam.s, e->app.r->lam.r); // ((exists) (\(x): (setvar) => (...)))
+              if (e->app.l->var.id == Constant::Unique) return FOLForm(Unique, e->app.r->lam.s, e->app.r->lam.r); // ((unique) (\(x): (setvar) => (...)))
             }
           }
         } else if (e->app.l->tag == App && e->app.l->app.l->tag == Var) {
           if (e->app.l->app.l->var.tag == VFree) {
-            if (e->app.l->app.l->var.id == Constant::And)     return FOLForm(And,     e->app.l->app.r, e->app.r);
-            if (e->app.l->app.l->var.id == Constant::Or)      return FOLForm(Or,      e->app.l->app.r, e->app.r);
-            if (e->app.l->app.l->var.id == Constant::Implies) return FOLForm(Implies, e->app.l->app.r, e->app.r);
-            if (e->app.l->app.l->var.id == Constant::Iff)     return FOLForm(Iff,     e->app.l->app.r, e->app.r);
+            if (e->app.l->app.l->var.id == Constant::And)     return FOLForm(And,     e->app.l->app.r, e->app.r); // (((and)     (...)) (...))
+            if (e->app.l->app.l->var.id == Constant::Or)      return FOLForm(Or,      e->app.l->app.r, e->app.r); // (((or)      (...)) (...))
+            if (e->app.l->app.l->var.id == Constant::Implies) return FOLForm(Implies, e->app.l->app.r, e->app.r); // (((implies) (...)) (...))
+            if (e->app.l->app.l->var.id == Constant::Iff)     return FOLForm(Iff,     e->app.l->app.r, e->app.r); // (((iff)     (...)) (...))
           }
         }
         return FOLForm(Other);
@@ -73,11 +73,12 @@ namespace Core {
     throw NonExhaustive();
   }
 
+  #define expr(...) Expr::make(pool, __VA_ARGS__)
+
   const Expr* FOLForm::toExpr(Allocator<Expr>& pool) const {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     using enum Expr::LamTag;
-    #define expr(...) Expr::make(pool, __VA_ARGS__)
     switch (tag) {
       case True:    return expr(VFree, Constant::True);
       case False:   return expr(VFree, Constant::False);
@@ -91,10 +92,39 @@ namespace Core {
       case Unique:  return expr(expr(VFree, Constant::Unique), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
       case Other:   throw Unreachable();
     }
-    #undef expr
     throw NonExhaustive();
   }
 
+  std::pair<const Expr*, const Expr*> FOLForm::splitIff(Allocator<Expr>& pool) const {
+    using Constant = FOLContext::Constant;
+    using enum Expr::VarTag;
+    if (tag != Iff) throw Unreachable();
+    return {
+      expr(expr(expr(VFree, Constant::Implies), binary.l), binary.r),
+      expr(expr(expr(VFree, Constant::Implies), binary.r), binary.l)
+    };
+  }
+
+  // Splits "unique x, P" into "exists x, P" and "forall x, P implies (forall y, P implies x = y)"
+  // Pre (checked): `tag` is `Unique`
+  std::pair<const Expr*, const Expr*> FOLForm::splitUnique(Allocator<Expr>& pool) const {
+    using Constant = FOLContext::Constant;
+    using enum Expr::VarTag;
+    using enum Expr::LamTag;
+    if (tag != Unique) throw Unreachable();
+    const auto setvar  = expr(VFree, Constant::SetVar);
+    const auto implies = expr(VFree, Constant::Implies);
+    const auto forall  = expr(VFree, Constant::Forall);
+    const auto exists  = expr(VFree, Constant::Exists);
+    return {
+      expr(exists, expr(LLam, s, setvar, binder.r)),
+      expr(forall, expr(LLam, s, setvar, expr(expr(implies, binder.r), 
+        expr(forall, expr(LLam, s, setvar, expr(expr(implies, binder.r),
+          expr(expr(expr(VFree, Constant::Equals), expr(VBound, 1)), expr(VBound, 0))))))))
+    };
+  }
+
+  #undef expr
   #pragma GCC diagnostic pop
 
 }

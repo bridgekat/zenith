@@ -1,9 +1,9 @@
 // Elab :: Tableau
 
+// TODO: refactor
+
 #ifndef TABLEAU_HPP_
 #define TABLEAU_HPP_
-
-#if 0
 
 #include <vector>
 #include <utility>
@@ -14,6 +14,7 @@
 
 namespace Elab {
 
+  using std::string;
   using std::vector;
   using std::pair, std::make_pair;
   using std::unordered_set;
@@ -160,7 +161,5 @@ namespace Elab {
   };
 
 }
-
-#endif
 
 #endif // TABLEAU_HPP_

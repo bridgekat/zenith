@@ -1,5 +1,3 @@
-#if 0
-
 #include <algorithm>
 #include <iostream>
 #include <sstream>
@@ -44,46 +42,43 @@ namespace Elab {
   }
 
   Tableau::Type Tableau::classify(Position antesucc, const Expr* e) noexcept {
-    using enum Expr::Tag;
+    using enum FOLForm::Tag;
+    auto fof = FOLForm::fromExpr(e);
     switch (antesucc) {
       case L:
-        switch (e->tag) {
-          case VAR:     return ι;
-          case TRUE:    return α;
-          case FALSE:   return α;
-          case NOT:     return α;
-          case AND:     return α;
-          case OR:      return β;
-          case IMPLIES: return β;
-          case IFF:     return α;
-          case FORALL:  return γ;
-          case EXISTS:  return δ;
-          case UNIQUE:  return α;
-          case FORALL2: return α;
-          case LAMBDA:  return α;
+        switch (fof.tag) {
+          case True:    return α;
+          case False:   return α;
+          case Not:     return α;
+          case And:     return α;
+          case Or:      return β;
+          case Implies: return β;
+          case Iff:     return α;
+          case Forall:  return γ;
+          case Exists:  return δ;
+          case Unique:  return α;
+          case Other:   return ι;
         }
         break;
       case R:
-        switch (e->tag) {
-          case VAR:     return ι;
-          case TRUE:    return α;
-          case FALSE:   return α;
-          case NOT:     return α;
-          case AND:     return β;
-          case OR:      return α;
-          case IMPLIES: return α;
-          case IFF:     return β;
-          case FORALL:  return δ;
-          case EXISTS:  return γ;
-          case UNIQUE:  return β;
-          case FORALL2: return δ;
-          case LAMBDA:  return α;
+        switch (fof.tag) {
+          case True:    return α;
+          case False:   return α;
+          case Not:     return α;
+          case And:     return β;
+          case Or:      return α;
+          case Implies: return α;
+          case Iff:     return β;
+          case Forall:  return δ;
+          case Exists:  return γ;
+          case Unique:  return β;
+          case Other:   return ι;
         }
         break;
     }
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wterminate"
-    throw NotImplemented();
+    throw NonExhaustive();
     #pragma GCC diagnostic pop
   }
 
@@ -108,7 +103,7 @@ namespace Elab {
           }
 #endif
           e = newe;
-          branch.numUniversal = std::max(branch.numUniversal, e->numUndetermined());
+          branch.numUniversal = std::max(branch.numUniversal, e->numMeta());
           branch.hashset[L].insert(ExprHash(e));
         }
         for (auto& e: branch.cedents[i][R]) {
@@ -125,7 +120,7 @@ namespace Elab {
           }
 #endif
           e = newe;
-          branch.numUniversal = std::max(branch.numUniversal, e->numUndetermined());
+          branch.numUniversal = std::max(branch.numUniversal, e->numMeta());
           branch.hashset[R].insert(ExprHash(e));
         }
       }
@@ -322,7 +317,7 @@ namespace Elab {
       return res;
     };
 
-    using enum Expr::Tag;
+    using enum FOLForm::Tag;
     using enum Expr::VarTag;
 
     // Gamma
@@ -330,8 +325,8 @@ namespace Elab {
       // TODO: selection in reentrant gamma expansions
       bool closed = false;
       size_t id = branch.numUniversal;
-      Expr newVar(UNDETERMINED, id); // Disposable (will be copied to `pool` on the next line)
-      const Expr* body = e->binder.r->makeReplace(&newVar, pool);
+      const Expr* newVar = pool.emplaceBack(VMeta, id);
+      const Expr* body = e->app.r->lam.r->makeReplace(newVar, pool);
       WithValue gn(&branch.numUniversal, branch.numUniversal + 1);
       WithCedent g(this, body, pos, &closed);
 
@@ -351,17 +346,16 @@ namespace Elab {
     // Delta
     auto delta = [this, closing, depth] (Position pos, const Expr* e) {
       bool closed = false;
-      vector<Expr*> univ;
-      for (size_t j = 0; j < branch.numUniversal; j++) univ.push_back(Expr::make(pool, UNDETERMINED, j));
-      size_t id = numSkolem + ctx.size();
-      Expr newVar(FREE, id, univ); // Disposable (will be copied to `pool` on the next line)
-      const Expr* body = e->binder.r->makeReplace(&newVar, pool);
+      size_t id = numSkolem + ctx.size();      
+      const Expr* newVar = pool.emplaceBack(VFree, id);
+      for (size_t j = 0; j < branch.numUniversal; j++) newVar = pool.emplaceBack(newVar, pool.emplaceBack(VMeta, j));
+      const Expr* body = e->app.r->lam.r->makeReplace(newVar, pool);
       WithValue gn(&numSkolem, numSkolem + 1);
       WithCedent g(this, body, pos, &closed);
       return closed? closing(depth) : dfs(depth);
     };
 
-    constexpr static unsigned int order[] = { ι, α, δ, γ, /* β, γre */ };
+    constexpr static unsigned int order[] = { ι, α, δ, γ };
 
     for (unsigned int i: order) {
       auto&   ante  = branch.cedents[i][L], & succ  = branch.cedents[i][R];
@@ -372,26 +366,21 @@ namespace Elab {
         const Expr* e = ante[antei];
         WithValue gi(&antei, antei + 1);
         if (!(classify(L, e) == i || (classify(L, e) == γ && i == γre))) throw Unreachable();
-        switch (e->tag) {
-          case VAR:     return iota(L, e);
-          case TRUE:    return dfs(depth);
-          case FALSE:   return closing(depth);
-          case NOT:     return unary(R, e->conn.l);
-          case AND:     return alpha(L, e->conn.l, L, e->conn.r);
-          case OR:      throw Unreachable();
-          case IMPLIES: throw Unreachable();
-          case IFF:     return alpha(L, Expr::make(pool, IMPLIES, e->conn.l, e->conn.r),
-                                     L, Expr::make(pool, IMPLIES, e->conn.r, e->conn.l));
-          case FORALL:  return gamma(L, e, false);
-          case EXISTS:  return delta(L, e);
-          case UNIQUE:  return alpha(L, Expr::make(pool, EXISTS, e->bv, e->binder.arity, e->binder.sort, e->binder.r),
-                                     L, Expr::make(pool, FORALL, e->bv, e->binder.arity, e->binder.sort,
-                                        Expr::make(pool, IMPLIES, e->binder.r,
-                                        Expr::make(pool, FORALL, e->bv + "'", e->binder.arity, e->binder.sort,
-                                        Expr::make(pool, IMPLIES, e->binder.r,
-                                        Expr::make(pool, FREE, ctx.equals, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) }))))));
-          case FORALL2: return dfs(depth); // "φ" rule is not supported yet...
-          case LAMBDA:  return dfs(depth);
+        auto fof = FOLForm::fromExpr(e);
+        switch (fof.tag) {
+          case True:      return dfs(depth);
+          case False:     return closing(depth);
+          case Not:       return unary(R, fof.unary.l);
+          case And:       return alpha(L, fof.binary.l, L, fof.binary.r);
+          case Or:        throw Unreachable();
+          case Implies:   throw Unreachable();
+          case Iff:     { const auto [mp, mpr] = fof.splitIff(pool);
+                          return alpha(L, mp, L, mpr); }
+          case Forall:    return gamma(L, e, false);
+          case Exists:    return delta(L, e);
+          case Unique:  { const auto [exi, no2] = fof.splitUnique(pool);
+                          return alpha(L, exi, L, no2); }
+          case Other:     return iota(L, e);
         }
         throw Unreachable();
       }
@@ -401,20 +390,19 @@ namespace Elab {
         const Expr* e = succ[succi];
         WithValue gi(&succi, succi + 1);
         if (!(classify(R, e) == i || (classify(R, e) == γ && i == γre))) throw Unreachable();
-        switch (e->tag) {
-          case VAR:     return iota(R, e);
-          case TRUE:    return closing(depth);
-          case FALSE:   return dfs(depth);
-          case NOT:     return unary(L, e->conn.l);
-          case AND:     throw Unreachable();
-          case OR:      return alpha(R, e->conn.l, R, e->conn.r);
-          case IMPLIES: return alpha(L, e->conn.l, R, e->conn.r);
-          case IFF:     throw Unreachable();
-          case FORALL:  return delta(R, e);
-          case EXISTS:  return gamma(R, e, false);
-          case UNIQUE:  throw Unreachable();
-          case FORALL2: return dfs(depth); // TODO: second-order δ-rule
-          case LAMBDA:  return dfs(depth);
+        auto fof = FOLForm::fromExpr(e);
+        switch (fof.tag) {
+          case True:    return closing(depth);
+          case False:   return dfs(depth);
+          case Not:     return unary(L, fof.unary.l);
+          case And:     throw Unreachable();
+          case Or:      return alpha(R, fof.binary.l, R, fof.binary.r);
+          case Implies: return alpha(L, fof.binary.l, R, fof.binary.r);
+          case Iff:     throw Unreachable();
+          case Forall:  return delta(R, e);
+          case Exists:  return gamma(R, e, false);
+          case Unique:  throw Unreachable();
+          case Other:   return iota(R, e);
         }
         throw Unreachable();
       }
@@ -435,10 +423,11 @@ namespace Elab {
         const Expr* e = ante[ii];
         anteu[ii] = true;
         bool res = false;
-        switch (e->tag) {
-          case OR:      res = beta(L, e->conn.l, L, e->conn.r); break;
-          case IMPLIES: res = beta(R, e->conn.l, L, e->conn.r); break;
-          default:      throw Unreachable();
+        auto fof = FOLForm::fromExpr(e);
+        switch (fof.tag) {
+          case Or:        res = beta(L, fof.binary.l, L, fof.binary.r); break;
+          case Implies:   res = beta(R, fof.binary.l, L, fof.binary.r); break;
+          default:        throw Unreachable();
         }
         anteu[ii] = false;
         if (res) return true;
@@ -448,24 +437,14 @@ namespace Elab {
         // Ahhhhhhh this is too messy
         succu[ii] = true;
         bool res = false;
-        switch (e->tag) {
-          case AND:
-            res = beta(R, e->conn.l, R, e->conn.r);
-            break;
-          case IFF:
-            res = beta(R, Expr::make(pool, IMPLIES, e->conn.l, e->conn.r),
-                       R, Expr::make(pool, IMPLIES, e->conn.r, e->conn.l));
-            break;
-          case UNIQUE:
-            res = beta(R, Expr::make(pool, EXISTS, e->bv, e->binder.arity, e->binder.sort, e->binder.r),
-                       R, Expr::make(pool, FORALL, e->bv, e->binder.arity, e->binder.sort,
-                          Expr::make(pool, IMPLIES, e->binder.r,
-                          Expr::make(pool, FORALL, e->bv + "'", e->binder.arity, e->binder.sort,
-                          Expr::make(pool, IMPLIES, e->binder.r,
-                          Expr::make(pool, FREE, ctx.equals, vector<Expr*>{ Expr::make(pool, BOUND, 1), Expr::make(pool, BOUND, 0) }))))));
-            break;
-          default:
-            throw Unreachable();
+        auto fof = FOLForm::fromExpr(e);
+        switch (fof.tag) {
+          case And:       res = beta(R, fof.binary.l, R, fof.binary.r); break;
+          case Iff:     { const auto [mp, mpr] = fof.splitIff(pool);
+                          res = beta(R, mp, R, mpr); } break;
+          case Unique:  { const auto [exi, no2] = fof.splitUnique(pool);
+                          res = beta(R, exi, R, no2); } break;
+          default:        throw Unreachable();
         }
         succu[ii] = false;
         if (res) return true;
@@ -481,17 +460,19 @@ namespace Elab {
       for (size_t ii = antei; ii < ante.size(); ii++) {
         const Expr* e = ante[ii];
         WithValue gi(&antei, ii + 1);
-        switch (e->tag) {
-          case FORALL:  if (gamma(L, e, true)) return true; break;
-          default:      throw Unreachable();
+        auto fof = FOLForm::fromExpr(e);
+        switch (fof.tag) {
+          case Forall:    if (gamma(L, e, true)) return true; break;
+          default:        throw Unreachable();
         }
       }
       for (size_t ii = succi; ii < succ.size(); ii++) {
         const Expr* e = succ[ii];
         WithValue gi(&succi, ii + 1);
-        switch (e->tag) {
-          case EXISTS:  if (gamma(R, e, true)) return true; break;
-          default:      throw Unreachable();
+        auto fof = FOLForm::fromExpr(e);
+        switch (fof.tag) {
+          case Exists:    if (gamma(R, e, true)) return true; break;
+          default:        throw Unreachable();
         }
       }
     }
@@ -623,7 +604,7 @@ namespace Elab {
         if (branch.cedents[i][L].size() != branch.timestamps[i][L].size()) throw Unreachable();
         if (branch.cedents[i][L].size() != branch.numUniversals[i][L].size()) throw Unreachable();
         for (const Expr* e: branch.cedents[i][L]) {
-          if (e->numUndetermined() > branch.numUniversal) {
+          if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
             std::cout << "Branch has numUniversal = " << branch.numUniversal << std::endl;
             std::cout << "But formula in L (" << typeToString(i) << ") has more:" << std::endl;
@@ -635,7 +616,7 @@ namespace Elab {
         if (branch.cedents[i][R].size() != branch.timestamps[i][R].size()) throw Unreachable();
         if (branch.cedents[i][R].size() != branch.numUniversals[i][R].size()) throw Unreachable();
         for (const Expr* e: branch.cedents[i][R]) {
-          if (e->numUndetermined() > branch.numUniversal) {
+          if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
             std::cout << "Branch has numUniversal = " << branch.numUniversal << std::endl;
             std::cout << "But formula in R (" << typeToString(i) << ") has more:" << std::endl;
@@ -712,5 +693,3 @@ namespace Elab {
   }
 
 }
-
-#endif

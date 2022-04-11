@@ -22,13 +22,10 @@ namespace Elab::Procs {
   using namespace Core;
 
 
+  // Pre (checked): `e` is a propositional formula
+  bool propValue(const Expr* e, const vector<bool>& fvmap) noexcept;
 
-
-  // Pre: `e` is a propositional formula
-  // bool propValue(const Expr* e, const vector<bool>& fvmap);
-
-  // Pre: `fvs.size()` <= 63
-  /*
+  // Pre: `fvs.size()` < 64
   template <typename F>
   inline void foreachValuation(const vector<uint64_t>& fvs, F f) {
     size_t n = fvs.size(), m = *std::max_element(fvs.cbegin(), fvs.cend()) + 1;
@@ -40,12 +37,11 @@ namespace Elab::Procs {
       mask++;
     } while (mask != final);
   }
-  */
 
-  // Pre: `e` is arity-consistent
-  // (Returns a copy in `pool`)
-  // (Also removes IMPLIES, IFF and UNIQUE)
-  // Expr* nnf(const Expr* e, const Context& ctx, Allocator<Expr>& pool, bool negated = false);
+  // Returns the negation normal form of a first-order formula (lifetime bounded by `e` and `pool`).
+  // Also removes "implies", "iff" and "unique".
+  // Non-first-order formulas will not be changed.
+  const Expr* nnf(const Expr* e, Allocator<Expr>& pool, bool negated = false);
 
   // A substitution of undetermined variables with id in the interval [0, `ts.size()`).
   // `ts` should not contain circular dependencies. Use `nullptr` to represent unmodified variables.
@@ -64,15 +60,21 @@ namespace Elab::Procs {
 
   string showSubs(const Subs& subs, const Context& ctx);
 
+  // Check if two expressions are syntactically equal (up to alpha-renaming) after applying a substitution.
+  // Probably faster than simply apply and check...
+  bool equalAfterSubs(const Expr* lhs, const Expr* rhs, const Subs& subs) noexcept;
+
+  // First-order (syntactical) anti-unification.
   // Returns (lgg, substitution to get l, substitution to get r).
   // Pre: { l, r } is arity-consistent
-  // tuple<Expr*, Subs, Subs> antiunify(const Expr* lhs, const Expr* rhs, Allocator<Expr>& pool);
+  tuple<const Expr*, Subs, Subs> antiunify(const Expr* lhs, const Expr* rhs, Allocator<Expr>& pool);
 
+  // First-order (syntactical) unification.
   // All variables with `vartag == UNDETERMINED` are considered as undetermined first-order variables;
   //   others are just constants. Returns `nullopt` if unification failed.
   // Could take exponential time on certain cases.
   // Pre: the set of all expressions in `a` is arity-consistent
-  // optional<Subs> unify(vector<pair<const Expr*, const Expr*>> eqs, Allocator<Expr>& pool);
+  optional<Subs> unify(vector<pair<const Expr*, const Expr*>> eqs, Allocator<Expr>& pool);
 
 }
 

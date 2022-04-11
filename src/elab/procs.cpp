@@ -7,82 +7,46 @@ namespace Elab::Procs {
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wterminate"
 
-  /*
-  bool propValue(const Expr* e, const vector<bool>& fvmap) {
-    using enum Expr::Tag;
-    using enum Expr::VarTag;
-    switch (e->tag) {
-      case Var:
-        if (e->var.tag != VFree) throw Unreachable();
-        return e->var.id < fvmap.size() ? fvmap[e->var.id] : false;
-      case App:
-        return false;
-      default:
-        break;
+  bool propValue(const Expr* e, const vector<bool>& fvmap) noexcept {
+    using enum FOLForm::Tag;
+    auto fof = FOLForm::fromExpr(e);
+    switch (fof.tag) {
+      case True:    return true;
+      case False:   return false;
+      case Not:     return !propValue(fof.unary.l, fvmap);
+      case And:     return  propValue(fof.binary.l, fvmap) && propValue(fof.binary.r, fvmap);
+      case Or:      return  propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
+      case Implies: return !propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
+      case Iff:     return  propValue(fof.binary.l, fvmap) == propValue(fof.binary.r, fvmap);
+      case Forall:  throw Unreachable();
+      case Exists:  throw Unreachable();
+      case Unique:  throw Unreachable();
+      case Other:   if (e->tag != Expr::Var || e->var.tag != Expr::VFree) throw Unreachable();
+                    return (e->var.id < fvmap.size())? fvmap[e->var.id] : false;
     }
-    throw NotImplemented();
+    throw NonExhaustive();
   }
 
-  Expr* toNNF(const Expr* e, const Context& ctx, Allocator<Expr>& pool, bool negated) {
-    using enum Expr::Tag;
-    using enum Expr::VarTag;
-    switch (e->tag) {
-      case Var:
-        return negated ? Expr::make(pool, NOT, e->clone(pool)) : e->clone(pool);
-      case TRUE:
-        return Expr::make(pool, negated ? FALSE : TRUE);
-      case FALSE:
-        return Expr::make(pool, negated ? TRUE : FALSE);
-      case NOT:
-        return toNNF(e->conn.l, ctx, pool, !negated);
-      case AND:
-        return Expr::make(pool, negated ? OR : AND,
-          toNNF(e->conn.l, ctx, pool, negated),
-          toNNF(e->conn.r, ctx, pool, negated));
-      case OR:
-        return Expr::make(pool, negated ? AND : OR,
-          toNNF(e->conn.l, ctx, pool, negated),
-          toNNF(e->conn.r, ctx, pool, negated));
-      case IMPLIES:  // (p implies q) seen as ((not p) or q)
-        return Expr::make(pool, negated ? AND : OR,
-          toNNF(e->conn.l, ctx, pool, !negated),
-          toNNF(e->conn.r, ctx, pool, negated));
-      case IFF: {    // (p iff q) seen as ((p implies q) and (q implies p))
-        Expr mp(IMPLIES, e->conn.l, e->conn.r);
-        Expr mpr(IMPLIES, e->conn.r, e->conn.l);
-        return Expr::make(pool, negated ? OR : AND,
-          toNNF(&mp, ctx, pool, negated),
-          toNNF(&mpr, ctx, pool, negated));
-      }
-      case FORALL:
-        return Expr::make(pool, negated ? EXISTS : FORALL,
-          e->bv, e->binder.arity, e->binder.sort,
-          toNNF(e->binder.r, ctx, pool, negated));
-      case EXISTS:
-        return Expr::make(pool, negated ? FORALL : EXISTS,
-          e->bv, e->binder.arity, e->binder.sort,
-          toNNF(e->binder.r, ctx, pool, negated));
-      case UNIQUE: { // (unique x, p) seen as ((exists x, p) and (forall x, p implies (forall x', p implies x = x')))
-        Expr exi(EXISTS, e->bv, e->binder.arity, e->binder.sort, e->binder.r);
-        Expr x(BOUND, 1), x_(BOUND, 0);
-        Expr eq(FREE, ctx.equals, { &x, &x_ });
-        Expr d(IMPLIES, e->binder.r, &eq);
-        Expr c(FORALL, e->bv + "'", e->binder.arity, e->binder.sort, &d);
-        Expr b(IMPLIES, e->binder.r, &c);
-        Expr a(FORALL, e->bv, e->binder.arity, e->binder.sort, &b);
-        Expr no2 = a;
-        return Expr::make(pool, negated ? OR : AND,
-          toNNF(&exi, ctx, pool, negated),
-          toNNF(&no2, ctx, pool, negated));
-      }
-      case FORALL2: case LAMBDA:
-        throw Unreachable();
+  const Expr* nnf(const Expr* e, Allocator<Expr>& pool, bool negated) {
+    using enum FOLForm::Tag;
+    auto fof = FOLForm::fromExpr(e);
+    switch (fof.tag) {
+      case True:      return FOLForm(negated? False : True).toExpr(pool);
+      case False:     return FOLForm(negated? True : False).toExpr(pool);
+      case Not:       return nnf(fof.unary.l, pool, !negated);
+      case And:       return FOLForm(negated? Or : And, nnf(fof.binary.l, pool, negated), nnf(fof.binary.r, pool, negated)).toExpr(pool);
+      case Or:        return FOLForm(negated? And : Or, nnf(fof.binary.l, pool, negated), nnf(fof.binary.r, pool, negated)).toExpr(pool);
+      case Implies:   return FOLForm(negated? And : Or, nnf(fof.binary.l, pool, !negated), nnf(fof.binary.r, pool, negated)).toExpr(pool);
+      case Iff:     { const auto [mp, mpr] = fof.splitIff(pool);
+                      return FOLForm(negated? Or : And, nnf(mp, pool, negated), nnf(mpr, pool, negated)).toExpr(pool); }
+      case Forall:    return FOLForm(negated? Exists : Forall, fof.s, nnf(fof.binder.r, pool, negated)).toExpr(pool);
+      case Exists:    return FOLForm(negated? Forall : Exists, fof.s, nnf(fof.binder.r, pool, negated)).toExpr(pool);
+      case Unique:  { const auto [exi, no2] = fof.splitUnique(pool);
+                      return FOLForm(negated? Or : And, nnf(exi, pool, negated), nnf(no2, pool, negated)).toExpr(pool); }
+      case Other:     return negated? FOLForm(Not, e).toExpr(pool) : e;
     }
-    throw NotImplemented();
+    throw NonExhaustive();
   }
-  */
-
-  #pragma GCC diagnostic pop
 
   string showSubs(const Subs& subs, const Context& ctx) {
     using enum Expr::VarTag;
@@ -93,75 +57,82 @@ namespace Elab::Procs {
     return res;
   }
 
-  /*
+  bool equalAfterSubs(const Expr* lhs, const Expr* rhs, const Subs& subs) noexcept {
+    using enum Expr::Tag;
+    using enum Expr::VarTag;
+    // Check if an undetermined variable has been replaced
+    if (lhs->tag == Var && lhs->var.tag == VMeta && lhs->var.id < subs.size() && subs[lhs->var.id]) return equalAfterSubs(subs[lhs->var.id], rhs, subs);
+    if (rhs->tag == Var && rhs->var.tag == VMeta && rhs->var.id < subs.size() && subs[rhs->var.id]) return equalAfterSubs(lhs, subs[rhs->var.id], subs);
+    // Normal comparison (refer to the implementation of `Expr::operator==`)
+    if (lhs->tag != rhs->tag) return false;
+    switch (lhs->tag) {
+      case Sort: return lhs->sort.tag == rhs->sort.tag;
+      case Var:  return lhs->var.tag == rhs->var.tag && lhs->var.id == rhs->var.id;
+      case App:  return equalAfterSubs(lhs->app.l, rhs->app.l, subs) && equalAfterSubs(lhs->app.r, rhs->app.r, subs);
+      case Lam:  return equalAfterSubs(lhs->lam.t, rhs->lam.t, subs) && equalAfterSubs(lhs->lam.r, rhs->lam.r, subs);
+      case Pi:   return equalAfterSubs(lhs->pi.t, rhs->pi.t, subs) && equalAfterSubs(lhs->pi.r, rhs->pi.r, subs);
+    }
+    throw NonExhaustive();
+  }
+
+  #pragma GCC diagnostic pop
+
   // A simple anti-unification algorithm.
   // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
   class Antiunifier {
   public:
-    Allocator<Expr>* pool;
+    Allocator<Expr>& pool;
     Subs ls, rs;
 
-    Antiunifier(): pool{}, ls(), rs() {}
+    Antiunifier(Allocator<Expr>& pool): pool(pool), ls(), rs() {}
     Antiunifier(const Antiunifier&) = delete;
     Antiunifier& operator=(const Antiunifier&) = delete;
 
-    Expr* dfs(const Expr* lhs, const Expr* rhs) {
+    const Expr* dfs(const Expr* lhs, const Expr* rhs) {
       using enum Expr::Tag;
       using enum Expr::VarTag;
 
       // If roots are different, return this
       auto different = [this, lhs, rhs] () {
-        unsigned int id = ls.size();
+        uint64_t id = ls.size();
         ls.push_back(lhs);
         rs.push_back(rhs);
-        return Expr::make(*pool, UNDETERMINED, id);
+        return pool.emplaceBack(VMeta, id);
       };
  
       if (lhs->tag != rhs->tag) return different();
       // lhs->tag == rhs->tag
       switch (lhs->tag) {
-        case VAR: {
-          if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) {
-            return different();
-          }
-          Expr* res = Expr::make(*pool, lhs->var.vartag, lhs->var.id), * last = nullptr;
-          const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
-          for (; plhs && prhs; plhs = plhs->s, prhs = prhs->s) {
-            Expr* q = dfs(plhs, prhs);
-            (last? last->s : res->var.c) = q;
-            last = q;
-          }
-          (last? last->s : res->var.c) = nullptr;
-          if (plhs || prhs) throw Unreachable();
-          return res;
+        case Sort: return (lhs->sort.tag == rhs->sort.tag)? lhs : different();
+        case Var:  return (lhs->var.tag == rhs->var.tag && lhs->var.id == rhs->var.id)? lhs : different();
+        case App: {
+          const auto l = dfs(lhs->app.l, rhs->app.l);
+          const auto r = dfs(lhs->app.r, rhs->app.r);
+          return (l == lhs->app.l && r == lhs->app.r)? lhs : pool.emplaceBack(l, r);
         }
-        case TRUE: case FALSE:
-          return Expr::make(*pool, lhs->tag);
-        case NOT:
-          return Expr::make(*pool, lhs->tag, dfs(lhs->conn.l, rhs->conn.l));
-        case AND: case OR: case IMPLIES: case IFF:
-          return Expr::make(*pool, lhs->tag, dfs(lhs->conn.l, rhs->conn.l), dfs(lhs->conn.r, rhs->conn.r));
-        case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-          if (lhs->binder.arity != rhs->binder.arity || lhs->binder.sort != rhs->binder.sort) {
-            return different();
-          }
-          return Expr::make(*pool, lhs->tag,
-            lhs->bv, lhs->binder.arity, lhs->binder.sort,
-            dfs(lhs->binder.r, rhs->binder.r));
+        case Lam: {
+          const auto t = dfs(lhs->lam.t, rhs->lam.t);
+          const auto r = dfs(lhs->lam.r, rhs->lam.r);
+          return (t == lhs->lam.t && r == lhs->lam.r)? lhs : pool.emplaceBack(Expr::LLam, lhs->lam.s, t, r);
+        }
+        case Pi: {
+          const auto t = dfs(lhs->pi.t, rhs->pi.t);
+          const auto r = dfs(lhs->pi.r, rhs->pi.r);
+          return (t == lhs->pi.t && r == lhs->pi.r)? lhs : pool.emplaceBack(Expr::PPi, lhs->pi.s, t, r);
+        }
       }
-      throw NotImplemented();
+      throw NonExhaustive();
     }
 
-    tuple<Expr*, Subs, Subs> operator()(Allocator<Expr>* pool, const Expr* lhs, const Expr* rhs) {
-      this->pool = pool;
+    tuple<const Expr*, Subs, Subs> operator()(const Expr* lhs, const Expr* rhs) {
       ls.clear(); rs.clear();
-      Expr* c = dfs(lhs, rhs);
+      const Expr* c = dfs(lhs, rhs);
       return { c, ls, rs };
     }
   };
 
-  tuple<Expr*, Subs, Subs> antiunify(const Expr* lhs, const Expr* rhs, Allocator<Expr>& pool) {
-    return Antiunifier()(&pool, lhs, rhs);
+  tuple<const Expr*, Subs, Subs> antiunify(const Expr* lhs, const Expr* rhs, Allocator<Expr>& pool) {
+    return Antiunifier(pool)(lhs, rhs);
   }
 
   // The Robinson's unification algorithm (could take exponential time for certain cases.)
@@ -172,15 +143,14 @@ namespace Elab::Procs {
     Subs res;
 
     // Add a new substitution to `res`, then update the rest of `a` to eliminate the variable with id `id`.
-    auto putsubs = [&res, &pool, &a] (unsigned int id, const Expr* e, size_t i0) {
+    auto putsubs = [&res, &pool, &a] (uint64_t id, const Expr* e, size_t i0) {
       // Make enough space
       while (id >= res.size()) res.push_back(nullptr);
       // id < res.size()
       res[id] = e;
       // Update the rest of `a`
-      auto f = [id, e, &pool] (unsigned int, Expr* x) {
-        if (x->var.vartag == UNDETERMINED && x->var.id == id) return e->clone(pool);
-        return x;
+      auto f = [id, e, &pool] (uint64_t, const Expr* x) {
+        return (x->var.tag == VMeta && x->var.id == id)? e : x;
       };
       for (size_t i = i0; i < a.size(); i++) {
         a[i].first = a[i].first->updateVars(0, pool, f);
@@ -193,56 +163,33 @@ namespace Elab::Procs {
     for (size_t i = 0; i < a.size(); i++) {
       const Expr* lhs = a[i].first, * rhs = a[i].second;
 
-      if (lhs->tag == VAR && lhs->var.vartag == UNDETERMINED) {
+      if (lhs->tag == Var && lhs->var.tag == VMeta) {
         // Variable elimination on the left.
         if (*lhs == *rhs);
-        else if (rhs->occurs(UNDETERMINED, lhs->var.id)) return nullopt;
+        else if (rhs->occurs(VMeta, lhs->var.id)) return nullopt;
         else putsubs(lhs->var.id, rhs, i + 1);
-        continue;
 
-      } else if (rhs->tag == VAR && rhs->var.vartag == UNDETERMINED) {
+      } else if (rhs->tag == Var && rhs->var.tag == VMeta) {
         // Variable elimination on the right.
         if (*lhs == *rhs);
-        else if (lhs->occurs(UNDETERMINED, rhs->var.id)) return nullopt;
+        else if (lhs->occurs(VMeta, rhs->var.id)) return nullopt;
         else putsubs(rhs->var.id, lhs, i + 1);
-        continue;
 
       } else {
         // Try term reduction.
         if (lhs->tag != rhs->tag) return nullopt;
         // lhs->tag == rhs->tag
         switch (lhs->tag) {
-          case VAR: {
-            if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) return nullopt;
-            const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
-            for (; plhs && prhs; plhs = plhs->s, prhs = prhs->s) {
-              a.emplace_back(plhs, prhs);
-            }
-            if (plhs || prhs) throw Unreachable();
-            break;
-          }
-          case TRUE: case FALSE:
-            break;
-          case NOT:
-            a.emplace_back(lhs->conn.l, rhs->conn.l);
-            break;
-          case AND: case OR: case IMPLIES: case IFF:
-            a.emplace_back(lhs->conn.l, rhs->conn.l);
-            a.emplace_back(lhs->conn.r, rhs->conn.r);
-            break;
-          case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-            if (lhs->binder.arity != rhs->binder.arity || lhs->binder.sort != rhs->binder.sort) {
-              return nullopt;
-            }
-            a.emplace_back(lhs->binder.r, rhs->binder.r);
-            break;
+          case Sort: if (lhs->sort.tag != rhs->sort.tag) return nullopt; break;
+          case Var:  if (lhs->var.tag != rhs->var.tag || lhs->var.id != rhs->var.id) return nullopt; break;
+          case App:  a.emplace_back(lhs->app.l, rhs->app.l); a.emplace_back(lhs->app.r, rhs->app.r); break;
+          case Lam:  a.emplace_back(lhs->lam.t, rhs->lam.t); a.emplace_back(lhs->lam.r, rhs->lam.r); break;
+          case Pi:   a.emplace_back(lhs->pi.t,  rhs->pi.t);  a.emplace_back(lhs->pi.r,  rhs->pi.r);  break;
         }
-        continue;
       }
     }
 
     return res;
   }
-  */
 
 }

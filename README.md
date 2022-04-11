@@ -1,4 +1,4 @@
-# ApiMu
+# ApiMu/ZFC
 
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
@@ -6,7 +6,9 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 
 [Metamath One](https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md) looks nice! I did not realize this earlier...
 
-(I am not aiming to make any serious ITP software! This is just a "toy" system for inexperienced users (and AI) to interact with, so I will just try to make the UI as intuitive as possible while keeping the background theory simple. It seems like FOL with equality (natural deduction) + metavariables + extension by definitions are already enough for this...)
+(I am not aiming to make any serious ITP software! This is just a "toy" system for inexperienced users (and AI) to interact with, so I will just try to make the UI as intuitive as possible while keeping the background theory simple. It seems like FOL with equality (with natural deduction) + meta-variables (for axiom schemata) + extension by definitions are already enough for this...)
+
+(Update: just found out that using dependent type theory as a meta-logic actually *simplifies* code 🤣. But I'm not going to add anything beyond basic Π-types and β-reduction for now. No intensional equality, no inductive types, the thing is there just to express first-order logic and second-order schema rules in a more manageable way...)
 
 
 ## To do list
@@ -17,7 +19,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 - [ ] [The verifier](src/core/)
   - [x] Core part (almost completed)
   - [ ] Text & binary file formats for FOL and ND trees
-  - [x] User-defined connectives (as unchecked axioms in the metalogic...)
+  - [x] User-defined connectives (as unchecked axioms in the meta-logic...)
   - [ ] "Definition erasure" for exporting proofs
 - [ ] The elaborator
   - [ ] Parser & pretty-printer (WIP)
