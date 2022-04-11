@@ -149,14 +149,14 @@ public:
     addRule([this] (Number&& num)                          -> SExprSym { return { pool.emplaceBack(num) }; });
     addRule([this] (String&& str)                          -> SExprSym { return { pool.emplaceBack(str) }; });
     addRule([this] (Boolean&& boolean)                     -> SExprSym { return { pool.emplaceBack(boolean) }; });
-    addRule([this] (Undefined)                             -> SExprSym { return { pool.emplaceBack(Undefined{}) }; });
-    addRule([this] (Quote, SExprSym&& e)                   -> SExprSym { return { makeList({ pool.emplaceBack(Symbol{ "quote" }), e.e }) }; });
-    addRule([this] (Comma, SExprSym&& e)                   -> SExprSym { return { makeList({ pool.emplaceBack(Symbol{ "unquote" }), e.e }) }; });
+    addRule([this] (Undefined)                             -> SExprSym { return { pool.emplaceBack(Undefined()) }; });
+    addRule([this] (Quote, SExprSym&& e)                   -> SExprSym { return { makeList({ pool.emplaceBack(Symbol("quote")), e.e }) }; });
+    addRule([this] (Comma, SExprSym&& e)                   -> SExprSym { return { makeList({ pool.emplaceBack(Symbol("unquote")), e.e }) }; });
 
   }
 
   SExpr* makeList(const vector<SExpr*> a, SExpr* tail = nullptr) {
-    SExpr* res = tail? tail : pool.emplaceBack(Nil{});
+    SExpr* res = tail? tail : pool.emplaceBack(Nil());
     for (auto it = a.rbegin(); it != a.rend(); it++) res = pool.emplaceBack(*it, res);
     return res;
   }
@@ -171,7 +171,8 @@ public:
       auto opt = Language::nextSentence<SExprSym>();
       for (auto& ex: Language::popParsingErrors()) {
         cout << endl;
-        cout << ex.what() << endl;
+        cout << "× " << ex.what() << endl;
+        cout << "| " << endl;
         cout << "| " << str << endl;
         cout << "| " << std::string(ex.startPos, ' ')
                      << std::string(ex.endPos - ex.startPos, '~') << endl;
@@ -183,18 +184,20 @@ public:
       try {
         const SExpr* res = env.eval(e);
         cout << res->toString() << endl;
+        temp().clear();
       } catch (EvalError& ex) {
         const auto& [found, prefix] = ex.e->toStringUntil(ex.at);
         cout << endl;
         if (found) {
-          cout << "Error evaluating, " << ex.what() << endl;
+          cout << "× Error evaluating, " << ex.what() << endl;
+          cout << "| " << endl;
           cout << "| " << ex.e->toString() << endl;
           cout << "| " << std::string(prefix.size(), ' ')
                        << std::string(ex.at->toString().size(), '~') << endl;
         } else {
-          cout << "Error evaluating, " << ex.what() << endl;
-          cout << "Expression: " << ex.e->toString() << endl;
-          cout << "At: " << ex.at->toString() << endl;
+          cout << "× Error evaluating, " << ex.what() << endl;
+          cout << "  Expression: " << ex.e->toString() << endl;
+          cout << "  At: " << ex.at->toString() << endl;
         }
         cout << endl;
       }

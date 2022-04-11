@@ -13,15 +13,16 @@ namespace Eval {
 
   class Environment {
   public:
-    using Proc = std::function<const SExpr*(const SExpr*, Environment&, Core::Allocator<SExpr>&)>;
+    using Proc = std::function<const SExpr*(const SExpr*, Environment&)>;
 
-    Core::Allocator<SExpr> pool;
+    // Core::Allocator<SExpr> pool;
     std::unordered_map<std::string, Proc> forms, procs;
     std::unordered_map<std::string, const SExpr*> vars;
 
     Environment();
-    const SExpr* evalAll(const SExpr* e);
     const SExpr* eval(const SExpr* e);
+    const SExpr* evalList(const SExpr* e);
+    const SExpr* evalUnquote(const SExpr* e);
   };
 
   struct EvalError: public std::runtime_error {

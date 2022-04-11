@@ -16,7 +16,7 @@ namespace Server {
 
 
   // DEBUG CODE
-  extern int64_t DebugCounter;
+  inline int64_t DebugCounter = 0;
 
   // Awaitable (chained) coroutines, for single-thread use only
   // See: https://en.cppreference.com/w/cpp/language/coroutines

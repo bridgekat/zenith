@@ -11,9 +11,9 @@ namespace Core {
 
   // Expression node, and related syntactic operations
   // Pre (for all methods): there is no "cycle" throughout the tree / DAG
-  // Pre & invariant (for all methods): all nonzero pointers (in the "active variant") are valid
+  // Pre & invariant (for all methods): all pointers (in the "active variant") are valid
   // Will just stick to this old-fashioned tagged union approach until C++ admits a better way to represent sum types
-  //   (`std::variant` + `std::visit` are said to have severe performance issues?)
+  //   (`std::variant` + `std::visit` are said to have severe performance issue...)
   class Expr {
   public:
     enum class Tag: uint32_t { Sort, Var, App, Lam, Pi }; using enum Tag;
@@ -22,33 +22,26 @@ namespace Core {
     enum class LamTag: uint32_t { LLam }; using enum LamTag;
     enum class PiTag: uint32_t { PPi }; using enum PiTag;
 
-    // Switching active variant is not supported yet
+    // This class is immutable now (to allow subexpression sharing)
     const Tag tag;
     union {
-      struct { SortTag tag; } sort;
-      struct { VarTag tag; uint64_t id; } var;
-      struct { Expr* l; Expr* r; } app;
-      struct { std::string s; Expr* t; Expr* r; } lam;
-      struct { std::string s; Expr* t; Expr* r; } pi;
+      struct { const SortTag tag; } sort;
+      struct { const VarTag tag; const uint64_t id; } var;
+      struct { const Expr* l, * r; } app;
+      struct { const std::string s; const Expr* t, * r; } lam;
+      struct { const std::string s; const Expr* t, * r; } pi;
     };
 
-    // The constructors below guarantee that all nonzero pointers in the "active variant" are valid
+    // The constructors below guarantee that all pointers in the "active variant" are valid, if parameters are valid
     Expr(SortTag sorttag): tag(Sort), sort{ sorttag } {}
     Expr(VarTag vartag, uint64_t id): tag(Var), var{ vartag, id } {}
-    Expr(Expr* l, Expr* r): tag(App), app{ l, r } {}
-    Expr(LamTag, const std::string& s, Expr* t, Expr* r): tag(Lam), lam{ s, t, r } {}
-    Expr(PiTag, const std::string& s, Expr* t, Expr* r): tag(Pi), pi{ s, t, r } {}
+    Expr(const Expr* l, const Expr* r): tag(App), app{ l, r } {}
+    Expr(LamTag, const std::string& s, const Expr* t, const Expr* r): tag(Lam), lam{ s, t, r } {}
+    Expr(PiTag, const std::string& s, const Expr* t, const Expr* r): tag(Pi), pi{ s, t, r } {}
 
-    // Copy constructor is shallow copy
-    Expr(const Expr& r): tag(r.tag) {
-      switch (tag) {
-        case Sort: sort = r.sort; break;
-        case Var: var = r.var; break;
-        case App: app = r.app; break;
-        case Lam: new (&lam.s) std::string(r.lam.s); lam.t = r.lam.t; lam.r = r.lam.r; break;
-        case Pi: new (&pi.s) std::string(r.pi.s); pi.t = r.pi.t; pi.r = r.pi.r; break;
-      }
-    }
+    // Immutability + non-trivial members in union = impossible to make a copy constructor...
+    // We use pointers to `Expr`s constructed in `Allocator`s anyway, so this is not a big problem
+    Expr(const Expr&) = delete;
 
     // Destructor needed for std::string in union
     ~Expr() {
@@ -59,20 +52,17 @@ namespace Core {
       }
     }
 
-    // Deep copy
-    // Pre: all nonzero pointers are valid
+    // Deep copy whole expression to `pool`
     // O(size)
-    Expr* clone(Allocator<Expr>& pool) const;
+    const Expr* clone(Allocator<Expr>& pool) const;
 
     // Syntactical equality and hash code (up to alpha-renaming!)
-    // Pre: all nonzero pointers are valid
     // O(size)
     bool operator==(const Expr& rhs) const noexcept;
     bool operator!=(const Expr& rhs) const noexcept { return !(*this == rhs); }
     size_t hash() const noexcept;
 
     // Print
-    // Pre: all nonzero pointers are valid
     // `names` will be unchanged
     // O(size)
     std::string toString(const Context& ctx, std::vector<std::string>& stk) const;
@@ -81,97 +71,109 @@ namespace Core {
       return toString(ctx, stk);
     }
 
-    // Check if the subtree is a well-formed term (1), type (2) or proof (3).
+    // Check if the subtree is a well-formed term (1), type (2), proof (3) or formula (4).
     // (1) Returns a well-formed, beta-reduced expression of type `Type`, representing the type of the term;
     // (2) Returns `Type` itself;
-    // (3) Returns a well-formed, beta-reduced expression of type `Prop`, representing the proposition it proves.
+    // (3) Returns a well-formed, beta-reduced expression of type `Prop`, representing the proposition it proves;
+    // (4) Returns `Prop` itself.
     // Throws exception on failure
-    // Pre: all nonzero pointers are valid
     // `stk` and `names` will be unchanged
-    Expr* checkType(const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk, std::vector<std::string>& names) const;
-    Expr* checkType(const Context& ctx, Allocator<Expr>& pool) const {
+    const Expr* checkType(const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk, std::vector<std::string>& names) const;
+    const Expr* checkType(const Context& ctx, Allocator<Expr>& pool) const {
       std::vector<const Expr*> stk;
       std::vector<std::string> names;
       return checkType(ctx, pool, stk, names);
     }
 
-    // Modification (deep copying whole expression to `pool`)
-    // Pre: all nonzero pointers are valid
+    // Modification (lifetime of the resulting expression is bounded by `this` and `pool`)
     // n = (number of binders on top of current node)
     template <typename F>
-    Expr* updateVars(uint64_t n, Allocator<Expr>& pool, const F& f) const {
+    const Expr* updateVars(uint64_t n, Allocator<Expr>& pool, const F& f) const {
       using enum Tag;
       using enum LamTag;
       using enum PiTag;
       switch (tag) {
-        case Sort: return make(pool, sort.tag);
+        case Sort: return this;
         case Var: return f(n, this);
-        case App: return make(pool, app.l? app.l->updateVars(n, pool, f) : nullptr, app.r? app.r->updateVars(n, pool, f) : nullptr);
-        case Lam: return make(pool, LLam, lam.s, lam.t? lam.t->updateVars(n, pool, f) : nullptr, lam.r? lam.r->updateVars(n + 1, pool, f) : nullptr);
-        case Pi: return make(pool, PPi, pi.s, pi.t? pi.t->updateVars(n, pool, f) : nullptr, pi.r? pi.r->updateVars(n + 1, pool, f) : nullptr);
+        case App: {
+          const auto l = app.l->updateVars(n, pool, f);
+          const auto r = app.r->updateVars(n, pool, f);
+          return (l == app.l && r == app.r)? this : make(pool, l, r);
+        }
+        case Lam: {
+          const auto t = lam.t->updateVars(n, pool, f);
+          const auto r = lam.r->updateVars(n + 1, pool, f);
+          return (t == lam.t && r == lam.r)? this : make(pool, LLam, lam.s, t, r);
+        }
+        case Pi: {
+          const auto t = pi.t->updateVars(n, pool, f);
+          const auto r = pi.r->updateVars(n + 1, pool, f);
+          return (t == pi.t && r == pi.r)? this : make(pool, PPi, pi.s, t, r);
+        }
       }
-      throw NotImplemented();
+      throw NonExhaustive();
     }
 
-    // Make a free variable into an overflow variable (deep copying whole expression to `pool`)
-    Expr* makeBound(uint64_t id, Allocator<Expr>& pool) const {
-      return updateVars(0, pool, [id, &pool] (uint64_t n, const Expr* x) {
-        return (x->var.tag == VFree && x->var.id == id)? make(pool, VBound, n) : x->clone(pool);
+    // Make a free variable into an overflow variable (lifetime of the resulting expression is bounded by `this` and `pool`)
+    const Expr* makeBound(uint64_t id, Allocator<Expr>& pool) const {
+      const Expr* v = nullptr;
+      return updateVars(0, pool, [id, &v, &pool] (uint64_t n, const Expr* x) {
+        return (x->var.tag == VFree && x->var.id == id)? (v? v : v = make(pool, VBound, n)) : x;
       });
     }
 
-    // Replace one overflow variable by an expression (deep copying whole expression to `pool`)
-    Expr* makeReplace(const Expr* t, Allocator<Expr>& pool) const {
+    // Replace one overflow variable by an expression (lifetime of the resulting expression is bounded by `this`, `t` and `pool`)
+    const Expr* makeReplace(const Expr* t, Allocator<Expr>& pool) const {
       return updateVars(0, pool, [t, &pool] (uint64_t n, const Expr* x) {
-        return (x->var.tag == VBound && x->var.id == n)? t->clone(pool) : x->clone(pool);
+        return (x->var.tag == VBound && x->var.id == n)? t : x;
       });
     }
 
-    // Performs applicative-order beta-reduction (deep copying whole expression to `pool`)
-    // Pre: all nonzero pointers are valid
-    // If moreover the original expression is well-typed, the resulting expression will have the same type.
+    // Performs applicative-order beta-reduction (lifetime of the resulting expression is bounded by `this` and `pool`).
+    // If the original expression is well-typed, the resulting expression will have the same type.
     // Note that this function is only a syntactic operation, and does not check well-formedness.
     // It does not terminate on inputs like (\x => x x x) (\x => x x x).
     // If expression is well-typed, worst case time complexity is O(size * 2^size).
-    Expr* reduce(Allocator<Expr>& pool) const;
+    const Expr* reduce(Allocator<Expr>& pool) const;
 
     // Returns the number of symbols of the expression
     // O(size)
     size_t size() const noexcept;
 
     // Check if given variable is in the subtree
-    // Pre: all nonzero pointers are valid
     // O(size)
     bool occurs(VarTag vartag, uint64_t id) const noexcept;
 
     // Returns the maximum undetermined variable ID + 1
     // O(size)
-    size_t numUndetermined() const noexcept;
+    size_t numMeta() const noexcept;
 
     // Check if the expression does not contain undetermined variables
     // O(size)
-    bool isGround() const noexcept { return numUndetermined() == 0; }
+    bool isGround() const noexcept { return numMeta() == 0; }
 
     // Convenient constructor
     template <typename... Ts>
-    inline static Expr* make(Allocator<Expr>& pool, Ts&&... args) {
+    inline static const Expr* make(Allocator<Expr>& pool, Ts&&... args) {
       return pool.emplaceBack(std::forward<Ts>(args)...);
     }
   };
 
+  // A thread-local temporary allocator instance for `Expr`
+  // Should be cleared only by outermost level code
+  inline Allocator<Expr>& temp() {
+    thread_local Allocator<Expr> pool;
+    return pool;
+  }
+
   // An exception class representing checking failure
-  // TODO: refactor this
-  struct CheckFailure: public std::runtime_error {
+  // TODO: delay message generation?
+  struct InvalidExpr: public std::runtime_error {
     const Expr* e;
-    explicit CheckFailure(const std::string& s, const Expr* e): std::runtime_error(s), e(e) {}
-    CheckFailure(const CheckFailure&) = default;
-    CheckFailure& operator=(const CheckFailure&) = default;
-  };
-  struct InvalidExpr: public CheckFailure {
-    InvalidExpr(const std::string& s, const Context& ctx, const Expr* e): CheckFailure("Invalid expression, " + s + ": " + e->toString(ctx), e) {}
-  };
-  struct InvalidProof: public CheckFailure {
-    InvalidProof(const std::string& s, const Context& ctx, const Expr* e): CheckFailure("Invalid proof, " + s + ": " + e->toString(ctx), e) {}
+    explicit InvalidExpr(const std::string& s, const Context& ctx, const Expr* e):
+      std::runtime_error("Invalid expression, " + s + ": " + e->toString(ctx)), e(e) {}
+    InvalidExpr(const InvalidExpr&) = default;
+    InvalidExpr& operator=(const InvalidExpr&) = default;
   };
 
 }

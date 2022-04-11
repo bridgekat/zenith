@@ -1,4 +1,4 @@
-// Core :: Allocator, Unreachable, CheckFailure
+// Core :: Allocator, Unreachable, NotImplemented, NonExhaustive
 
 #ifndef BASE_HPP_
 #define BASE_HPP_
@@ -92,6 +92,9 @@ namespace Core {
   struct NotImplemented: public std::logic_error {
     explicit NotImplemented(const std::string& s = ""):
       std::logic_error("\"Not implemented\" code was called" + (s.empty() ? "" : ": " + s)) {}
+  };
+  struct NonExhaustive: public NotImplemented {
+    NonExhaustive(): NotImplemented("unknown tagged union state") {}
   };
 
 }

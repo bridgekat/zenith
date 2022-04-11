@@ -1,6 +1,5 @@
 #include "procs.hpp"
 
-#if 0
 
 namespace Elab::Procs {
 
@@ -8,6 +7,7 @@ namespace Elab::Procs {
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wterminate"
 
+  /*
   bool propValue(const Expr* e, const vector<bool>& fvmap) {
     using enum Expr::Tag;
     using enum Expr::VarTag;
@@ -80,41 +80,7 @@ namespace Elab::Procs {
     }
     throw NotImplemented();
   }
-
-  bool equalAfterSubs(const Expr* lhs, const Expr* rhs, const Subs& subs) noexcept {
-    using enum Expr::Tag;
-    using enum Expr::VarTag;
-    // Check if an undetermined variable has been replaced
-    if (lhs->tag == VAR && lhs->var.vartag == UNDETERMINED && lhs->var.id < subs.size() && subs[lhs->var.id])
-      return equalAfterSubs(subs[lhs->var.id], rhs, subs);
-    if (rhs->tag == VAR && rhs->var.vartag == UNDETERMINED && rhs->var.id < subs.size() && subs[rhs->var.id])
-      return equalAfterSubs(lhs, subs[rhs->var.id], subs);
-    // Normal comparison (refer to the implementation of `Expr::operator==`)
-    if (lhs->tag != rhs->tag) return false;
-    switch (lhs->tag) {
-      case VAR: {
-        if (lhs->var.vartag != rhs->var.vartag || lhs->var.id != rhs->var.id) return false;
-        const Expr* plhs = lhs->var.c, * prhs = rhs->var.c;
-        for (; plhs && prhs; plhs = plhs->s, prhs = prhs->s) {
-          if (!equalAfterSubs(plhs, prhs, subs)) return false;
-        }
-        if (plhs || prhs) return false;
-        return true;
-      }
-      case TRUE: case FALSE:
-        return true;
-      case NOT:
-        return equalAfterSubs(lhs->conn.l, rhs->conn.l, subs);
-      case AND: case OR: case IMPLIES: case IFF:
-        return equalAfterSubs(lhs->conn.l, rhs->conn.l, subs) &&
-               equalAfterSubs(lhs->conn.r, rhs->conn.r, subs);
-      case FORALL: case EXISTS: case UNIQUE: case FORALL2: case LAMBDA:
-        return lhs->binder.arity == rhs->binder.arity &&
-               lhs->binder.sort  == rhs->binder.sort  &&
-               equalAfterSubs(lhs->binder.r, rhs->binder.r, subs);
-    }
-    throw NotImplemented();
-  }
+  */
 
   #pragma GCC diagnostic pop
 
@@ -122,11 +88,12 @@ namespace Elab::Procs {
     using enum Expr::VarTag;
     string res;
     for (size_t i = 0; i < subs.size(); i++) if (subs[i]) {
-      res += Expr(UNDETERMINED, i).toString(ctx) + " -> " + subs[i]->toString(ctx) + "\n";
+      res += Expr(VMeta, i).toString(ctx) + " => " + subs[i]->toString(ctx) + "\n";
     }
     return res;
   }
 
+  /*
   // A simple anti-unification algorithm.
   // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
   class Antiunifier {
@@ -276,43 +243,6 @@ namespace Elab::Procs {
 
     return res;
   }
-
-  /*
-  // The Martelli-Montanari unification algorithm.
-  // See: http://moscova.inria.fr/~levy/courses/X/IF/03/pi/levy2/martelli-montanari.pdf
-  optional<Subs> mmunify(vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
-    using enum Expr::Tag;
-
-    *
-    * Side note: so what Tony Field described here is not the real Martelli-Montanari:
-    * https://www.doc.ic.ac.uk/~ajf/haskelltests/typeinference/spec.pdf
-    * This method could take exponential time on certain cases, as discussed in the Martelli-Montanari paper...
-    * e.g. consider the following constructions:
-    *
-    * ```
-    * left :: Int -> Type
-    * left n
-    *   | n == 0    = TFun (TFun (TVar s) (TVar s)) (TVar s)
-    *   | otherwise = TFun (TFun (left (n - 1)) (TVar s)) (TVar s)
-    *   where s = "v" ++ show n
-    *
-    * right :: Int -> Type
-    * right n
-    *   | n == 0    = TFun (TFun (TVar s) (TVar s)) (TVar s)
-    *   | otherwise = TFun (TFun (TVar s) (right (n - 1))) (TVar s)
-    *   where s = "v" ++ show n
-    * ```
-    *
-    * Now run: `unify (left 15) (right 15)`. It may take half a minute to complete.
-    * Changing 15 to 20 will cause stack overflow.
-    * (There's another problem with the `applySub` function defined in the spec; it only works when
-    *  the RHS of every substitution does not contain other variables, but is easy to fix.)
-    *
-
-    return res;
-  }
   */
 
 }
-
-#endif

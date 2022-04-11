@@ -14,28 +14,27 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 - [x] [Core specification](notes/design.md) (almost completed)
   - [x] Metavariables / second-order variables
   - [x] Extension by definitions
-- [ ] [The verifier](src/testcore.cpp)
+- [ ] [The verifier](src/core/)
   - [x] Core part (almost completed)
   - [ ] Text & binary file formats for FOL and ND trees
-  - [ ] User-defined connectives (requires "implicit arguments"?)
+  - [x] User-defined connectives (as unchecked axioms in the metalogic...)
   - [ ] "Definition erasure" for exporting proofs
 - [ ] The elaborator
   - [ ] Parser & pretty-printer (WIP)
     - [x] [Parsing algorithms](src/parsing/) (almost completed)
-    - [ ] Pretty-printer (WIP)
     - [ ] Customizable syntax
-    - [x] Notation support (almost completed)
+    - [ ] Pretty-printer
+    - [ ] Partial checking
   - [ ] Interactive proof-searching
     - [x] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
     - [ ] Translation between ND and SC (WIP)
     - [x] [First-order unification](src/elab/procs.hpp) (Robinson's)
-    - [ ] Second-order unification
+    - [ ] Higher-order unification
     - [ ] Equational reasoning
     - [ ] Resolution-based methods (how to translate these to ND?)
   - [ ] Language server & VSCode extension (WIP)
     - [x] Boilerplate, IO, etc.
     - [x] Tracking document changes
-    - [ ] Partial checking
     - [ ] Modifying, fading, etc.
   - [ ] MM1-style Scheme interpreter (I just want more flexible notations/macros... not sure if this is necessary)
   - [ ] Exporting proofs to MM0

@@ -20,13 +20,34 @@ namespace Eval {
   // `T` must be the variant type itself or some derived class;
   // `Ts...` denote all possible types of an atom.
   // (C++23 will allow direct visitation on classes derived from `std::variant`...)
-  template <typename T, typename... Ts> struct BasicSExpr;
-  template <typename T, typename... Ts> struct BasicNil {};
-  template <typename T, typename... Ts> struct BasicCons { const T* head{}, * tail{}; };
-  template <typename T, typename... Ts> struct BasicSExpr { std::variant<BasicNil<T, Ts...>, BasicCons<T, Ts...>, Ts...> v{}; };
+  template <typename T, typename... Ts>
+  struct BasicSExpr;
+  template <typename T, typename... Ts>
+  struct BasicNil {
+    bool operator==(const BasicNil&) const { return true; };
+    bool operator!=(const BasicNil&) const { return false; };
+  };
+  template <typename T, typename... Ts>
+  struct BasicCons {
+    const T* head, * tail;
+    BasicCons(const T* head, const T* tail): head(head), tail(tail) {}
+    bool operator==(const BasicCons& r) const { return *head == *r.head && *tail == *r.tail; };
+    bool operator!=(const BasicCons& r) const { return *head != *r.head || *tail != *r.tail; };
+  };
+  template <typename T, typename... Ts>
+  struct BasicSExpr {
+    std::variant<BasicNil<T, Ts...>, BasicCons<T, Ts...>, Ts...> v{};
+    bool operator==(const BasicSExpr& r) const { return v == r.v; };
+    bool operator!=(const BasicSExpr& r) const { return v != r.v; };
+  };
 
   // Concrete atom types for SExpr
-  struct Symbol { std::string s; };
+  struct Symbol {
+    std::string s;
+    Symbol(const std::string& s): s(s) {}
+    bool operator==(const Symbol& r) const { return s == r.s; };
+    bool operator!=(const Symbol& r) const { return s != r.s; };
+  };
   using Number = int32_t;
   using String = std::string;
   using Boolean = bool;
@@ -38,11 +59,13 @@ namespace Eval {
   using Cons = BasicCons<SExpr, Symbol, Number, String, Boolean, Undefined>;
   using VarType = BasicSExpr<SExpr, Symbol, Number, String, Boolean, Undefined>;
 
+  // Pre (for all methods): there is no "cycle" throughout the tree / DAG
+  // Pre & invariant (for all methods): all pointers (in the "active variant") are valid
   class SExpr: public VarType {
   public:
     // Convenient constructors
     SExpr(): VarType{} {}
-    SExpr(const SExpr* l, const SExpr* r): VarType{ Cons{ l, r } } {}
+    SExpr(const SExpr* l, const SExpr* r): VarType{ Cons(l, r) } {}
     SExpr(Nil): VarType{} {}
     SExpr(Cons const& cons): VarType{ cons } {}
     SExpr(Symbol const& sym): VarType{ sym } {}
@@ -51,18 +74,21 @@ namespace Eval {
     SExpr(Boolean boolean): VarType{ boolean } {}
     SExpr(Undefined): VarType{ Undefined{} } {}
 
-    // Pre: all pointers must be valid (no nullptrs allowed)
     const SExpr* clone(Core::Allocator<SExpr>& pool) const;
 
-    // Pre: all pointers must be valid (no nullptrs allowed)
     std::string toString() const;
-
-    // Pre: all pointers must be valid (no nullptrs allowed)
     std::pair<bool, std::string> toStringUntil(const SExpr* p) const;
 
     static std::string escapeString(const std::string& s);
     static std::string unescapeString(const std::string& s);
   };
+
+  // A thread-local temporary allocator instance for `SExpr`
+  // Should be cleared only by outermost level code
+  inline Core::Allocator<SExpr>& temp() {
+    thread_local Core::Allocator<SExpr> pool;
+    return pool;
+  }
 
 }
 

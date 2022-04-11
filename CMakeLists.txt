@@ -51,7 +51,8 @@ endmacro ()
 add_executable (testcore
   src/core/context.cpp
   src/core/expr.cpp
-  src/core/proof.cpp
+  src/core/fol/fol.cpp
+  src/elab/proof.cpp
   src/elab/procs.cpp
   src/elab/tableau.cpp
   src/testcore.cpp)
@@ -77,7 +78,8 @@ endif ()
 add_executable (testparsing
   src/core/context.cpp
   src/core/expr.cpp
-  src/core/proof.cpp
+  src/core/fol/fol.cpp
+  src/elab/proof.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/parsing/language.cpp
@@ -107,12 +109,12 @@ find_package (Threads)
 add_executable (testserver
   src/core/context.cpp
   src/core/expr.cpp
-  src/core/proof.cpp
+  src/core/fol/fol.cpp
+  src/elab/proof.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/parsing/language.cpp
   src/mu.cpp
-  src/server/coroutine.cpp
   src/server/jsonrpc2.cpp
   src/server/languageserver.cpp
   src/server/lsp.cpp

@@ -16,7 +16,7 @@
     },
     {
       "name": "constant.numeric.apimu",
-      "match": "\\b(and\\.i|and\\.l|and\\.r|or\\.l|or\\.r|or\\.e|implies\\.i|implies\\.e|not\\.i|not\\.e|iff\\.i|iff\\.e|iff\\.l|iff\\.r|equals\\.i|equals\\.e|forall\\.i|forall\\.e|exists\\.i|exists\\.e|unique\\.i|unique\\.l|unique\\.r|forallpred\\.i|forallpred\\.e|forallfunc\\.i|forallfunc\\.e|true\\.i|false\\.e|raa|initial)\\b"
+      "match": "\\b(and\\.i|and\\.l|and\\.r|or\\.l|or\\.r|or\\.e|implies\\.i|implies\\.e|not\\.i|not\\.e|iff\\.i|iff\\.e|iff\\.l|iff\\.r|equals\\.i|equals\\.e|forall\\.i|forall\\.e|exists\\.i|exists\\.e|unique\\.i|unique\\.l|unique\\.r|forallpred\\.i|forallpred\\.e|forallfunc\\.i|forallfunc\\.e|true\\.i|false\\.e|raa|arbitrary)\\b"
     },
     {
       "name": "constant.numeric.apimu",
