@@ -4,6 +4,7 @@
 #define FOL_HPP_
 
 #include <string>
+#include <vector>
 #include <utility>
 #include "../context.hpp"
 #include "../expr.hpp"
@@ -30,10 +31,9 @@ namespace Core {
     // Immutable
     const Tag tag;
     union {
-      struct { const Expr* l; } unary;       // Not
+      struct { const Expr* e; } unary;       // Not, Other
       struct { const Expr* l, * r; } binary; // And, Or, Implies, Iff
       struct { const Expr* r; } binder;      // Forall, Exists, Unique
-      struct { const Expr* e; } other;       // Other
     };
     // I have to move this outside the union, or it will be impossible to make a copy constructor...
     const std::string s{};
@@ -45,9 +45,9 @@ namespace Core {
         default: throw Unreachable();
       }
     }
-    FOLForm(Tag tag, const Expr* l): tag(tag), unary{ l } {
+    FOLForm(Tag tag, const Expr* e): tag(tag), unary{ e } {
       switch (tag) {
-        case Not: break;
+        case Not: case Other: break;
         default: throw Unreachable();
       }
     }
@@ -63,8 +63,6 @@ namespace Core {
         default: throw Unreachable();
       }
     }
-    explicit
-    FOLForm(const Expr* e): tag(Other), other{ e } {}
     FOLForm(const FOLForm&) = default;
 
     // Try matching on an expression.
@@ -82,6 +80,13 @@ namespace Core {
     // Splits "unique x, P" into "exists x, P" and "forall x, P implies (forall y, P implies x = y)"
     // Pre (checked): `tag` is `Unique`
     std::pair<const Expr*, const Expr*> splitUnique(Allocator<Expr>& pool) const;
+
+    // Render as much as possible the "root part" of an expression as first-order formula
+    std::string toString(const Context& ctx, std::vector<std::string>& stk) const;
+    std::string toString(const Context& ctx) const {
+      std::vector<std::string> stk;
+      return toString(ctx, stk);
+    }
   };
 
 }

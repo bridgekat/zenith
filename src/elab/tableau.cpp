@@ -367,7 +367,7 @@ namespace Elab {
         switch (fof.tag) {
           case True:      return dfs(depth);
           case False:     return closing(depth);
-          case Not:       return unary(R, fof.unary.l);
+          case Not:       return unary(R, fof.unary.e);
           case And:       return alpha(L, fof.binary.l, L, fof.binary.r);
           case Or:        throw Unreachable();
           case Implies:   throw Unreachable();
@@ -391,7 +391,7 @@ namespace Elab {
         switch (fof.tag) {
           case True:    return closing(depth);
           case False:   return dfs(depth);
-          case Not:     return unary(L, fof.unary.l);
+          case Not:     return unary(L, fof.unary.e);
           case And:     throw Unreachable();
           case Or:      return alpha(R, fof.binary.l, R, fof.binary.r);
           case Implies: return alpha(L, fof.binary.l, R, fof.binary.r);
@@ -520,9 +520,9 @@ namespace Elab {
     string res;
     res += "+------------------------------------\n";
     for (unsigned int i = 0; i < N; i++) for (const Expr* e: branch.cedents[i][L])
-      res += "| " + e->toString(ctx) + "\n";
+      res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     for (unsigned int i = 0; i < N; i++) for (const Expr* e: branch.cedents[i][R])
-      res += "| ⊢ " + e->toString(ctx) + "\n";
+      res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     res += "+------------------------------------\n";
     return res;
   }
@@ -533,12 +533,12 @@ namespace Elab {
     for (unsigned int i = 0; i < N; i++) {
       res += "| (" + typeToString(i) + ") " + std::to_string(branch.indices[i][L]) + "\n";
       for (const Expr* e: branch.cedents[i][L])
-        res += "| " + e->toString(ctx) + "\n";
+        res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     }
     for (unsigned int i = 0; i < N; i++) {
       res += "| (" + typeToString(i) + ") " + std::to_string(branch.indices[i][R]) + "\n";
       for (const Expr* e: branch.cedents[i][R])
-        res += "| ⊢ " + e->toString(ctx) + "\n";
+        res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     }
     res += "+------------------------------------\n";
     return res;
@@ -676,7 +676,7 @@ namespace Elab {
       for (auto& [ts, pos, type, active, numUniversal, e]: a) {
         out << "<p " << (active ? "" : "class=\"disabled\"") << ">";
         out << "<code>" << (pos == L? "L" : "R") << " (" << typeToString(type) << ") ";
-        out << e->toString(ctx) << "</code>";
+        out << FOLForm::fromExpr(e).toString(ctx) << "</code>";
         out << "<br /><sup>" << ts << "/" << numUniversal << "</sup>";
         out << "</p>";
       }

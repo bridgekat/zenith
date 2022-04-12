@@ -73,7 +73,7 @@ namespace Core {
   }
 
   // Give unnamed bound variables a random name
-  inline string newName(size_t i) {
+  string Expr::newName(size_t i) {
     string res = "__";
     do {
       res.push_back('a' + i % 26);
@@ -82,7 +82,7 @@ namespace Core {
     return res;
   }
 
-  // Undefined variables and null pointers should be OK, as long as non-null pointers are valid.
+  // Undefined variables should be OK, as long as pointers are valid.
   string Expr::toString(const Context& ctx, vector<string>& stk) const {
     switch (tag) {
       case Sort: return
@@ -90,25 +90,29 @@ namespace Core {
         sort.tag == SType ? "Type" :
         "??";
       case Var: return
-        var.tag == VBound ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : "?b" + std::to_string(var.id)) :
-        var.tag == VFree  ? (var.id < ctx.size() ? ctx.identifier(var.id)       : "?f" + std::to_string(var.id)) :
+        var.tag == VBound ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : "?b" + std::to_string(var.id - stk.size())) :
+        var.tag == VFree  ? (var.id < ctx.size() ? ctx.identifier(var.id)       : "?f" + std::to_string(var.id - ctx.size())) :
         var.tag == VMeta  ? "?m" + std::to_string(var.id) :
         "??";
-      case App: return
-        "(" + app.l->toString(ctx, stk) + " " + app.r->toString(ctx, stk) + ")";
+      case App: {
+        bool fl = (app.l->tag != Sort && app.l->tag != Var && app.l->tag != App);
+        bool fr = (app.r->tag != Sort && app.r->tag != Var);
+        return (fl? "(" : "") + app.l->toString(ctx, stk) + (fl? ")" : "") + " " +
+               (fr? "(" : "") + app.r->toString(ctx, stk) + (fr? ")" : "");
+      }
       case Lam: {
         string res, name = lam.s.empty()? newName(stk.size()) : lam.s;
-        res = "(\\" + name + ": " + lam.t->toString(ctx, stk);
+        res = "\\" + name + ": " + lam.t->toString(ctx, stk);
         stk.push_back(name);
-        res += " => " + lam.r->toString(ctx, stk) + ")";
+        res += " => " + lam.r->toString(ctx, stk);
         stk.pop_back();
         return res;
       }
       case Pi: {
         string res, name = pi.s.empty()? newName(stk.size()) : pi.s;
-        res = "((" + name + ": " + pi.t->toString(ctx, stk) + ")";
+        res = "(" + name + ": " + pi.t->toString(ctx, stk) + ")";
         stk.push_back(name);
-        res += " -> " + pi.r->toString(ctx, stk) + ")";
+        res += " -> " + pi.r->toString(ctx, stk);
         stk.pop_back();
         return res;
       }
@@ -190,6 +194,7 @@ namespace Core {
       case Sort: return this;
       case Var: return this;
       case App: {
+        // Applicative-order: reduce subexpressions first
         const auto l = app.l->reduce(pool);
         const auto r = app.r->reduce(pool);
         if (l->tag == Lam) return l->lam.r->makeReplace(r, pool)->reduce(pool);

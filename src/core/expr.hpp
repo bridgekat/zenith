@@ -62,6 +62,9 @@ namespace Core {
     bool operator!=(const Expr& rhs) const noexcept { return !(*this == rhs); }
     size_t hash() const noexcept;
 
+    // Give unnamed bound variables a random name
+    static std::string newName(size_t i);
+
     // Print
     // `names` will be unchanged
     // O(size)

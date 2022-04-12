@@ -3,6 +3,11 @@
 
 namespace Core {
 
+  using std::string;
+  using std::vector;
+  using std::pair;
+
+
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wterminate"
 
@@ -39,13 +44,13 @@ namespace Core {
     using enum Expr::Tag;
     using enum Expr::VarTag;
     switch (e->tag) {
-      case Sort: return FOLForm(e);
+      case Sort: return FOLForm(Other, e);
       case Var: {
         if (e->var.tag == VFree) {
           if (e->var.id == Constant::True)  return FOLForm(True);  // (true)
           if (e->var.id == Constant::False) return FOLForm(False); // (false)
         }
-        return FOLForm(e);
+        return FOLForm(Other, e);
       }
       case App: {
         if (e->app.l->tag == Var) {
@@ -65,10 +70,10 @@ namespace Core {
             if (e->app.l->app.l->var.id == Constant::Iff)     return FOLForm(Iff,     e->app.l->app.r, e->app.r); // (((iff)     (...)) (...))
           }
         }
-        return FOLForm(e);
+        return FOLForm(Other, e);
       }
-      case Lam: return FOLForm(e);
-      case Pi: return FOLForm(e);
+      case Lam: return FOLForm(Other, e);
+      case Pi: return FOLForm(Other, e);
     }
     throw NonExhaustive();
   }
@@ -82,7 +87,7 @@ namespace Core {
     switch (tag) {
       case True:    return expr(VFree, Constant::True);
       case False:   return expr(VFree, Constant::False);
-      case Not:     return expr(expr(VFree, Constant::Not), unary.l);
+      case Not:     return expr(expr(VFree, Constant::Not), unary.e);
       case And:     return expr(expr(expr(VFree, Constant::And),     binary.l), binary.r);
       case Or:      return expr(expr(expr(VFree, Constant::Or),      binary.l), binary.r);
       case Implies: return expr(expr(expr(VFree, Constant::Implies), binary.l), binary.r);
@@ -90,12 +95,12 @@ namespace Core {
       case Forall:  return expr(expr(VFree, Constant::Forall), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
       case Exists:  return expr(expr(VFree, Constant::Exists), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
       case Unique:  return expr(expr(VFree, Constant::Unique), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
-      case Other:   return other.e;
+      case Other:   return unary.e;
     }
     throw NonExhaustive();
   }
 
-  std::pair<const Expr*, const Expr*> FOLForm::splitIff(Allocator<Expr>& pool) const {
+  pair<const Expr*, const Expr*> FOLForm::splitIff(Allocator<Expr>& pool) const {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     if (tag != Iff) throw Unreachable();
@@ -107,7 +112,7 @@ namespace Core {
 
   // Splits "unique x, P" into "exists x, P" and "forall x, P implies (forall y, P implies x = y)"
   // Pre (checked): `tag` is `Unique`
-  std::pair<const Expr*, const Expr*> FOLForm::splitUnique(Allocator<Expr>& pool) const {
+  pair<const Expr*, const Expr*> FOLForm::splitUnique(Allocator<Expr>& pool) const {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     using enum Expr::LamTag;
@@ -122,6 +127,66 @@ namespace Core {
         expr(forall, expr(LLam, s, setvar, expr(expr(implies, binder.r),
           expr(expr(expr(VFree, Constant::Equals), expr(VBound, 1)), expr(VBound, 0))))))))
     };
+  }
+
+  string FOLForm::toString(const Context& ctx, vector<string>& stk) const {
+    switch (tag) {
+      case True:  return "true";
+      case False: return "false";
+      case Not: {
+        auto ee = FOLForm::fromExpr(unary.e);
+        bool fe = (ee.tag != Other && ee.tag != True && ee.tag != False && ee.tag != Not);
+        return string("~") + (fe? "(" : "") + ee.toString(ctx, stk) + (fe? ")" : "");
+      }
+      case And: {
+        auto ll = FOLForm::fromExpr(binary.l), rr = FOLForm::fromExpr(binary.r);
+        bool fl = (ll.tag != Other && ll.tag != True && ll.tag != False && ll.tag != Not && ll.tag != And);
+        bool fr = (rr.tag != Other && rr.tag != True && rr.tag != False && rr.tag != Not);
+        return (fl? "(" : "") + FOLForm::fromExpr(binary.l).toString(ctx, stk) + (fl? ")" : "") + " /\\ " +
+               (fr? "(" : "") + FOLForm::fromExpr(binary.r).toString(ctx, stk) + (fr? ")" : "");
+      }
+      case Or: {
+        auto ll = FOLForm::fromExpr(binary.l), rr = FOLForm::fromExpr(binary.r);
+        bool fl = (ll.tag != Other && ll.tag != True && ll.tag != False && ll.tag != Not && ll.tag != And && ll.tag != Or);
+        bool fr = (rr.tag != Other && rr.tag != True && rr.tag != False && rr.tag != Not && rr.tag != And);
+        return (fl? "(" : "") + FOLForm::fromExpr(binary.l).toString(ctx, stk) + (fl? ")" : "") + " \\/ " +
+               (fr? "(" : "") + FOLForm::fromExpr(binary.r).toString(ctx, stk) + (fr? ")" : "");
+      }
+      case Implies: {
+        auto ll = FOLForm::fromExpr(binary.l), rr = FOLForm::fromExpr(binary.r);
+        bool fl = (ll.tag != Other && ll.tag != True && ll.tag != False && ll.tag != Not && ll.tag != And && ll.tag != Or);
+        bool fr = (rr.tag != Other && rr.tag != True && rr.tag != False && rr.tag != Not && rr.tag != And && rr.tag != Or && rr.tag != Implies);
+        return (fl? "(" : "") + FOLForm::fromExpr(binary.l).toString(ctx, stk) + (fl? ")" : "") + " -> " +
+               (fr? "(" : "") + FOLForm::fromExpr(binary.r).toString(ctx, stk) + (fr? ")" : "");
+      }
+      case Iff: {
+        auto ll = FOLForm::fromExpr(binary.l), rr = FOLForm::fromExpr(binary.r);
+        bool fl = (ll.tag != Other && ll.tag != True && ll.tag != False && ll.tag != Not && ll.tag != And && ll.tag != Or && ll.tag != Implies); // Non-assoc
+        bool fr = (rr.tag != Other && rr.tag != True && rr.tag != False && rr.tag != Not && rr.tag != And && rr.tag != Or && rr.tag != Implies);
+        return (fl? "(" : "") + FOLForm::fromExpr(binary.l).toString(ctx, stk) + (fl? ")" : "") + " <-> " +
+               (fr? "(" : "") + FOLForm::fromExpr(binary.r).toString(ctx, stk) + (fr? ")" : "");
+      }
+      case Forall: {
+        string name = (s.empty()? Expr::newName(stk.size()) : s), res = "forall " + name + ", ";
+        stk.push_back(name); res += FOLForm::fromExpr(binder.r).toString(ctx, stk); stk.pop_back();
+        return res;
+      }
+      case Exists: {
+        string name = (s.empty()? Expr::newName(stk.size()) : s), res = "exists " + name + ", ";
+        stk.push_back(name); res += FOLForm::fromExpr(binder.r).toString(ctx, stk); stk.pop_back();
+        return res;
+      }
+      case Unique: {
+        string name = (s.empty()? Expr::newName(stk.size()) : s), res = "unique " + name + ", ";
+        stk.push_back(name); res += FOLForm::fromExpr(binder.r).toString(ctx, stk); stk.pop_back();
+        return res;
+      }
+      case Other: {
+        auto fe = (unary.e->tag != Expr::Sort && unary.e->tag != Expr::Var && unary.e->tag != Expr::App);
+        return (fe? "(" : "") + unary.e->toString(ctx, stk) + (fe? ")" : "");
+      }
+    }
+    throw NonExhaustive();
   }
 
   #undef expr

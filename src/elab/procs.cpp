@@ -13,7 +13,7 @@ namespace Elab::Procs {
     switch (fof.tag) {
       case True:    return true;
       case False:   return false;
-      case Not:     return !propValue(fof.unary.l, fvmap);
+      case Not:     return !propValue(fof.unary.e, fvmap);
       case And:     return  propValue(fof.binary.l, fvmap) && propValue(fof.binary.r, fvmap);
       case Or:      return  propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
       case Implies: return !propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
@@ -33,7 +33,7 @@ namespace Elab::Procs {
     switch (fof.tag) {
       case True:      return FOLForm(negated? False : True).toExpr(pool);
       case False:     return FOLForm(negated? True : False).toExpr(pool);
-      case Not:       return nnf(fof.unary.l, pool, !negated);
+      case Not:       return nnf(fof.unary.e, pool, !negated);
       case And:       return FOLForm(negated? Or : And, nnf(fof.binary.l, pool, negated), nnf(fof.binary.r, pool, negated)).toExpr(pool);
       case Or:        return FOLForm(negated? And : Or, nnf(fof.binary.l, pool, negated), nnf(fof.binary.r, pool, negated)).toExpr(pool);
       case Implies:   return FOLForm(negated? And : Or, nnf(fof.binary.l, pool, !negated), nnf(fof.binary.r, pool, negated)).toExpr(pool);
@@ -92,7 +92,7 @@ namespace Elab::Procs {
       for (const Expr* lit: c) {
         res += g? " " : ", ";
         g = false;
-        res += lit->toString(ctx);
+        res += FOLForm::fromExpr(lit).toString(ctx);
       }
       res += g? "}" : " }";
     }

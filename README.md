@@ -6,7 +6,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 
 [Metamath One](https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md) looks nice! I did not realize this earlier...
 
-(I am not aiming to make any serious ITP software! This is just a "toy" system for inexperienced users (and AI) to interact with, so I will just try to make the UI as intuitive as possible while keeping the background theory simple. It seems like FOL with equality (with natural deduction) + meta-variables (for axiom schemata) + extension by definitions are already enough for this...)
+(I am not aiming to make any serious ITP software! This is just a "toy" system for inexperienced users (and AI) to interact with, so I will just try to make the UI as intuitive as possible while keeping the background theory simple. It seems like first-order logic with equality (with natural deduction) + meta-variables (for axiom schemata) + extension by definitions are already enough for this...)
 
 (Update: just found out that using dependent type theory as a meta-logic actually *simplifies* code 🤣. But I'm not going to add anything beyond basic Π-types and β-reduction for now. No intensional equality, no inductive types, the thing is there just to express first-order logic and second-order schema rules in a more manageable way...)
 
@@ -26,7 +26,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [x] [Parsing algorithms](src/parsing/) (almost completed)
     - [ ] Customizable syntax
     - [ ] Pretty-printer
-    - [ ] Partial checking
+  - [ ] Partial checking
   - [ ] Interactive proof-searching
     - [x] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
     - [ ] Translation between ND and SC (WIP)
@@ -47,7 +47,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
   - [ ] Naturals, integers and rationals under ZFC
   - [ ] Groups under ZFC
 - [ ] Advanced elaborator features
-  - [ ] Inductive definitions (i.e. building a model of Martin-Löf type theory in ZFC + ???)
+  - [ ] Inductive definitions (≈ building a model of CIC in ZFC???)
   - [ ] Transferring results through isomorphism (if I could make this far...)
 
 
