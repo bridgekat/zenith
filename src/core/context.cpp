@@ -48,7 +48,7 @@ namespace Core {
     // Alter types
     for (size_t i = index; i + 1 < entries.size(); i++) {
       const auto& [t, y] = entries[i + 1];
-      entries[i] = { t, expr(PPi, s, x->clone(pool2), y->updateVars(0, pool1, modify)->clone(pool2)) };
+      entries[i] = { t, expr(PPi, s, x->clone(pool2), y->updateVars(modify, pool1)->clone(pool2)) };
     }
     entries.pop_back();
 

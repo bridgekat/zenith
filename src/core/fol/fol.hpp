@@ -33,6 +33,7 @@ namespace Core {
       struct { const Expr* l; } unary;       // Not
       struct { const Expr* l, * r; } binary; // And, Or, Implies, Iff
       struct { const Expr* r; } binder;      // Forall, Exists, Unique
+      struct { const Expr* e; } other;       // Other
     };
     // I have to move this outside the union, or it will be impossible to make a copy constructor...
     const std::string s{};
@@ -40,7 +41,7 @@ namespace Core {
     explicit
     FOLForm(Tag tag): tag(tag) {
       switch (tag) {
-        case True: case False: case Other: break;
+        case True: case False: break;
         default: throw Unreachable();
       }
     }
@@ -62,6 +63,8 @@ namespace Core {
         default: throw Unreachable();
       }
     }
+    explicit
+    FOLForm(const Expr* e): tag(Other), other{ e } {}
     FOLForm(const FOLForm&) = default;
 
     // Try matching on an expression.
@@ -69,8 +72,7 @@ namespace Core {
     // Otherwise returns `Other`.
     static FOLForm fromExpr(const Expr* e) noexcept;
 
-    // Convert to expresssion (lifetime bounded by subexpression pointers and `pool`)
-    // Pre (checked): `tag` is not `Other`
+    // Convert to expresssion (lifetime bounded by subexpression pointers and `pool`).
     const Expr* toExpr(Allocator<Expr>& pool) const;
 
     // Splits "P iff Q" into "P implies Q" and "Q implies P"

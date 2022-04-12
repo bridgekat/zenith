@@ -88,12 +88,12 @@ namespace Core {
       case Sort: return
         sort.tag == SProp ? "Prop" :
         sort.tag == SType ? "Type" :
-        "@N";
+        "??";
       case Var: return
-        var.tag == VBound ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : "@B" + std::to_string(var.id)) :
-        var.tag == VFree  ? (var.id < ctx.size() ? ctx.identifier(var.id)       : "@F" + std::to_string(var.id)) :
-        var.tag == VMeta  ? "@M" + std::to_string(var.id) :
-        "@N";
+        var.tag == VBound ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : "?b" + std::to_string(var.id)) :
+        var.tag == VFree  ? (var.id < ctx.size() ? ctx.identifier(var.id)       : "?f" + std::to_string(var.id)) :
+        var.tag == VMeta  ? "?m" + std::to_string(var.id) :
+        "??";
       case App: return
         "(" + app.l->toString(ctx, stk) + " " + app.r->toString(ctx, stk) + ")";
       case Lam: {

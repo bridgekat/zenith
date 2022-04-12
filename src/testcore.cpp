@@ -234,9 +234,10 @@ int main() {
     uint64_t s = ctx.pushAssumption("s", prop);
 
     auto e = bin(bin(fv(p), Iff, fv(q)), Iff, un(Not, bin(fv(r), Implies, fv(s))));
-    auto nnf = Elab::Procs::nnf(e, pool);
     cout << e->toString(ctx) << endl;
+    auto nnf = Elab::Procs::nnf(e, pool);
     cout << nnf->toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
     Elab::Procs::foreachValuation({ p, q, r, s }, [&e, &nnf] (const vector<bool>& fvmap) {
       cout << Elab::Procs::propValue(e, fvmap);
       cout << Elab::Procs::propValue(nnf, fvmap);
@@ -248,6 +249,9 @@ int main() {
 
     cout << "(Not provable)" << endl;
     e = un(Not, bin(fv(p), Or, un(Not, fv(p))));
+    nnf = Procs::nnf(e, pool);
+    cout << nnf->toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -257,6 +261,9 @@ int main() {
 
     cout << "(Provable)" << endl;
     e = bin(fv(p), Or, un(Not, fv(p)));
+    nnf = Procs::nnf(e, pool);
+    cout << nnf->toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -267,6 +274,10 @@ int main() {
     // ¬(p ↔ ¬p)
     cout << "(Provable)" << endl;
     e = un(Not, bin(fv(p), Iff, un(Not, fv(p))));
+    nnf = Procs::nnf(e, pool);
+    cout << nnf->toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
@@ -372,6 +383,11 @@ int main() {
 
     cout << "(Provable)" << endl;
     auto e = exists("x", forall("y", bin(app(fv(R), bv(1)), Implies, app(fv(R), bv(0)))));
+    cout << e->toString(ctx) << endl;
+    auto nnf = Procs::nnf(e, pool);
+    cout << nnf->toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
@@ -381,6 +397,11 @@ int main() {
     cout << "(Provable)" << endl;
     e = bin(exists("y", exists("z", forall("x", bin(bin(app(fv(F), bv(0)), Implies, app(fv(G), bv(2))), And, bin(app(fv(G), bv(1)), Implies, app(fv(F), bv(0))))))),
       Implies, forall("x", exists("y", bin(app(fv(F), bv(1)), Iff, app(fv(G), bv(0))))));
+    cout << e->toString(ctx) << endl;
+    nnf = Procs::nnf(e, pool);
+    cout << nnf->toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
@@ -468,6 +489,11 @@ int main() {
         )
       ))
     );
+    cout << e->toString(ctx) << endl;
+    auto nnf = Procs::nnf(e, pool);
+    cout << nnf->toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;

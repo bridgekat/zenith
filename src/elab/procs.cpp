@@ -48,6 +48,58 @@ namespace Elab::Procs {
     throw NonExhaustive();
   }
 
+  template <typename T>
+  vector<T> concat(vector<T> a, const vector<T>& b) {
+    for (const auto& x: b) a.push_back(x);
+    return a;
+  }
+
+  template <typename T>
+  vector<vector<T>> distrib(const vector<vector<T>>& a, const vector<vector<T>>& b) {
+    vector<vector<T>> res;
+    for (const auto& x: a) for (const auto& y: b) res.push_back(concat(x, y));
+    return res;
+  }
+
+  vector<vector<const Expr*>> cnf(const Expr* e, uint64_t meta, uint64_t skolem, Allocator<Expr>& pool) {
+    using enum Expr::VarTag;
+    using enum FOLForm::Tag;
+    auto fof = FOLForm::fromExpr(e);
+    switch (fof.tag) {
+      case True:    return {};
+      case False:   return {{}};
+      case Not:     return {{ e }}; // Not splitted
+      case And:     return concat(cnf(fof.binary.l, meta, skolem, pool), cnf(fof.binary.r, meta, skolem, pool));
+      case Or:      return distrib(cnf(fof.binary.l, meta, skolem, pool), cnf(fof.binary.r, meta, skolem, pool));
+      case Implies: return {{ e }}; // Not splitted
+      case Iff:     return {{ e }}; // Not splitted
+      case Forall:  return cnf(fof.binder.r->makeReplace(pool.emplaceBack(VMeta, meta), pool), meta + 1, skolem, pool);
+      case Exists:  return cnf(fof.binder.r->makeReplace(makeSkolem(meta, skolem, pool), pool), meta, skolem + 1, pool);
+      case Unique:  return {{ e }}; // Not splitted
+      case Other:   return {{ e }}; // Not splitted
+    }
+    throw NonExhaustive();
+  }
+
+  string showClauses(const vector<vector<const Expr*>>& cs, const Context& ctx) {
+    string res = "{";
+    bool f = true;
+    for (const auto& c: cs) {
+      res += f? "\n  " : "\n  "; // res += f? " " : ", ";
+      f = false;
+      res += "{";
+      bool g = true;
+      for (const Expr* lit: c) {
+        res += g? " " : ", ";
+        g = false;
+        res += lit->toString(ctx);
+      }
+      res += g? "}" : " }";
+    }
+    res += f? "}" : "\n}"; // res += f? "}" : " }";
+    return res;
+  }
+
   string showSubs(const Subs& subs, const Context& ctx) {
     using enum Expr::VarTag;
     string res;
@@ -77,7 +129,7 @@ namespace Elab::Procs {
 
   #pragma GCC diagnostic pop
 
-  // A simple anti-unification algorithm.
+  // A simple anti-unification procedure. O(min(lhs size, rhs size))
   // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
   class Antiunifier {
   public:
@@ -85,21 +137,16 @@ namespace Elab::Procs {
     Subs ls, rs;
 
     Antiunifier(Allocator<Expr>& pool): pool(pool), ls(), rs() {}
-    Antiunifier(const Antiunifier&) = delete;
-    Antiunifier& operator=(const Antiunifier&) = delete;
 
     const Expr* dfs(const Expr* lhs, const Expr* rhs) {
       using enum Expr::Tag;
-      using enum Expr::VarTag;
-
       // If roots are different, return this
       auto different = [this, lhs, rhs] () {
         uint64_t id = ls.size();
         ls.push_back(lhs);
         rs.push_back(rhs);
-        return pool.emplaceBack(VMeta, id);
+        return pool.emplaceBack(Expr::VMeta, id);
       };
- 
       if (lhs->tag != rhs->tag) return different();
       // lhs->tag == rhs->tag
       switch (lhs->tag) {
@@ -125,7 +172,8 @@ namespace Elab::Procs {
     }
 
     tuple<const Expr*, Subs, Subs> operator()(const Expr* lhs, const Expr* rhs) {
-      ls.clear(); rs.clear();
+      ls.clear();
+      rs.clear();
       const Expr* c = dfs(lhs, rhs);
       return { c, ls, rs };
     }
@@ -135,7 +183,7 @@ namespace Elab::Procs {
     return Antiunifier(pool)(lhs, rhs);
   }
 
-  // The Robinson's unification algorithm (could take exponential time for certain cases.)
+  // The Robinson's unification algorithm (could take exponential time for certain cases).
   // See: https://en.wikipedia.org/wiki/Unification_(computer_science)#A_unification_algorithm
   optional<Subs> unify(vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
     using enum Expr::Tag;
@@ -149,12 +197,12 @@ namespace Elab::Procs {
       // id < res.size()
       res[id] = e;
       // Update the rest of `a`
-      auto f = [id, e, &pool] (uint64_t, const Expr* x) {
+      auto f = [id, e] (uint64_t, const Expr* x) {
         return (x->var.tag == VMeta && x->var.id == id)? e : x;
       };
       for (size_t i = i0; i < a.size(); i++) {
-        a[i].first = a[i].first->updateVars(0, pool, f);
-        a[i].second = a[i].second->updateVars(0, pool, f);
+        a[i].first = a[i].first->updateVars(f, pool);
+        a[i].second = a[i].second->updateVars(f, pool);
       }
     };
 

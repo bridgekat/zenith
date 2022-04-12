@@ -88,26 +88,26 @@ namespace Core {
     // Modification (lifetime of the resulting expression is bounded by `this` and `pool`)
     // n = (number of binders on top of current node)
     template <typename F>
-    const Expr* updateVars(uint64_t n, Allocator<Expr>& pool, const F& f) const {
-      using enum Tag;
+    const Expr* updateVars(F f, Allocator<Expr>& pool, uint64_t n = 0) const {
+      using enum Tag; // These are needed to avoid ICE on gcc...
       using enum LamTag;
       using enum PiTag;
       switch (tag) {
         case Sort: return this;
         case Var: return f(n, this);
         case App: {
-          const auto l = app.l->updateVars(n, pool, f);
-          const auto r = app.r->updateVars(n, pool, f);
+          const auto l = app.l->updateVars(f, pool, n);
+          const auto r = app.r->updateVars(f, pool, n);
           return (l == app.l && r == app.r)? this : make(pool, l, r);
         }
         case Lam: {
-          const auto t = lam.t->updateVars(n, pool, f);
-          const auto r = lam.r->updateVars(n + 1, pool, f);
+          const auto t = lam.t->updateVars(f, pool, n);
+          const auto r = lam.r->updateVars(f, pool, n + 1);
           return (t == lam.t && r == lam.r)? this : make(pool, LLam, lam.s, t, r);
         }
         case Pi: {
-          const auto t = pi.t->updateVars(n, pool, f);
-          const auto r = pi.r->updateVars(n + 1, pool, f);
+          const auto t = pi.t->updateVars(f, pool, n);
+          const auto r = pi.r->updateVars(f, pool, n + 1);
           return (t == pi.t && r == pi.r)? this : make(pool, PPi, pi.s, t, r);
         }
       }
@@ -117,16 +117,16 @@ namespace Core {
     // Make a free variable into an overflow variable (lifetime of the resulting expression is bounded by `this` and `pool`)
     const Expr* makeBound(uint64_t id, Allocator<Expr>& pool) const {
       const Expr* v = nullptr;
-      return updateVars(0, pool, [id, &v, &pool] (uint64_t n, const Expr* x) {
+      return updateVars([id, &v, &pool] (uint64_t n, const Expr* x) {
         return (x->var.tag == VFree && x->var.id == id)? (v? v : v = make(pool, VBound, n)) : x;
-      });
+      }, pool);
     }
 
     // Replace one overflow variable by an expression (lifetime of the resulting expression is bounded by `this`, `t` and `pool`)
     const Expr* makeReplace(const Expr* t, Allocator<Expr>& pool) const {
-      return updateVars(0, pool, [t, &pool] (uint64_t n, const Expr* x) {
+      return updateVars([t, &pool] (uint64_t n, const Expr* x) {
         return (x->var.tag == VBound && x->var.id == n)? t : x;
-      });
+      }, pool);
     }
 
     // Performs applicative-order beta-reduction (lifetime of the resulting expression is bounded by `this` and `pool`).

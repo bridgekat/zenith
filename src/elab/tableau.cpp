@@ -325,8 +325,7 @@ namespace Elab {
       // TODO: selection in reentrant gamma expansions
       bool closed = false;
       size_t id = branch.numUniversal;
-      const Expr* newVar = pool.emplaceBack(VMeta, id);
-      const Expr* body = e->app.r->lam.r->makeReplace(newVar, pool);
+      const Expr* body = e->app.r->lam.r->makeReplace(pool.emplaceBack(VMeta, id), pool);
       WithValue gn(&branch.numUniversal, branch.numUniversal + 1);
       WithCedent g(this, body, pos, &closed);
 
@@ -346,10 +345,8 @@ namespace Elab {
     // Delta
     auto delta = [this, closing, depth] (Position pos, const Expr* e) {
       bool closed = false;
-      size_t id = numSkolem + ctx.size();      
-      const Expr* newVar = pool.emplaceBack(VFree, id);
-      for (size_t j = 0; j < branch.numUniversal; j++) newVar = pool.emplaceBack(newVar, pool.emplaceBack(VMeta, j));
-      const Expr* body = e->app.r->lam.r->makeReplace(newVar, pool);
+      size_t id = numSkolem + ctx.size();
+      const Expr* body = e->app.r->lam.r->makeReplace(Procs::makeSkolem(branch.numUniversal, id, pool), pool);
       WithValue gn(&numSkolem, numSkolem + 1);
       WithCedent g(this, body, pos, &closed);
       return closed? closing(depth) : dfs(depth);

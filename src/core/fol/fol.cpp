@@ -39,13 +39,13 @@ namespace Core {
     using enum Expr::Tag;
     using enum Expr::VarTag;
     switch (e->tag) {
-      case Sort: return FOLForm(Other);
+      case Sort: return FOLForm(e);
       case Var: {
         if (e->var.tag == VFree) {
           if (e->var.id == Constant::True)  return FOLForm(True);  // (true)
           if (e->var.id == Constant::False) return FOLForm(False); // (false)
         }
-        return FOLForm(Other);
+        return FOLForm(e);
       }
       case App: {
         if (e->app.l->tag == Var) {
@@ -65,10 +65,10 @@ namespace Core {
             if (e->app.l->app.l->var.id == Constant::Iff)     return FOLForm(Iff,     e->app.l->app.r, e->app.r); // (((iff)     (...)) (...))
           }
         }
-        return FOLForm(Other);
+        return FOLForm(e);
       }
-      case Lam: return FOLForm(Other);
-      case Pi: return FOLForm(Other);
+      case Lam: return FOLForm(e);
+      case Pi: return FOLForm(e);
     }
     throw NonExhaustive();
   }
@@ -90,7 +90,7 @@ namespace Core {
       case Forall:  return expr(expr(VFree, Constant::Forall), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
       case Exists:  return expr(expr(VFree, Constant::Exists), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
       case Unique:  return expr(expr(VFree, Constant::Unique), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
-      case Other:   throw Unreachable();
+      case Other:   return other.e;
     }
     throw NonExhaustive();
   }
