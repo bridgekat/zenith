@@ -29,7 +29,7 @@ namespace Eval {
   };
   template <typename T, typename... Ts>
   struct BasicCons {
-    const T* head, * tail;
+    mutable const T* head, * tail;
     BasicCons(const T* head, const T* tail): head(head), tail(tail) {}
     bool operator==(const BasicCons& r) const { return *head == *r.head && *tail == *r.tail; };
     bool operator!=(const BasicCons& r) const { return *head != *r.head || *tail != *r.tail; };
@@ -42,22 +42,29 @@ namespace Eval {
   };
 
   // Concrete atom types for SExpr
+  class SExpr;
   struct Symbol {
     std::string s;
     Symbol(const std::string& s): s(s) {}
     bool operator==(const Symbol& r) const { return s == r.s; };
     bool operator!=(const Symbol& r) const { return s != r.s; };
   };
-  using Number = int32_t;
+  using Number = int64_t;
   using String = std::string;
   using Boolean = bool;
   using Undefined = std::monostate;
+  struct Closure {
+    const SExpr* env, * formal, * es;
+    Closure(const SExpr* env, const SExpr* formal, const SExpr* es): env(env), formal(formal), es(es) {}
+    bool operator==(const Closure& r) const { return env == r.env && formal == r.formal && es == r.es; };
+    bool operator!=(const Closure& r) const { return env != r.env || formal != r.formal || es != r.es; };
+  };
 
   // Main SExpr type
   class SExpr;
-  using Nil = BasicNil<SExpr, Symbol, Number, String, Boolean, Undefined>;
-  using Cons = BasicCons<SExpr, Symbol, Number, String, Boolean, Undefined>;
-  using VarType = BasicSExpr<SExpr, Symbol, Number, String, Boolean, Undefined>;
+  using Nil = BasicNil<SExpr, Symbol, Number, String, Boolean, Undefined, Closure>;
+  using Cons = BasicCons<SExpr, Symbol, Number, String, Boolean, Undefined, Closure>;
+  using VarType = BasicSExpr<SExpr, Symbol, Number, String, Boolean, Undefined, Closure>;
 
   // Pre (for all methods): there is no "cycle" throughout the tree / DAG
   // Pre & invariant (for all methods): all pointers (in the "active variant") are valid
@@ -72,7 +79,8 @@ namespace Eval {
     SExpr(Number const& num): VarType{ num } {}
     SExpr(String const& str): VarType{ str } {}
     SExpr(Boolean boolean): VarType{ boolean } {}
-    SExpr(Undefined): VarType{ Undefined{} } {}
+    SExpr(Undefined): VarType{ Undefined() } {}
+    SExpr(Closure const& cl): VarType { cl } {}
 
     const SExpr* clone(Core::Allocator<SExpr>& pool) const;
 
@@ -83,12 +91,14 @@ namespace Eval {
     static std::string unescapeString(const std::string& s);
   };
 
+  /*
   // A thread-local temporary allocator instance for `SExpr`
   // Should be cleared only by outermost level code
   inline Core::Allocator<SExpr>& temp() {
     thread_local Core::Allocator<SExpr> pool;
     return pool;
   }
+  */
 
 }
 

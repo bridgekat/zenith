@@ -182,9 +182,8 @@ public:
       if (!opt) break;
       const SExpr* e = opt->e;
       try {
-        const SExpr* res = env.eval(e);
-        cout << res->toString() << endl;
-        temp().clear();
+        const SExpr* res = env.evalStatement(e);
+        if (*res != SExpr(Undefined())) cout << res->toString() << endl;
       } catch (EvalError& ex) {
         const auto& [found, prefix] = ex.e->toStringUntil(ex.at);
         cout << endl;
@@ -196,8 +195,7 @@ public:
                        << std::string(ex.at->toString().size(), '~') << endl;
         } else {
           cout << "× Error evaluating, " << ex.what() << endl;
-          cout << "  Expression: " << ex.e->toString() << endl;
-          cout << "  At: " << ex.at->toString() << endl;
+          cout << "  Subexpression: " << ex.at->toString() << endl;
         }
         cout << endl;
       }
@@ -216,6 +214,15 @@ int main() {
     string in;
     cout << ">> ";
     std::getline(cin, in);
+    if (in == "{") {
+      in = "";
+      string curr;
+      std::getline(cin, curr);
+      while (curr != "}") {
+        in += curr;
+        std::getline(cin, curr);
+      }
+    }
     lisp.evalPrint(in);
   }
 

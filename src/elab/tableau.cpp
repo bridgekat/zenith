@@ -47,6 +47,8 @@ namespace Elab {
     switch (antesucc) {
       case L:
         switch (fof.tag) {
+          case Other:   return ι;
+          case Equals:  return ι;
           case True:    return α;
           case False:   return α;
           case Not:     return α;
@@ -57,11 +59,12 @@ namespace Elab {
           case Forall:  return γ;
           case Exists:  return δ;
           case Unique:  return α;
-          case Other:   return ι;
         }
         break;
       case R:
         switch (fof.tag) {
+          case Other:   return ι;
+          case Equals:  return ι;
           case True:    return α;
           case False:   return α;
           case Not:     return α;
@@ -72,7 +75,6 @@ namespace Elab {
           case Forall:  return δ;
           case Exists:  return γ;
           case Unique:  return β;
-          case Other:   return ι;
         }
         break;
     }
@@ -268,14 +270,14 @@ namespace Elab {
       return dfs(depth);
     };
 
-    // Unary alpha
+    // Unary
     auto unary = [this, closing, depth] (Position pos, const Expr* e) {
       bool closed = false;
       WithCedent g(this, e, pos, &closed);
       return closed? closing(depth) : dfs(depth);
     };
 
-    // Binary alpha
+    // Alpha
     auto alpha = [this, closing, depth] (Position pos1, const Expr* e1, Position pos2, const Expr* e2) {
       bool closed = false;
       WithCedent g1(this, e1, pos1, &closed);
@@ -346,7 +348,8 @@ namespace Elab {
     auto delta = [this, closing, depth] (Position pos, const Expr* e) {
       bool closed = false;
       size_t id = numSkolem + ctx.size();
-      const Expr* body = e->app.r->lam.r->makeReplace(Procs::makeSkolem(branch.numUniversal, id, pool), pool);
+      vector<uint64_t> metas; for (uint64_t i = 0; i < branch.numUniversal; i++) metas.push_back(i);
+      const Expr* body = e->app.r->lam.r->makeReplace(Procs::makeSkolem(id, metas, pool), pool);
       WithValue gn(&numSkolem, numSkolem + 1);
       WithCedent g(this, body, pos, &closed);
       return closed? closing(depth) : dfs(depth);
@@ -365,6 +368,8 @@ namespace Elab {
         if (!(classify(L, e) == i || (classify(L, e) == γ && i == γre))) throw Unreachable();
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
+          case Other:     return iota(L, e);
+          case Equals:    return iota(L, e);
           case True:      return dfs(depth);
           case False:     return closing(depth);
           case Not:       return unary(R, fof.unary.e);
@@ -377,7 +382,6 @@ namespace Elab {
           case Exists:    return delta(L, e);
           case Unique:  { const auto [exi, no2] = fof.splitUnique(pool);
                           return alpha(L, exi, L, no2); }
-          case Other:     return iota(L, e);
         }
         throw Unreachable();
       }
@@ -389,6 +393,8 @@ namespace Elab {
         if (!(classify(R, e) == i || (classify(R, e) == γ && i == γre))) throw Unreachable();
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
+          case Other:   return iota(R, e);
+          case Equals:  return iota(R, e);
           case True:    return closing(depth);
           case False:   return dfs(depth);
           case Not:     return unary(L, fof.unary.e);
@@ -399,7 +405,6 @@ namespace Elab {
           case Forall:  return delta(R, e);
           case Exists:  return gamma(R, e, false);
           case Unique:  throw Unreachable();
-          case Other:   return iota(R, e);
         }
         throw Unreachable();
       }

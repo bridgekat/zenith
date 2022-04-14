@@ -236,13 +236,12 @@ int main() {
     auto e = bin(bin(fv(p), Iff, fv(q)), Iff, un(Not, bin(fv(r), Implies, fv(s))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    auto nnf = Procs::nnf(e, pool);
-    cout << nnf->checkType(ctx, temp())->toString(ctx) << endl;
-    cout << FOLForm::fromExpr(nnf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
-    Elab::Procs::foreachValuation({ p, q, r, s }, [&e, &nnf] (const vector<bool>& fvmap) {
+    auto snf = Procs::skolemize(un(Not, e), ctx, pool);
+    cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
+    Elab::Procs::foreachValuation({ p, q, r, s }, [&e, &snf] (const vector<bool>& fvmap) {
       cout << Elab::Procs::propValue(e, fvmap);
-      cout << Elab::Procs::propValue(nnf, fvmap);
+      cout << !Elab::Procs::propValue(snf, fvmap);
     });
     cout << endl;
     cout << endl;
@@ -251,10 +250,9 @@ int main() {
     e = un(Not, bin(fv(p), Or, un(Not, fv(p))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    nnf = Procs::nnf(e, pool);
-    cout << nnf->checkType(ctx, temp())->toString(ctx) << endl;
-    cout << FOLForm::fromExpr(nnf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+    snf = Procs::skolemize(un(Not, e), ctx, pool);
+    cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -266,10 +264,9 @@ int main() {
     e = bin(fv(p), Or, un(Not, fv(p)));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    nnf = Procs::nnf(e, pool);
-    cout << nnf->checkType(ctx, temp())->toString(ctx) << endl;
-    cout << FOLForm::fromExpr(nnf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+    snf = Procs::skolemize(un(Not, e), ctx, pool);
+    cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -282,16 +279,39 @@ int main() {
     e = un(Not, bin(fv(p), Iff, un(Not, fv(p))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    nnf = Procs::nnf(e, pool);
-    cout << nnf->checkType(ctx, temp())->toString(ctx) << endl;
-    cout << FOLForm::fromExpr(nnf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+    snf = Procs::skolemize(un(Not, e), ctx, pool);
+    cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
     cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << tableau.printStats() << endl;
     tableau.clear();
+  }
+
+  {
+    using namespace Elab;
+    Allocator<Expr> pool;
+    FOLContext ctx;
+
+    uint64_t lt  = ctx.pushAssumption("<", pi("x", setvar, pi("y", setvar, prop)));
+    uint64_t mul = ctx.pushAssumption("*", pi("x", setvar, pi("y", setvar, setvar)));
+    uint64_t x   = ctx.pushAssumption("x", setvar);
+    uint64_t P   = ctx.pushAssumption("P", pi("x", setvar, prop));
+    uint64_t Q   = ctx.pushAssumption("Q", pi("x", setvar, prop));
+
+    auto e = exists("y", bin(bin(fv(x), lt, bv(0)), Implies, forall("u", exists("v", bin(bin(fv(x), mul, bv(1)), lt, bin(bv(2), mul, bv(0)))))));
+    cout << e->checkType(ctx, temp())->toString(ctx) << endl;
+    cout << FOLForm::fromExpr(e).toString(ctx) << endl;
+    cout << FOLForm::fromExpr(Procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
+    
+    e = forall("x", bin(app(fv(P), bv(0)), Implies, exists("y", exists("z", bin(app(fv(Q), bv(1)), Or, un(Not, exists("z", bin(app(fv(P), bv(0)), And, app(fv(Q), bv(0))))))))));
+    cout << e->checkType(ctx, temp())->toString(ctx) << endl;
+    cout << FOLForm::fromExpr(e).toString(ctx) << endl;
+    cout << FOLForm::fromExpr(Procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
+
+    cout << endl;
   }
 
   {
@@ -363,13 +383,13 @@ int main() {
     FOLContext ctx;
     Tableau tableau(ctx);
 
-    uint64_t P = ctx.addVariable("P", pi("x", setvar, pi("y", setvar, prop)));
-    uint64_t R = ctx.addVariable("R", pi("x", setvar, prop));
-    uint64_t F = ctx.addVariable("F", pi("x", setvar, prop));
-    uint64_t G = ctx.addVariable("G", pi("x", setvar, prop));
-    uint64_t L = ctx.addVariable("Loves", pi("x", setvar, pi("y", setvar, prop)));
-    uint64_t B = ctx.addVariable("BetterThan", pi("x", setvar, pi("y", setvar, pi("z", setvar, prop))));
-    uint64_t Q = ctx.addVariable("QZR", setvar);
+    uint64_t P = ctx.pushAssumption("P", pi("x", setvar, pi("y", setvar, prop)));
+    uint64_t R = ctx.pushAssumption("R", pi("x", setvar, prop));
+    uint64_t F = ctx.pushAssumption("F", pi("x", setvar, prop));
+    uint64_t G = ctx.pushAssumption("G", pi("x", setvar, prop));
+    uint64_t L = ctx.pushAssumption("Loves", pi("x", setvar, pi("y", setvar, prop)));
+    uint64_t B = ctx.pushAssumption("BetterThan", pi("x", setvar, pi("y", setvar, pi("z", setvar, prop))));
+    uint64_t Q = ctx.pushAssumption("QZR", setvar);
 
     auto lhs = exists("y", forall("x", app(app(fv(P), bv(0)), bv(1))));
     auto rhs = forall("x", exists("y", app(app(fv(P), bv(1)), bv(0))));
@@ -394,10 +414,9 @@ int main() {
     auto e = exists("x", forall("y", bin(app(fv(R), bv(1)), Implies, app(fv(R), bv(0)))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    auto nnf = Procs::nnf(e, pool);
-    cout << nnf->checkType(ctx, temp())->toString(ctx) << endl;
-    cout << FOLForm::fromExpr(nnf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+    auto snf = Procs::skolemize(un(Not, e), ctx, pool);
+    cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -410,10 +429,9 @@ int main() {
       Implies, forall("x", exists("y", bin(app(fv(F), bv(1)), Iff, app(fv(G), bv(0))))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    nnf = Procs::nnf(e, pool);
-    cout << nnf->checkType(ctx, temp())->toString(ctx) << endl;
-    cout << FOLForm::fromExpr(nnf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+    snf = Procs::skolemize(un(Not, e), ctx, pool);
+    cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -504,10 +522,9 @@ int main() {
     );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    auto nnf = Procs::nnf(e, pool);
-    cout << nnf->checkType(ctx, temp())->toString(ctx) << endl;
-    cout << FOLForm::fromExpr(nnf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(nnf, 0, ctx.size(), pool), ctx) << endl;
+    auto snf = Procs::skolemize(un(Not, e), ctx, pool);
+    cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
+    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -524,16 +541,15 @@ int main() {
       And,
       forall("x", forall("y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(g), bv(1))), app(fv(g), bv(0))))))
     );
-    /*
-    tableau.addAntecedent(Procs::nnf(e1, ctx, pool));
-    tableau.addAntecedent(Procs::nnf(e2, ctx, pool));
-    tableau.addAntecedent(Procs::nnf(e3, ctx, pool));
-    tableau.addSuccedent(Procs::nnf(goal, ctx, pool));
-    */
     tableau.addAntecedent(e1);
     tableau.addAntecedent(e2);
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
+    /*
+    const auto negated = bin(bin(bin(e1, And, e2), And, e3), And, un(Not, goal));
+    tableau.addAntecedent(Procs::collectClauses(Procs::cnf(Procs::nnf(negated, pool), ctx, pool), pool));
+    */
+
     cout << tableau.printState();
     // cout << std::boolalpha << tableau.iterativeDeepening(11, 2) << endl;
     cout << std::boolalpha << tableau.search(24, 11) << endl;

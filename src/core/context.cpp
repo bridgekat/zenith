@@ -8,7 +8,7 @@ namespace Core {
   using std::vector;
 
 
-  size_t Context::addVariable(const string& s, const Expr* e) {
+  size_t Context::addDefinition(const string& s, const Expr* e) {
     if (*e != Expr(Expr::SType)) e->checkType(*this, temp());
     else if (!indices.empty()) throw InvalidExpr("type constants must appear before any assumptions", *this, e);
     entries.emplace_back(s, e->reduce(temp())->clone(pools.back()));

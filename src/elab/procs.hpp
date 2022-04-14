@@ -39,24 +39,39 @@ namespace Elab::Procs {
   }
 
   // Returns { VFree, skolem } applied to a number of meta-variables ("implicitly universally quantified" variables)
-  inline const Expr* makeSkolem(uint64_t meta, uint64_t skolem, Allocator<Expr>& pool) {
+  inline const Expr* makeSkolem(uint64_t skolem, const vector<uint64_t>& metas, Allocator<Expr>& pool) {
     const Expr* res = pool.emplaceBack(Expr::VFree, skolem);
-    for (uint64_t i = 0; i < meta; i++) res = pool.emplaceBack(res, pool.emplaceBack(Expr::VMeta, i));
+    for (uint64_t i: metas) res = pool.emplaceBack(res, pool.emplaceBack(Expr::VMeta, i));
     return res;
   }
 
   // Returns the negation normal form of a first-order formula (lifetime bounded by `e` and `pool`).
   // Also removes "implies", "iff" and "unique".
   // Non-first-order formulas will not be changed.
-  const Expr* nnf(const Expr* e, Allocator<Expr>& pool, bool negated = false);
+  const Expr* nnf(const Expr* e, Allocator<Expr>& pool, bool negated = false); 
 
-  // Returns the conjunctive normal form (in the form of clauses) of a first-order formula **already in negation normal form**.
-  // Also does Skolemization (`meta` and `skolem` denote the first available meta- and free-variable ID, respectively).
-  // Non-first-order formulas, "not", "implies", "iff" and "unique" will not be further splitted.
-  vector<vector<const Expr*>> cnf(const Expr* e, uint64_t meta, uint64_t skolem, Allocator<Expr>& pool);
+  // Returns the Skolem normal form of a first-order formula (lifetime bounded by `e` and `pool`).
+  // `meta` and `skolem` denote the first available meta- and free-variable ID, respectively.
+  // `metas` denotes the list of universally quantified variables currently in scope (will not be changed).
+  // Negations are pushed in (by calling `nnf` as needed). Non-first-order formulas will not be changed.
+  const Expr* skolemize(const Expr* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool);
+  // This variant uses 0 and `ctx.size()` as the first available meta- and free-variable ID (the most common choice).
+  inline const Expr* skolemize(const Expr* e, const Context& ctx, Allocator<Expr>& pool) {
+    uint64_t meta = 0, skolem = ctx.size();
+    vector<uint64_t> metas;
+    return skolemize(e, meta, skolem, metas, pool);
+  }
+
+  // Returns the conjunctive normal form (in the form of clauses) of a first-order formula **already in Skolem normal form**.
+  // (Propositional formulas are already in Skolem normal form; no Skolemization is needed in this case.)
+  // Non-first-order formulas, "not", "implies", "iff", "forall", "exists" and "unique" **will not be further splitted**.
+  vector<vector<const Expr*>> cnf(const Expr* e, Allocator<Expr>& pool);
 
   // Show a set of clauses
   string showClauses(const vector<vector<const Expr*>>& cs, const Context& ctx);
+
+  // Collect a set of clauses to a formula
+  // const Expr* collectClauses(const vector<vector<const Expr*>>& cs, Allocator<Expr>& pool);
 
   // A substitution of meta-variables with id in the interval [0, `ts.size()`).
   // `ts` should not contain circular dependencies. Use `nullptr` to represent unmodified variables.

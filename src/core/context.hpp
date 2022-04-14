@@ -21,8 +21,8 @@ namespace Core {
   public:
     Context(): pools(), entries(), indices() { pools.emplace_back(); }
 
-    // Add variables unconditionally (axioms)
-    size_t addVariable(const std::string& s, const Expr* e);
+    // Add variable unconditionally (for axioms/definitions)
+    size_t addDefinition(const std::string& s, const Expr* e);
 
     // Add variable as assumption
     size_t pushAssumption(const std::string& s, const Expr* e);

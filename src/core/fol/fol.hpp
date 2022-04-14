@@ -25,14 +25,14 @@ namespace Core {
   class FOLForm {
   public:
     // "Other" means either atomic or not first-order
-    enum class Tag: uint32_t { True, False, Not, And, Or, Implies, Iff, Forall, Exists, Unique, Other };
+    enum class Tag: uint32_t { Other, Equals, True, False, Not, And, Or, Implies, Iff, Forall, Exists, Unique };
     using enum Tag;
 
     // Immutable
     const Tag tag;
     union {
       struct { const Expr* e; } unary;       // Not, Other
-      struct { const Expr* l, * r; } binary; // And, Or, Implies, Iff
+      struct { const Expr* l, * r; } binary; // Equals, And, Or, Implies, Iff
       struct { const Expr* r; } binder;      // Forall, Exists, Unique
     };
     // I have to move this outside the union, or it will be impossible to make a copy constructor...
@@ -53,7 +53,7 @@ namespace Core {
     }
     FOLForm(Tag tag, const Expr* l, const Expr* r): tag(tag), binary{ l, r } {
       switch (tag) {
-        case And: case Or: case Implies: case Iff: break;
+        case Equals: case And: case Or: case Implies: case Iff: break;
         default: throw Unreachable();
       }
     }

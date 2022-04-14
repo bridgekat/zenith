@@ -13,34 +13,39 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 
 ## To do list
 
-- [x] [Core specification](notes/design.md) (almost completed)
+- [x] [Core specification](notes/design.md)
   - [x] Metavariables / second-order variables
   - [x] Extension by definitions
 - [ ] [The verifier](src/core/)
-  - [x] Core part (almost completed)
-  - [ ] Text & binary file formats for FOL and ND trees
+  - [x] Core part
   - [x] User-defined connectives (as unchecked axioms in the meta-logic...)
-  - [ ] "Definition erasure" for exporting proofs
+  - [ ] Text & binary file formats for FOL and ND trees
 - [ ] The elaborator
-  - [ ] Parser & pretty-printer (WIP)
-    - [x] [Parsing algorithms](src/parsing/) (almost completed)
-    - [ ] Customizable syntax
-    - [ ] Pretty-printer
-  - [ ] Partial checking
-  - [ ] Interactive proof-searching
-    - [x] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
-    - [ ] Translation between ND and SC (WIP)
-    - [x] [First-order unification](src/elab/procs.hpp) (Robinson's)
-    - [ ] Higher-order unification
-    - [ ] Equational reasoning
-    - [ ] Resolution-based methods (how to translate these to ND?)
   - [ ] Language server & VSCode extension (WIP)
     - [x] Boilerplate, IO, etc.
     - [x] Tracking document changes
     - [ ] Modifying, fading, etc.
+  - [ ] Parser & pretty-printer (WIP)
+    - [x] [Parsing algorithms](src/parsing/)
+    - [ ] Customizable syntax
+    - [ ] Pretty-printer
   - [ ] MM1-style Scheme interpreter (I just want more flexible notations/macros... not sure if this is necessary)
-  - [ ] Exporting proofs to MM0
-  - [ ] Python API for tactics (if I could make this far...)
+    - [x] Primitive forms and procedures
+    - [ ] DTT and FOL formula representation
+    - [ ] Macros
+    - [ ] Calling C++ and Python code for tactics (if I could make this far...)
+  - [ ] Partial checking
+  - [ ] Interactive proof-searching
+    - [x] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
+    - [ ] Translation from SC to ND (WIP)
+    - [x] [First-order unification](src/elab/procs.hpp) (Robinson's)
+    - [ ] Resolution and other "conjunctive-refutation" methods (for generating instantiations; requires tableau to translate)
+    - [ ] Higher-order unification
+    - [ ] Equational reasoning
+    - [ ] Try applying machine learning (could be a third year individual project...)
+  - [ ] Proof transformation
+    - [ ] "Definition erasure" for exporting proofs
+    - [ ] Exporting proofs to MM0 (first-order only)
 - [ ] Mathematics
   - [x] PA
   - [x] [ZFC](notes/set_manual.mu)

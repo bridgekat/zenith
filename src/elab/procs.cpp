@@ -11,6 +11,9 @@ namespace Elab::Procs {
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
+      case Other:   if (e->tag != Expr::Var || e->var.tag != Expr::VFree) throw Unreachable();
+                    return (e->var.id < fvmap.size())? fvmap[e->var.id] : false;
+      case Equals:  throw Unreachable();
       case True:    return true;
       case False:   return false;
       case Not:     return !propValue(fof.unary.e, fvmap);
@@ -21,8 +24,6 @@ namespace Elab::Procs {
       case Forall:  throw Unreachable();
       case Exists:  throw Unreachable();
       case Unique:  throw Unreachable();
-      case Other:   if (e->tag != Expr::Var || e->var.tag != Expr::VFree) throw Unreachable();
-                    return (e->var.id < fvmap.size())? fvmap[e->var.id] : false;
     }
     throw NonExhaustive();
   }
@@ -31,8 +32,10 @@ namespace Elab::Procs {
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
-      case True:      return FOLForm(negated? False : True).toExpr(pool);
-      case False:     return FOLForm(negated? True : False).toExpr(pool);
+      case Other:     return negated? FOLForm(Not, e).toExpr(pool) : e;
+      case Equals:    return negated? FOLForm(Not, e).toExpr(pool) : e;
+      case True:      return negated? FOLForm(False).toExpr(pool) : e;
+      case False:     return negated? FOLForm(True).toExpr(pool) : e;
       case Not:       return nnf(fof.unary.e, pool, !negated);
       case And:       return FOLForm(negated? Or : And, nnf(fof.binary.l, pool, negated), nnf(fof.binary.r, pool, negated)).toExpr(pool);
       case Or:        return FOLForm(negated? And : Or, nnf(fof.binary.l, pool, negated), nnf(fof.binary.r, pool, negated)).toExpr(pool);
@@ -43,7 +46,38 @@ namespace Elab::Procs {
       case Exists:    return FOLForm(negated? Forall : Exists, fof.s, nnf(fof.binder.r, pool, negated)).toExpr(pool);
       case Unique:  { const auto [exi, no2] = fof.splitUnique(pool);
                       return FOLForm(negated? Or : And, nnf(exi, pool, negated), nnf(no2, pool, negated)).toExpr(pool); }
-      case Other:     return negated? FOLForm(Not, e).toExpr(pool) : e;
+    }
+    throw NonExhaustive();
+  }
+
+  const Expr* skolemize(const Expr* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool) {
+    using enum Expr::VarTag;
+    using enum FOLForm::Tag;
+    auto fof = FOLForm::fromExpr(e);
+    switch (fof.tag) {
+      case Other:     return e;
+      case Equals:    return e;
+      case True:      return e;
+      case False:     return e;
+      case Not:     { auto tag = FOLForm::fromExpr(fof.unary.e).tag;
+                      if (tag == Other || tag == Equals) return e; // Irreducible literal
+                      return skolemize(nnf(e, pool), meta, skolem, metas, pool); }
+      case And:     { const auto l = skolemize(fof.binary.l, meta, skolem, metas, pool);
+                      const auto r = skolemize(fof.binary.r, meta, skolem, metas, pool);
+                      return (l == fof.binary.l && r == fof.binary.r)? e : FOLForm(And, l, r).toExpr(pool); }
+      case Or:      { const auto l = skolemize(fof.binary.l, meta, skolem, metas, pool);
+                      const auto r = skolemize(fof.binary.r, meta, skolem, metas, pool);
+                      return (l == fof.binary.l && r == fof.binary.r)? e : FOLForm(Or, l, r).toExpr(pool); }
+      case Implies:   return skolemize(nnf(e, pool), meta, skolem, metas, pool);
+      case Iff:       return skolemize(nnf(e, pool), meta, skolem, metas, pool);
+      case Forall:  { metas.push_back(meta);
+                      const auto ee = fof.binder.r->makeReplace(pool.emplaceBack(VMeta, meta++), pool);
+                      const auto res = skolemize(ee, meta, skolem, metas, pool);
+                      metas.pop_back();
+                      return res; }
+      case Exists:  { const auto ee = fof.binder.r->makeReplace(makeSkolem(skolem++, metas, pool), pool);
+                      return skolemize(ee, meta, skolem, metas, pool); }
+      case Unique:    return skolemize(nnf(e, pool), meta, skolem, metas, pool);
     }
     throw NonExhaustive();
   }
@@ -61,22 +95,24 @@ namespace Elab::Procs {
     return res;
   }
 
-  vector<vector<const Expr*>> cnf(const Expr* e, uint64_t meta, uint64_t skolem, Allocator<Expr>& pool) {
+  // TODO: simplification of clauses
+  vector<vector<const Expr*>> cnf(const Expr* e, Allocator<Expr>& pool) {
     using enum Expr::VarTag;
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
+      case Other:   return {{ e }};
+      case Equals:  return {{ e }};
       case True:    return {};
       case False:   return {{}};
       case Not:     return {{ e }}; // Not splitted
-      case And:     return concat(cnf(fof.binary.l, meta, skolem, pool), cnf(fof.binary.r, meta, skolem, pool));
-      case Or:      return distrib(cnf(fof.binary.l, meta, skolem, pool), cnf(fof.binary.r, meta, skolem, pool));
+      case And:     return concat(cnf(fof.binary.l, pool), cnf(fof.binary.r, pool));
+      case Or:      return distrib(cnf(fof.binary.l, pool), cnf(fof.binary.r, pool));
       case Implies: return {{ e }}; // Not splitted
       case Iff:     return {{ e }}; // Not splitted
-      case Forall:  return cnf(fof.binder.r->makeReplace(pool.emplaceBack(VMeta, meta), pool), meta + 1, skolem, pool);
-      case Exists:  return cnf(fof.binder.r->makeReplace(makeSkolem(meta, skolem, pool), pool), meta, skolem + 1, pool);
+      case Forall:  return {{ e }}; // Not splitted
+      case Exists:  return {{ e }}; // Not splitted
       case Unique:  return {{ e }}; // Not splitted
-      case Other:   return {{ e }}; // Not splitted
     }
     throw NonExhaustive();
   }
@@ -99,6 +135,30 @@ namespace Elab::Procs {
     res += f? "}" : "\n}"; // res += f? "}" : " }";
     return res;
   }
+
+  /*
+  const Expr* collectClauses(const vector<vector<const Expr*>>& cs, Allocator<Expr>& pool) {
+    using enum FOLForm::Tag;
+    // Construct conjunction of disjunctions
+    const Expr* res = nullptr;
+    for (const auto& c: cs) {
+      const Expr* curr = nullptr;
+      for (const Expr* lit: c) {
+        curr = (curr? FOLForm(Or, curr, lit).toExpr(pool) : lit);
+      }
+      if (!curr) curr = FOLForm(False).toExpr(pool);
+      res = (res? FOLForm(And, res, curr).toExpr(pool) : curr);
+    }
+    if (!res) res = FOLForm(True).toExpr(pool);
+    // Add quantifiers for universals (metas)
+    // uint64_t m = res->numMeta();
+    // res = res->updateVars([m, &pool] (uint64_t n, const Expr* x) {
+    //   return (x->var.tag == Expr::VMeta)? pool.emplaceBack(Expr::VBound, n + m - 1 - x->var.id) : x;
+    // }, pool);
+    // for (uint64_t i = 0; i < m; i++) res = FOLForm(Forall, "", res).toExpr(pool);
+    return res;
+  }
+  */
 
   string showSubs(const Subs& subs, const Context& ctx) {
     using enum Expr::VarTag;

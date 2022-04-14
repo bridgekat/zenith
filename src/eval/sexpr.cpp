@@ -15,7 +15,9 @@ namespace Eval {
       [&] (Number const& num) { return pool.emplaceBack(num); },
       [&] (String const& str) { return pool.emplaceBack(str); },
       [&] (Boolean boolean)   { return pool.emplaceBack(boolean); },
-      [&] (Undefined)         { return pool.emplaceBack(Undefined{}); }
+      [&] (Undefined)         { return pool.emplaceBack(Undefined{}); },
+      [&] (Closure const&)    { throw Core::NotImplemented();
+                                return pool.emplaceBack(Undefined{}); }
     }, v);
   }
 
@@ -26,7 +28,7 @@ namespace Eval {
   pair<bool, string> SExpr::toStringUntil(const SExpr* p) const {
     if (this == p) return make_pair(true, "");
     return visit(Matcher{
-      [p] (Nil)               { return make_pair(false, string("()")); },
+      []  (Nil)               { return make_pair(false, string("()")); },
       [p] (Cons const& cons)  {
         string res = "(";
         const auto& [f0, s0] = cons.head->toStringUntil(p);
@@ -44,13 +46,15 @@ namespace Eval {
           const auto& [f2, s2] = q->toStringUntil(p);
           res += s2; if (f2) return make_pair(true, res);
         }
+        if (q == p) return make_pair(true, res);
         return make_pair(false, res + ")");
       },
-      [p] (Symbol const& sym) { return make_pair(false, sym.s); },
-      [p] (Number const& num) { return make_pair(false, std::to_string(num)); },
-      [p] (String const& str) { return make_pair(false, "\"" + escapeString(str) + "\""); },
-      [p] (Boolean boolean)   { return make_pair(false, string(boolean? "#t" : "#f")); },
-      [p] (Undefined)         { return make_pair(false, string("#undefined")); }
+      []  (Symbol const& sym) { return make_pair(false, sym.s); },
+      []  (Number const& num) { return make_pair(false, std::to_string(num)); },
+      []  (String const& str) { return make_pair(false, "\"" + escapeString(str) + "\""); },
+      []  (Boolean boolean)   { return make_pair(false, string(boolean? "#t" : "#f")); },
+      []  (Undefined)         { return make_pair(false, string("#undefined")); },
+      []  (Closure const& cl) { return make_pair(false, string("#<params: " + cl.formal->toString() + ", body: " + cl.es->toString() + "...>")); }
     }, v);
   }
 
