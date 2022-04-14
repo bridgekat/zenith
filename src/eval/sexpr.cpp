@@ -7,7 +7,7 @@ namespace Eval {
   using std::get, std::holds_alternative, std::visit;
 
 
-  const SExpr* SExpr::clone(Core::Allocator<SExpr>& pool) const {
+  SExpr* SExpr::clone(Core::Allocator<SExpr>& pool) const {
     return visit(Matcher{
       [&] (Nil)               { return pool.emplaceBack(Nil{}); },
       [&] (Cons const& cons)  { return pool.emplaceBack(cons.head->clone(pool), cons.tail->clone(pool)); },
@@ -52,7 +52,7 @@ namespace Eval {
       []  (Symbol const& sym) { return make_pair(false, sym.s); },
       []  (Number const& num) { return make_pair(false, std::to_string(num)); },
       []  (String const& str) { return make_pair(false, "\"" + escapeString(str) + "\""); },
-      []  (Boolean boolean)   { return make_pair(false, string(boolean? "#t" : "#f")); },
+      []  (Boolean boolean)   { return make_pair(false, string(boolean? "#true" : "#false")); },
       []  (Undefined)         { return make_pair(false, string("#undefined")); },
       []  (Closure const& cl) { return make_pair(false, string("#<params: " + cl.formal->toString() + ", body: " + cl.es->toString() + "...>")); }
     }, v);

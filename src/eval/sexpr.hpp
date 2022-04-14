@@ -29,8 +29,8 @@ namespace Eval {
   };
   template <typename T, typename... Ts>
   struct BasicCons {
-    mutable const T* head, * tail;
-    BasicCons(const T* head, const T* tail): head(head), tail(tail) {}
+    T* head, * tail;
+    BasicCons(T* head, T* tail): head(head), tail(tail) {}
     bool operator==(const BasicCons& r) const { return *head == *r.head && *tail == *r.tail; };
     bool operator!=(const BasicCons& r) const { return *head != *r.head || *tail != *r.tail; };
   };
@@ -54,8 +54,8 @@ namespace Eval {
   using Boolean = bool;
   using Undefined = std::monostate;
   struct Closure {
-    const SExpr* env, * formal, * es;
-    Closure(const SExpr* env, const SExpr* formal, const SExpr* es): env(env), formal(formal), es(es) {}
+    SExpr* env, * formal, * es;
+    Closure(SExpr* env, SExpr* formal, SExpr* es): env(env), formal(formal), es(es) {}
     bool operator==(const Closure& r) const { return env == r.env && formal == r.formal && es == r.es; };
     bool operator!=(const Closure& r) const { return env != r.env || formal != r.formal || es != r.es; };
   };
@@ -72,7 +72,7 @@ namespace Eval {
   public:
     // Convenient constructors
     SExpr(): VarType{} {}
-    SExpr(const SExpr* l, const SExpr* r): VarType{ Cons(l, r) } {}
+    SExpr(SExpr* l, SExpr* r): VarType{ Cons(l, r) } {}
     SExpr(Nil): VarType{} {}
     SExpr(Cons const& cons): VarType{ cons } {}
     SExpr(Symbol const& sym): VarType{ sym } {}
@@ -82,7 +82,7 @@ namespace Eval {
     SExpr(Undefined): VarType{ Undefined() } {}
     SExpr(Closure const& cl): VarType { cl } {}
 
-    const SExpr* clone(Core::Allocator<SExpr>& pool) const;
+    SExpr* clone(Core::Allocator<SExpr>& pool) const;
 
     std::string toString() const;
     std::pair<bool, std::string> toStringUntil(const SExpr* p) const;

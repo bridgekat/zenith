@@ -29,33 +29,34 @@ namespace Eval {
     ~Environment() = default;
 
     // Far less efficient than hash tries (HAMTs), but should be enough for current purpose!
-    static const SExpr* extend(const SExpr* env, const std::string& sym, const SExpr* e, Core::Allocator<SExpr>& pool);
-    static const SExpr* find(const SExpr* env, const std::string& sym);
+    static SExpr* extend(SExpr* env, const std::string& sym, SExpr* e, Core::Allocator<SExpr>& pool);
+    static SExpr* find(SExpr* env, const std::string& sym);
 
     // This will store intermediate and final results on `this.pool`.
-    const SExpr* evalStatement(const SExpr* e) {
-      e = e->clone(pool);
-      try { return eval(globalEnv, e); }
-      catch (EvalError& ex) { ex.e = e; throw ex; }
+    SExpr* evalStatement(const SExpr* e) {
+      auto clone = e->clone(pool);
+      try { return eval(globalEnv, clone); }
+      catch (EvalError& ex) { ex.e = clone; throw ex; }
     }
 
   private:
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
     struct Result {
-      const SExpr* env, * e;
-      Result(const SExpr* e): env(nullptr), e(e) {};
-      Result(const SExpr* env, const SExpr* e): env(env), e(e) {};
+      SExpr* env, * e;
+      Result(SExpr* e): env(nullptr), e(e) {};
+      Result(SExpr* env, SExpr* e): env(env), e(e) {};
     };
-    using PrimitiveProc = std::function<Result(const SExpr*, const SExpr*)>;
+    using PrimitiveProc = std::function<Result(SExpr*, SExpr*)>;
 
     Core::Allocator<SExpr> pool;
     std::unordered_map<std::string, PrimitiveProc> forms, procs;
-    const SExpr* globalEnv;
+    SExpr* globalEnv;
+    SExpr* const undefined;
 
-    const SExpr* eval(const SExpr* env, const SExpr* e);
-    const SExpr* evalList(const SExpr* env, const SExpr* e);
-    const SExpr* execListTailcall(const SExpr* env, const SExpr* e);
-    const SExpr* evalUnquote(const SExpr* env, const SExpr* e);
+    SExpr* eval(SExpr* env, SExpr* e);
+    SExpr* evalList(SExpr* env, SExpr* e);
+    SExpr* evalListExceptLast(SExpr* env, SExpr* e);
+    SExpr* evalQuasiquote(SExpr* env, SExpr* e);
   };
 
 }

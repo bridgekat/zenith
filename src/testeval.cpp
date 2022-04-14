@@ -40,6 +40,7 @@ symbol(RBracket) {};
 symbol(Point) {};
 symbol(Quote) {};
 symbol(Comma) {};
+symbol(Atsign) {};
 
 assymbol(Symbol);
 assymbol(Number);
@@ -100,6 +101,7 @@ public:
     addPattern([] (const string&) -> Point { return {}; }, word("."));
     addPattern([] (const string&) -> Quote { return {}; }, word("'"));
     addPattern([] (const string&) -> Comma { return {}; }, word(","));
+    addPattern([] (const string&) -> Atsign { return {}; }, word("@"));
 
     addPattern([] (const string& lexeme) -> Symbol { return { lexeme }; },
       alt(
@@ -114,9 +116,9 @@ public:
           concat(ch('0'), ch('x', 'X'), plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F'))))));
     addPattern([] (const string& lexeme) -> String { return SExpr::unescapeString(lexeme.substr(1, lexeme.size() - 2)); },
       concat(ch('"'), star(alt(except('"', '\\'), concat(ch('\\'), ch('"', '\\', 'a', 'b', 'f', 'n', 'r', 't', 'v')))), ch('"')));
-    addPattern([] (const string&) -> Boolean { return true; },  word("#t"));
-    addPattern([] (const string&) -> Boolean { return false; }, word("#f"));
-    addPattern([] (const string&) -> Undefined { return {}; },  word("#undefined"));
+    addPattern([] (const string&) -> Boolean { return true; },  alt(word("#true"), word("#t")));
+    addPattern([] (const string&) -> Boolean { return false; }, alt(word("#false"), word("#f")));
+    addPattern([] (const string&) -> Undefined { return {}; },  alt(word("#undefined"), word("#u")));
 
     #undef epsilon
     #undef ch
@@ -135,23 +137,24 @@ public:
     // Nonterminal symbols
     // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#s-expressions
 
-    addRule([]     (LParen, ListInner&& inner, RParen)     -> List { return { inner.e }; });
-    addRule([]     (LBracket, ListInner&& inner, RBracket) -> List { return { inner.e }; });
-    addRule([this] (SExprStar&& star)                      -> ListInner { return { makeList(star.es) }; });
-    addRule([this] (SExprPlus&& plus, Point, SExprSym&& e) -> ListInner { return { makeList(plus.es, e.e) }; });
-    addRule([]     ()                                      -> SExprStar { return { {} }; });
-    addRule([]     (SExprStar&& star, SExprSym&& e)        -> SExprStar { star.es.push_back(e.e); return { star.es }; });
-    addRule([]     (SExprSym&& e)                          -> SExprPlus { return { { e.e } }; });
-    addRule([]     (SExprPlus&& plus, SExprSym&& e)        -> SExprPlus { plus.es.push_back(e.e); return { plus.es }; });
+    addRule([]     (LParen, ListInner&& inner, RParen)        -> List { return { inner.e }; });
+    addRule([]     (LBracket, ListInner&& inner, RBracket)    -> List { return { inner.e }; });
+    addRule([this] (SExprStar&& star)                         -> ListInner { return { makeList(star.es) }; });
+    addRule([this] (SExprPlus&& plus, Point, SExprSym&& e)    -> ListInner { return { makeList(plus.es, e.e) }; });
+    addRule([this] (SExprStar&& star, Atsign, ListInner&& r)  -> ListInner { star.es.push_back(r.e); return { makeList(star.es) }; });
+    addRule([]     ()                                         -> SExprStar { return { {} }; });
+    addRule([]     (SExprStar&& star, SExprSym&& e)           -> SExprStar { star.es.push_back(e.e); return { star.es }; });
+    addRule([]     (SExprSym&& e)                             -> SExprPlus { return { { e.e } }; });
+    addRule([]     (SExprPlus&& plus, SExprSym&& e)           -> SExprPlus { plus.es.push_back(e.e); return { plus.es }; });
 
-    addRule([]     (List&& list)                           -> SExprSym { return { list.e }; });
-    addRule([this] (Symbol&& sym)                          -> SExprSym { return { pool.emplaceBack(sym) }; });
-    addRule([this] (Number&& num)                          -> SExprSym { return { pool.emplaceBack(num) }; });
-    addRule([this] (String&& str)                          -> SExprSym { return { pool.emplaceBack(str) }; });
-    addRule([this] (Boolean&& boolean)                     -> SExprSym { return { pool.emplaceBack(boolean) }; });
-    addRule([this] (Undefined)                             -> SExprSym { return { pool.emplaceBack(Undefined()) }; });
-    addRule([this] (Quote, SExprSym&& e)                   -> SExprSym { return { makeList({ pool.emplaceBack(Symbol("quote")), e.e }) }; });
-    addRule([this] (Comma, SExprSym&& e)                   -> SExprSym { return { makeList({ pool.emplaceBack(Symbol("unquote")), e.e }) }; });
+    addRule([]     (List&& list)          -> SExprSym { return { list.e }; });
+    addRule([this] (Symbol&& sym)         -> SExprSym { return { pool.emplaceBack(sym) }; });
+    addRule([this] (Number&& num)         -> SExprSym { return { pool.emplaceBack(num) }; });
+    addRule([this] (String&& str)         -> SExprSym { return { pool.emplaceBack(str) }; });
+    addRule([this] (Boolean&& boolean)    -> SExprSym { return { pool.emplaceBack(boolean) }; });
+    addRule([this] (Undefined)            -> SExprSym { return { pool.emplaceBack(Undefined()) }; });
+    addRule([this] (Quote, SExprSym&& e)  -> SExprSym { return { makeList({ pool.emplaceBack(Symbol("quote")), e.e }) }; });
+    addRule([this] (Comma, SExprSym&& e)  -> SExprSym { return { makeList({ pool.emplaceBack(Symbol("unquote")), e.e }) }; });
 
   }
 
@@ -182,7 +185,7 @@ public:
       if (!opt) break;
       const SExpr* e = opt->e;
       try {
-        const SExpr* res = env.evalStatement(e);
+        SExpr* res = env.evalStatement(e);
         if (*res != SExpr(Undefined())) cout << res->toString() << endl;
       } catch (EvalError& ex) {
         const auto& [found, prefix] = ex.e->toStringUntil(ex.at);
