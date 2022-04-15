@@ -88,6 +88,7 @@ namespace Core {
       case Sort: return
         sort.tag == SProp ? "Prop" :
         sort.tag == SType ? "Type" :
+        sort.tag == SKind ? "Kind" :
         "??";
       case Var: return
         var.tag == VBound ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : "?b" + std::to_string(var.id - stk.size())) :
@@ -122,8 +123,8 @@ namespace Core {
 
   inline Expr::SortTag imax(Expr::SortTag s, Expr::SortTag t) {
     if (s == Expr::SProp || t == Expr::SProp) return Expr::SProp;
-    // s == Expr::SType && t == Expr::SType
-    return Expr::SType;
+    // (`s` and `t` are `Expr::SType` or `Expr::SKind`)
+    return (s == Expr::SKind || t == Expr::SKind)? Expr::SKind : Expr::SType;
   }
 
   // Check if the subtree is a well-formed term (1), type (2), proof (3) or formula (4).
@@ -136,7 +137,8 @@ namespace Core {
       case Sort: {
         switch (sort.tag) {
           case SProp: return make(pool, SType);
-          case SType: throw InvalidExpr("\"Type\" does not have a type", ctx, this);
+          case SType: return make(pool, SKind);
+          case SKind: throw InvalidExpr("\"Kind\" does not have a type", ctx, this);
         }
         throw NonExhaustive();
       }

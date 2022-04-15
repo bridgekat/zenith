@@ -53,6 +53,12 @@ namespace Eval {
   using String = std::string;
   using Boolean = bool;
   using Undefined = std::monostate;
+  struct Builtin {
+    size_t index;
+    Builtin(size_t index): index(index) {};
+    bool operator==(const Builtin& r) const { return index == r.index; };
+    bool operator!=(const Builtin& r) const { return index != r.index; };
+  };
   struct Closure {
     SExpr* env, * formal, * es;
     Closure(SExpr* env, SExpr* formal, SExpr* es): env(env), formal(formal), es(es) {}
@@ -62,9 +68,9 @@ namespace Eval {
 
   // Main SExpr type
   class SExpr;
-  using Nil = BasicNil<SExpr, Symbol, Number, String, Boolean, Undefined, Closure>;
-  using Cons = BasicCons<SExpr, Symbol, Number, String, Boolean, Undefined, Closure>;
-  using VarType = BasicSExpr<SExpr, Symbol, Number, String, Boolean, Undefined, Closure>;
+  using Nil = BasicNil<SExpr, Symbol, Number, String, Boolean, Undefined, Builtin, Closure>;
+  using Cons = BasicCons<SExpr, Symbol, Number, String, Boolean, Undefined, Builtin, Closure>;
+  using VarType = BasicSExpr<SExpr, Symbol, Number, String, Boolean, Undefined, Builtin, Closure>;
 
   // Pre (for all methods): there is no "cycle" throughout the tree / DAG
   // Pre & invariant (for all methods): all pointers (in the "active variant") are valid
@@ -81,6 +87,7 @@ namespace Eval {
     SExpr(Boolean boolean): VarType{ boolean } {}
     SExpr(Undefined): VarType{ Undefined() } {}
     SExpr(Closure const& cl): VarType { cl } {}
+    SExpr(Builtin const& bi): VarType { bi } {}
 
     SExpr* clone(Core::Allocator<SExpr>& pool) const;
 

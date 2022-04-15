@@ -198,7 +198,8 @@ public:
                        << std::string(ex.at->toString().size(), '~') << endl;
         } else {
           cout << "× Error evaluating, " << ex.what() << endl;
-          cout << "  Subexpression: " << ex.at->toString() << endl;
+          cout << "  At: " << ex.at->toString() << endl;
+          cout << "  In: " << ex.e->toString() << endl;
         }
         cout << endl;
       }

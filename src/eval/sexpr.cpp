@@ -17,7 +17,8 @@ namespace Eval {
       [&] (Boolean boolean)   { return pool.emplaceBack(boolean); },
       [&] (Undefined)         { return pool.emplaceBack(Undefined{}); },
       [&] (Closure const&)    { throw Core::NotImplemented();
-                                return pool.emplaceBack(Undefined{}); }
+                                return pool.emplaceBack(Undefined{}); },
+      [&] (Builtin const& bi) { return pool.emplaceBack(bi); }
     }, v);
   }
 
@@ -54,7 +55,8 @@ namespace Eval {
       []  (String const& str) { return make_pair(false, "\"" + escapeString(str) + "\""); },
       []  (Boolean boolean)   { return make_pair(false, string(boolean? "#true" : "#false")); },
       []  (Undefined)         { return make_pair(false, string("#undefined")); },
-      []  (Closure const& cl) { return make_pair(false, string("#<params: " + cl.formal->toString() + ", body: " + cl.es->toString() + "...>")); }
+      []  (Closure const& cl) { return make_pair(false, string("#<params: " + cl.formal->toString() + ", body: " + cl.es->toString() + "...>")); },
+      []  (Builtin const& bi) { return make_pair(false, string("#<builtin procedure index: " + std::to_string(bi.index) + ">")); }
     }, v);
   }
 

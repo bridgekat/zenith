@@ -145,29 +145,25 @@ namespace Core {
       }
       case And: {
         auto ll = FOLForm::fromExpr(binary.l), rr = FOLForm::fromExpr(binary.r);
-        bool fl = (invprec(ll.tag) > invprec(tag));
-        bool fr = (invprec(rr.tag) >= invprec(tag));
+        bool fl = (invprec(ll.tag) > invprec(tag)), fr = (invprec(rr.tag) >= invprec(tag));
         return (fl? "(" : "") + FOLForm::fromExpr(binary.l).toString(ctx, stk) + (fl? ")" : "") + " /\\ " +
                (fr? "(" : "") + FOLForm::fromExpr(binary.r).toString(ctx, stk) + (fr? ")" : "");
       }
       case Or: {
         auto ll = FOLForm::fromExpr(binary.l), rr = FOLForm::fromExpr(binary.r);
-        bool fl = (invprec(ll.tag) > invprec(tag));
-        bool fr = (invprec(rr.tag) >= invprec(tag));
+        bool fl = (invprec(ll.tag) > invprec(tag)), fr = (invprec(rr.tag) >= invprec(tag));
         return (fl? "(" : "") + FOLForm::fromExpr(binary.l).toString(ctx, stk) + (fl? ")" : "") + " \\/ " +
                (fr? "(" : "") + FOLForm::fromExpr(binary.r).toString(ctx, stk) + (fr? ")" : "");
       }
       case Implies: {
         auto ll = FOLForm::fromExpr(binary.l), rr = FOLForm::fromExpr(binary.r);
-        bool fl = (invprec(ll.tag) >= invprec(tag));
-        bool fr = (invprec(rr.tag) > invprec(tag));
+        bool fl = (invprec(ll.tag) >= invprec(tag)), fr = (invprec(rr.tag) > invprec(tag));
         return (fl? "(" : "") + FOLForm::fromExpr(binary.l).toString(ctx, stk) + (fl? ")" : "") + " -> " +
                (fr? "(" : "") + FOLForm::fromExpr(binary.r).toString(ctx, stk) + (fr? ")" : "");
       }
       case Iff: {
         auto ll = FOLForm::fromExpr(binary.l), rr = FOLForm::fromExpr(binary.r);
-        bool fl = (invprec(ll.tag) >= invprec(tag));
-        bool fr = (invprec(rr.tag) >= invprec(tag));
+        bool fl = (invprec(ll.tag) >= invprec(tag)), fr = (invprec(rr.tag) >= invprec(tag));
         return (fl? "(" : "") + FOLForm::fromExpr(binary.l).toString(ctx, stk) + (fl? ")" : "") + " <-> " +
                (fr? "(" : "") + FOLForm::fromExpr(binary.r).toString(ctx, stk) + (fr? ")" : "");
       }

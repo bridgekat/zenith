@@ -63,6 +63,9 @@ if (ipo_supprted)
 endif ()
 
 add_executable (testeval
+  src/core/context.cpp
+  src/core/expr.cpp
+  src/core/fol/fol.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/parsing/language.cpp

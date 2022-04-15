@@ -9,15 +9,13 @@ namespace Core {
 
 
   size_t Context::addDefinition(const string& s, const Expr* e) {
-    if (*e != Expr(Expr::SType)) e->checkType(*this, temp());
-    else if (!indices.empty()) throw InvalidExpr("type constants must appear before any assumptions", *this, e);
+    e->checkType(*this, temp());
     entries.emplace_back(s, e->reduce(temp())->clone(pools.back()));
     return entries.size() - 1;
   }
 
   size_t Context::pushAssumption(const string& s, const Expr* e) {
-    if (*e != Expr(Expr::SType)) e->checkType(*this, temp());
-    else throw InvalidExpr("cannot assume types (since \"Type\" does not have a type)", *this, e);
+    e->checkType(*this, temp());
     pools.emplace_back();
     entries.emplace_back(s, e->reduce(temp())->clone(pools.back()));
     indices.push_back(entries.size() - 1);

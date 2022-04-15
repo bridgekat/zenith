@@ -17,7 +17,7 @@ namespace Core {
   class Expr {
   public:
     enum class Tag: uint32_t { Sort, Var, App, Lam, Pi }; using enum Tag;
-    enum class SortTag: uint32_t { SProp, SType }; using enum SortTag; 
+    enum class SortTag: uint32_t { SProp, SType, SKind }; using enum SortTag;
     enum class VarTag: uint32_t { VBound, VFree, VMeta }; using enum VarTag;
     enum class LamTag: uint32_t { LLam }; using enum LamTag;
     enum class PiTag: uint32_t { PPi }; using enum PiTag;

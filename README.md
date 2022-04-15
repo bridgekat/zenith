@@ -31,7 +31,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [ ] Pretty-printer
   - [ ] MM1-style Scheme interpreter (I just want more flexible notations/macros... not sure if this is necessary)
     - [x] Primitive forms and procedures
-    - [ ] DTT and FOL formula representation
+    - [ ] Formula and context representation
     - [ ] Macros
     - [ ] Calling C++ and Python code for tactics (if I could make this far...)
   - [ ] Partial checking
@@ -39,7 +39,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [x] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
     - [ ] Translation from SC to ND (WIP)
     - [x] [First-order unification](src/elab/procs.hpp) (Robinson's)
-    - [ ] Resolution and other "conjunctive-refutation" methods (for generating instantiations; requires tableau to translate)
+    - [ ] Resolution and other "disjunctive-prove"/"conjunctive-refutation" methods (for generating instantiations; requires tableau to translate)
     - [ ] Higher-order unification
     - [ ] Equational reasoning
     - [ ] Try applying machine learning (could be a third year individual project...)
