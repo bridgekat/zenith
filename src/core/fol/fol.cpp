@@ -46,34 +46,34 @@ namespace Core {
     using enum Expr::VarTag;
     if (e->tag == Var) {
       if (e->var.tag == VFree) {
-        if (e->var.id == Constant::True)  return FOLForm(True);  // (true)
-        if (e->var.id == Constant::False) return FOLForm(False); // (false)
+        if (e->var.id == Constant::True)  return { True };  // (true)
+        if (e->var.id == Constant::False) return { False }; // (false)
       }
     } else if (e->tag == App) {
       const auto [l, r] = e->app;
       if (l->tag == Var) {
         if (l->var.tag == VFree) {
-          if (l->var.id == Constant::Not) return FOLForm(Not, r); // ((not) (...))
+          if (l->var.id == Constant::Not) return { Not, r }; // ((not) (...))
           if (r->tag == Lam && *r->lam.t == Expr(VFree, Constant::SetVar)) {
-            if (l->var.id == Constant::Forall) return FOLForm(Forall, r->lam.s, r->lam.r); // ((forall) (\(x): (setvar) => (...)))
-            if (l->var.id == Constant::Exists) return FOLForm(Exists, r->lam.s, r->lam.r); // ((exists) (\(x): (setvar) => (...)))
-            if (l->var.id == Constant::Unique) return FOLForm(Unique, r->lam.s, r->lam.r); // ((unique) (\(x): (setvar) => (...)))
+            if (l->var.id == Constant::Forall) return { Forall, r->lam.s, r->lam.r }; // ((forall) (\(x): (setvar) => (...)))
+            if (l->var.id == Constant::Exists) return { Exists, r->lam.s, r->lam.r }; // ((exists) (\(x): (setvar) => (...)))
+            if (l->var.id == Constant::Unique) return { Unique, r->lam.s, r->lam.r }; // ((unique) (\(x): (setvar) => (...)))
           }
         }
       } else if (l->tag == App) {
         const auto [ll, lr] = l->app;
         if (ll->tag == Var) {
           if (ll->var.tag == VFree) {
-            if (ll->var.id == Constant::Equals)  return FOLForm(Equals,  lr, r); // (((equals)  (...)) (...))
-            if (ll->var.id == Constant::And)     return FOLForm(And,     lr, r); // (((and)     (...)) (...))
-            if (ll->var.id == Constant::Or)      return FOLForm(Or,      lr, r); // (((or)      (...)) (...))
-            if (ll->var.id == Constant::Implies) return FOLForm(Implies, lr, r); // (((implies) (...)) (...))
-            if (ll->var.id == Constant::Iff)     return FOLForm(Iff,     lr, r); // (((iff)     (...)) (...))
+            if (ll->var.id == Constant::Equals)  return { Equals,  lr, r}; // (((equals)  (...)) (...))
+            if (ll->var.id == Constant::And)     return { And,     lr, r}; // (((and)     (...)) (...))
+            if (ll->var.id == Constant::Or)      return { Or,      lr, r}; // (((or)      (...)) (...))
+            if (ll->var.id == Constant::Implies) return { Implies, lr, r}; // (((implies) (...)) (...))
+            if (ll->var.id == Constant::Iff)     return { Iff,     lr, r}; // (((iff)     (...)) (...))
           }
         }
       }
     }
-    return FOLForm(Other, e);
+    return { Other, e };
   }
 
   #define expr(...) Expr::make(pool, __VA_ARGS__)

@@ -7,18 +7,20 @@ namespace Eval {
   using std::get, std::holds_alternative, std::visit;
 
 
-  SExpr* SExpr::clone(Core::Allocator<SExpr>& pool) const {
+  SExpr* SExpr::clone(Core::Allocator<SExpr>& pool, SExpr* nil, SExpr* undefined) const {
     return visit(Matcher{
-      [&] (Nil)               { return pool.emplaceBack(Nil{}); },
-      [&] (Cons const& cons)  { return pool.emplaceBack(cons.head->clone(pool), cons.tail->clone(pool)); },
-      [&] (Symbol const& sym) { return pool.emplaceBack(sym); },
-      [&] (Number const& num) { return pool.emplaceBack(num); },
-      [&] (String const& str) { return pool.emplaceBack(str); },
-      [&] (Boolean boolean)   { return pool.emplaceBack(boolean); },
+      [&] (Nil)               { return nil; },
+      [&] (Cons const& cons)  { return pool.emplaceBack(cons.head->clone(pool, nil, undefined),
+                                                        cons.tail->clone(pool, nil, undefined)); },
+      [&] (Symbol const& sym) { return pool.emplaceBack(Symbol{ sym }); },
+      [&] (Number const& num) { return pool.emplaceBack(Number{ num }); },
+      [&] (String const& str) { return pool.emplaceBack(String{ str }); },
+      [&] (Boolean boolean)   { return pool.emplaceBack(Boolean{ boolean }); },
       [&] (Undefined)         { return pool.emplaceBack(Undefined{}); },
       [&] (Closure const&)    { throw Core::NotImplemented();
                                 return pool.emplaceBack(Undefined{}); },
-      [&] (Builtin const& bi) { return pool.emplaceBack(bi); }
+      [&] (Builtin const& bi) { return pool.emplaceBack(Builtin{ bi }); },
+      [&] (Native const& nat) { return pool.emplaceBack(Native{ nat }); }
     }, v);
   }
 
@@ -53,10 +55,12 @@ namespace Eval {
       []  (Symbol const& sym) { return make_pair(false, sym.s); },
       []  (Number const& num) { return make_pair(false, std::to_string(num)); },
       []  (String const& str) { return make_pair(false, "\"" + escapeString(str) + "\""); },
-      []  (Boolean boolean)   { return make_pair(false, string(boolean? "#true" : "#false")); },
+      []  (Boolean boolean)   { return make_pair(false, string((boolean == Boolean::True)? "#true" : "#false")); },
       []  (Undefined)         { return make_pair(false, string("#undefined")); },
-      []  (Closure const& cl) { return make_pair(false, string("#<params: " + cl.formal->toString() + ", body: " + cl.es->toString() + "...>")); },
-      []  (Builtin const& bi) { return make_pair(false, string("#<builtin procedure index: " + std::to_string(bi.index) + ">")); }
+      []  (Closure const& cl) { return make_pair(false, "#<closure params: " + cl.formal->toString() + ", body: " + cl.es->toString() + "...>"); },
+      []  (Builtin const& bi) { return make_pair(false, "#<builtin procedure index: " + std::to_string(bi.index) + ">"); },
+      []  (Native const& nat) { return make_pair(false, "#<native type: " + string(nat.val.type().name()) +
+                                                        ", addr: " + std::to_string(reinterpret_cast<uintptr_t>(&nat.val)) + ">"); }
     }, v);
   }
 

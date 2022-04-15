@@ -94,7 +94,7 @@ namespace Parsing {
         SymbolName<typename U::ReturnType>::get(),
         getSymbol<typename U::ReturnType>(),
         pattern,
-        [this, action] (const ParseTree* x) { return action(x->lexeme.value()); });
+        [action] (const ParseTree* x) { return action(x->lexeme.value()); });
     }
 
     // Add a production rule. Symbols on the RHS are automatically added.

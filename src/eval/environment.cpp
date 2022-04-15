@@ -39,7 +39,14 @@ namespace Eval {
   declareExpect(String,  "expected string")
   declareExpect(Boolean, "expected boolean")
   declareExpect(Closure, "expected function")
+  declareExpect(Native,  "expected native type")
   #undef declareExpect
+
+  template <typename T>
+  T expectNative(SExpr* e) {
+    try { return std::any_cast<T>(expect<Native>(e).val); }
+    catch (std::bad_any_cast& ex) { throw PartialEvalError(string("native type mismatch: ") + ex.what(), e); }
+  }
 
   /*
   template <typename T>
@@ -98,17 +105,17 @@ namespace Eval {
   // Initialize with built-in forms and procedures
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#syntax-forms
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#builtin-functions
-  Environment::Environment(): pool(), prim(), primNames(),
-      globalEnv(pool.emplaceBack(Nil())),
-      nil(pool.emplaceBack(Nil())),
-      undefined(pool.emplaceBack(Undefined())) {
+  Environment::Environment(): pool(), epool(), ctx(), prim(), primNames(),
+      globalEnv(pool.emplaceBack(Nil{})),
+      nil(pool.emplaceBack(Nil{})),
+      undefined(pool.emplaceBack(Undefined{})) {
     // BEGIN FLATBREAD CODE (开始摊大饼)
 
     // Commonly used constants
-    // const auto nzero  = pool.emplaceBack(Number(0));
-    // const auto sempty = pool.emplaceBack(String(""));
-    const auto btrue  = pool.emplaceBack(true);
-    const auto bfalse = pool.emplaceBack(false);
+    // const auto nzero  = pool.emplaceBack(Number{ 0 });
+    // const auto sempty = pool.emplaceBack(String{ "" });
+    const auto btrue  = pool.emplaceBack(Boolean::True);
+    const auto bfalse = pool.emplaceBack(Boolean::False);
 
     // ===============
     // Primitive forms
@@ -127,7 +134,7 @@ namespace Eval {
           // Function definition
           const auto [sym, formal] = get<Cons>(lhs);
           const auto es = t;
-          env = extend(env, expect<Symbol>(sym).s, pool.emplaceBack(Closure(env, formal, es)));
+          env = extend(env, expect<Symbol>(sym).s, pool.emplaceBack(Closure{ env, formal, es }));
         } else {
           // General definition (ignores more arguments)
           const auto sym = lhs;
@@ -164,7 +171,7 @@ namespace Eval {
           // Function definition
           const auto [_, formal] = get<Cons>(lhs);
           const auto es = t;
-          *refs[i++] = pool.emplaceBack(Closure(env, formal, es));
+          *refs[i++] = pool.emplaceBack(Closure{ env, formal, es });
         } else {
           // General definition (ignores more arguments)
           const auto [val, _] = expect<Cons>(t);
@@ -192,10 +199,10 @@ namespace Eval {
       throw PartialEvalError("unbound symbol \"" + s + "\"", sym);
     });
 
-    // [√] Currently `es` are not checked for unbound symbols
+    // [√]
     primNames["fn"] = primNames["lambda"] = addPrim(false, [this] (SExpr* env, SExpr* e) -> Result {
       const auto [formal, es] = expect<Cons>(e);
-      return pool.emplaceBack(Closure(env, formal, es));
+      return pool.emplaceBack(Closure{ env, formal, es });
     });
 
     // [√] Ignores more arguments
@@ -203,7 +210,7 @@ namespace Eval {
       const auto [test, t] = expect<Cons>(e);
       const auto [iftrue, t1] = expect<Cons>(t);
       const auto iffalse = (holds<Cons>(t1)? get<Cons>(t1).head : undefined);
-      bool result = expect<Boolean>(eval(env, test));
+      bool result = (expect<Boolean>(eval(env, test)) == Boolean::True);
       return { env, result? iftrue : iffalse };
     });
 
@@ -243,7 +250,7 @@ namespace Eval {
         // Add an #undefined (placeholder) binding before evaluation
         env = extend(env, expect<Symbol>(sym).s, undefined);
         // Evaluate and assign
-        const auto self = pool.emplaceBack(Closure(env, formal, es));
+        const auto self = pool.emplaceBack(Closure{ env, formal, es });
         get<Cons>(get<Cons>(get<Cons>(env).head).tail).head = self; // Will always succeed due to the recent `extend`
         globalEnv = extend(globalEnv, expect<Symbol>(sym).s, self);
       } else {
@@ -260,12 +267,12 @@ namespace Eval {
     // ====================
 
     // [√]
-    primNames["eval"] = addPrim(true, [this] (SExpr* env, SExpr* e) -> Result {
+    primNames["eval"] = addPrim(true, [] (SExpr* env, SExpr* e) -> Result {
       auto [head, tail] = expect<Cons>(e);
       if (holds<Cons>(tail)) env = expect<Cons>(tail).head;
       return { env, head }; // Let it restart and evaluate
     });
-    primNames["get-env"] = addPrim(true, [this] (SExpr* env, SExpr*) -> Result { return env; });
+    primNames["get-env"] = addPrim(true, [] (SExpr* env, SExpr*) -> Result { return env; });
     primNames["get-global-env"] = addPrim(true, [this] (SExpr*, SExpr*) -> Result { return globalEnv; });
     primNames["set-global-env!"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result { globalEnv = expect<Cons>(e).head; return undefined; });
 
@@ -302,7 +309,7 @@ namespace Eval {
 
     // [√]
     #define declareBinary(sym, op) \
-      primNames[sym] = addPrim(true, [=, this] (SExpr*, SExpr* e) -> Result { \
+      primNames[sym] = addPrim(true, [bfalse, btrue] (SExpr*, SExpr* e) -> Result { \
         auto [prev, tail] = expect<Cons>(e); e = tail; \
         for (auto it = e; holds<Cons>(it); it = get<Cons>(it).tail) { \
           auto curr = get<Cons>(it).head; \
@@ -335,39 +342,42 @@ namespace Eval {
     // ApiMu-specific procedures
     // =========================
 
-    // [√]
+    // [!] Conversions between lists and native objects (`Expr`, `Context`)
+    primNames["list->Expr"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result {
+      return pool.emplaceBack(Native{ SExprToExpr(expect<Cons>(e).head, epool) });
+    });
+    primNames["Expr->list"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result {
+      return ExprToSExpr(expectNative<const Expr*>(expect<Cons>(e).head), pool);
+    });
+    // ...
+
     primNames["Print"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result {
-      Core::FOLContext ctx;
-      return pool.emplaceBack(SExprToExpr(expect<Cons>(e).head, Core::temp())->toString(ctx));
+      return pool.emplaceBack(expectNative<const Expr*>(expect<Cons>(e).head)->toString(ctx));
     });
     primNames["PrintFOL"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result {
-      Core::FOLContext ctx;
-      return pool.emplaceBack(Core::FOLForm::fromExpr(SExprToExpr(expect<Cons>(e).head, Core::temp())).toString(ctx));
+      return pool.emplaceBack(Core::FOLForm::fromExpr(expectNative<const Expr*>(expect<Cons>(e).head)).toString(ctx));
     });
     primNames["CheckType"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result {
       try {
-        Core::FOLContext ctx;
-        const auto res = SExprToExpr(expect<Cons>(e).head, Core::temp())->checkType(ctx, Core::temp());
-        return ExprToSExpr(res, pool);
+        auto res = expectNative<const Expr*>(expect<Cons>(e).head)->checkType(ctx, epool);
+        return pool.emplaceBack(Native{ res });
       } catch (std::runtime_error& ex) {
-        return pool.emplaceBack(String(ex.what()));
+        return pool.emplaceBack(String{ ex.what() });
       }
     });
 
     // [?] TEMP CODE
     primNames["MakeBound"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result {
-      Core::FOLContext ctx;
       const auto [h, t] = expect<Cons>(e);
       const auto [h1, t1] = expect<Cons>(t);
       uint64_t id = static_cast<uint64_t>(expect<Number>(h1));
-      const auto res = SExprToExpr(h, Core::temp())->makeBound(id, Core::temp());
+      const auto res = SExprToExpr(h, epool)->makeBound(id, epool);
       return ExprToSExpr(res, pool);
     });
     primNames["MakeReplace"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result {
-      Core::FOLContext ctx;
       const auto [h, t] = expect<Cons>(e);
       const auto [h1, t1] = expect<Cons>(t);
-      const auto res = SExprToExpr(h, Core::temp())->makeReplace(SExprToExpr(h1, Core::temp()), Core::temp());
+      const auto res = SExprToExpr(h, epool)->makeReplace(SExprToExpr(h1, epool), epool);
       return ExprToSExpr(res, pool);
     });
 
@@ -403,7 +413,7 @@ namespace Eval {
       const auto val = lookup(env, sym);
       if (val) return val;
       const auto it = primNames.find(sym);
-      if (it != primNames.end()) return pool.emplaceBack(Builtin(it->second));
+      if (it != primNames.end()) return pool.emplaceBack(Builtin{ it->second });
       throw PartialEvalError("unbound symbol \"" + sym + "\"", e);
 
     } else if (holds<Cons>(e)) {
@@ -414,7 +424,7 @@ namespace Eval {
 
         if (holds<Builtin>(ehead)) {
           // Primitive function application
-          const auto& [evalParams, f] = prim[get<Builtin>(ehead).index];
+          const auto [evalParams, f] = prim[get<Builtin>(ehead).index];
           const auto res = f(env, evalParams? evalList(env, tail) : tail);
           // No tail call, return
           if (!res.env) return res.e;
@@ -480,7 +490,7 @@ namespace Eval {
   SExpr* Environment::evalQuasiquote(SExpr* env, SExpr* e) {
     if (holds<Cons>(e)) {
       const auto [head, tail] = get<Cons>(e);
-      if (*head == SExpr(Symbol("unquote"))) {
+      if (*head == SExpr(Symbol{ "unquote" })) {
         if (holds<Cons>(tail)) return eval(env, get<Cons>(tail).head);
         else throw PartialEvalError("expected list", tail);
       }
@@ -496,9 +506,9 @@ namespace Eval {
     using enum Expr::SortTag;
     using enum Expr::VarTag;
     #define cons   pool.emplaceBack
-    #define nil    pool.emplaceBack(Nil())
-    #define sym(s) pool.emplaceBack(Symbol(s))
-    #define str(s) pool.emplaceBack(String(s))
+    #define nil    pool.emplaceBack(Nil{})
+    #define sym(s) pool.emplaceBack(Symbol{ s })
+    #define str(s) pool.emplaceBack(String{ s })
     #define num(n) pool.emplaceBack(Number(n))
     switch (e->tag) {
       case Sort:
@@ -539,18 +549,18 @@ namespace Eval {
       if      (tag == "Prop") return expr(Expr::SProp);
       else if (tag == "Type") return expr(Expr::SType);
       else if (tag == "Kind") return expr(Expr::SKind);
-      else throw PartialEvalError("tag must be \"Prop\", \"Type\" or \"Kind\"", h1);
+      else throw PartialEvalError(R"(tag must be "Prop", "Type" or "Kind")", h1);
     } else if (sym == "Var") {
       const auto [h1, t1] = expect<Cons>(t);
       const auto [h2, t2] = expect<Cons>(t1);
       expect<Nil>(t2);
       string tag = expect<Symbol>(h1).s;
       Number id = expect<Number>(h2);
-      if (id < 0) throw PartialEvalError("variable id must be nonnegative", h2);
+      if (id < 0) throw PartialEvalError(R"(variable id must be nonnegative)", h2);
       if      (tag == "Bound") return expr(Expr::VBound, static_cast<uint64_t>(id));
       else if (tag == "Free")  return expr(Expr::VFree,  static_cast<uint64_t>(id));
       else if (tag == "Meta")  return expr(Expr::VMeta,  static_cast<uint64_t>(id));
-      else throw PartialEvalError("tag must be \"Bound\", \"Free\" or \"Meta\"", h1);
+      else throw PartialEvalError(R"(tag must be "Bound", "Free" or "Meta")", h1);
     } else if (sym == "App") {
       const auto [h1, t1] = expect<Cons>(t);
       const auto [h2, t2] = expect<Cons>(t1);
@@ -568,7 +578,7 @@ namespace Eval {
       const auto [h3, t3] = expect<Cons>(t2);
       expect<Nil>(t3);
       return expr(Expr::PPi, expect<String>(h1), SExprToExpr(h2, pool), SExprToExpr(h3, pool));
-    } else throw PartialEvalError("symbol must be \"Sort\", \"Var\", \"App\", \"Lam\" or \"Pi\"", h);
+    } else throw PartialEvalError(R"(symbol must be "Sort", "Var", "App", "Lam" or "Pi")", h);
     #undef expr
   }
 

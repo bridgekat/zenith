@@ -37,7 +37,7 @@ namespace Core {
 
     // Add abstractions over the hypothesized variable, copying all expressions from `pool1` to `pool2`
     // Make bound + remap index
-    auto modify = [this, &pool2, index] (uint64_t n, const Expr* x) -> const Expr* {
+    auto modify = [&pool2, index] (uint64_t n, const Expr* x) -> const Expr* {
       if (x->var.tag == VFree && x->var.id == index) return expr(VBound, n);
       if (x->var.tag == VFree && x->var.id > index) return expr(expr(VFree, x->var.id - 1), expr(VBound, n));
       return x->clone(pool2);

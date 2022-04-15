@@ -3,6 +3,7 @@
 #ifndef EXPR_HPP_
 #define EXPR_HPP_
 
+#include <cstdint>
 #include "base.hpp"
 #include "context.hpp"
 
@@ -79,6 +80,7 @@ namespace Core {
     // (2) Returns `Type` itself;
     // (3) Returns a well-formed, beta-reduced expression of type `Prop`, representing the proposition it proves;
     // (4) Returns `Prop` itself.
+    // (Returned pointer lifetime is bound by `this`, `ctx` and `pool`!)
     // Throws exception on failure
     // `stk` and `names` will be unchanged
     const Expr* checkType(const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk, std::vector<std::string>& names) const;
@@ -127,7 +129,7 @@ namespace Core {
 
     // Replace one overflow variable by an expression (lifetime of the resulting expression is bounded by `this`, `t` and `pool`)
     const Expr* makeReplace(const Expr* t, Allocator<Expr>& pool) const {
-      return updateVars([t, &pool] (uint64_t n, const Expr* x) {
+      return updateVars([t] (uint64_t n, const Expr* x) {
         return (x->var.tag == VBound && x->var.id == n)? t : x;
       }, pool);
     }

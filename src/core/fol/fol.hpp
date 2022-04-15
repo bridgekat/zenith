@@ -38,8 +38,7 @@ namespace Core {
     // I have to move this outside the union, or it will be impossible to make a copy constructor...
     const std::string s{};
 
-    explicit
-    FOLForm(Tag tag): tag(tag) {
+    FOLForm(Tag tag): tag(tag), unary{ nullptr } {
       switch (tag) {
         case True: case False: break;
         default: throw Unreachable();

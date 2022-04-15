@@ -54,10 +54,11 @@ namespace Parsing {
 
   Symbol Language::newSymbol(const string& name) {
     Symbol sym = symbols.size();
-    symbols.emplace_back(name, [sym] (const ParseTree* x) -> std::any {
+    // symbols.emplace_back(...)
+    symbols.push_back(Entry{ name, [sym] (const ParseTree* x) -> std::any {
       if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
       throw Core::Unreachable("Language: no matching rule or pattern");
-    });
+    }});
     return sym;
   }
 
@@ -87,7 +88,8 @@ namespace Parsing {
     symbols[lhs].name = "[" + name + "]";
     // Add new production rule
     size_t rid = parser.rules.size();
-    parser.rules.emplace_back(lhs, rhs, prec);
+    // parser.rules.emplace_back(lhs, rhs, prec);
+    parser.rules.push_back(Rule{ lhs, rhs, prec });
     // Add new handler for new rule
     auto prev = symbols[lhs].action;
     symbols[lhs].action = [lhs, rid, prev, action] (const ParseTree* x) -> std::any {

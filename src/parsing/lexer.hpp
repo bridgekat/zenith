@@ -82,7 +82,8 @@ namespace Parsing {
       auto& o = table[nfa.second].ac;
       if (o) throw Core::Unreachable("NFALexer: accepting state already marked (NFA already used)");
       o = id;
-      patterns.emplace_back(nfa.first, sym, true);
+      // patterns.emplace_back(nfa.first, sym, true);
+      patterns.push_back(Pattern{ nfa.first, sym, true });
       return id;
     }
 
@@ -186,7 +187,7 @@ namespace Parsing {
     struct Pattern {
       State initial;
       Symbol symbol;
-      bool active = true;
+      bool active;
     };
     vector<Pattern> patterns;
 

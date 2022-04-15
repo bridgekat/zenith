@@ -24,10 +24,12 @@
 (define (bv id)       '(Var Bound ,id))
 (define (mv id)       '(Var Meta  ,id))
 
-(define expr (forall "x" @ exists "y" @ equals (bv 1) (bv 0)))
+(define expr @ list->Expr (forall "x" @ exists "y" @ equals (bv 1) (bv 0)))
+expr
 (Print expr)
 (PrintFOL expr)
 (Print @ CheckType expr)
+// (Expr->list @ CheckType expr)
 }
 
 

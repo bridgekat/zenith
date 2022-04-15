@@ -116,8 +116,8 @@ public:
           concat(ch('0'), ch('x', 'X'), plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F'))))));
     addPattern([] (const string& lexeme) -> String { return SExpr::unescapeString(lexeme.substr(1, lexeme.size() - 2)); },
       concat(ch('"'), star(alt(except('"', '\\'), concat(ch('\\'), ch('"', '\\', 'a', 'b', 'f', 'n', 'r', 't', 'v')))), ch('"')));
-    addPattern([] (const string&) -> Boolean { return true; },  alt(word("#true"), word("#t")));
-    addPattern([] (const string&) -> Boolean { return false; }, alt(word("#false"), word("#f")));
+    addPattern([] (const string&) -> Boolean { return Boolean::True; },  alt(word("#true"), word("#t")));
+    addPattern([] (const string&) -> Boolean { return Boolean::False; }, alt(word("#false"), word("#f")));
     addPattern([] (const string&) -> Undefined { return {}; },  alt(word("#undefined"), word("#u")));
 
     #undef epsilon
@@ -139,27 +139,27 @@ public:
 
     addRule([]     (LParen, ListInner&& inner, RParen)        -> List { return { inner.e }; });
     addRule([]     (LBracket, ListInner&& inner, RBracket)    -> List { return { inner.e }; });
-    addRule([this] (SExprStar&& star)                         -> ListInner { return { makeList(star.es) }; });
-    addRule([this] (SExprPlus&& plus, Point, SExprSym&& e)    -> ListInner { return { makeList(plus.es, e.e) }; });
-    addRule([this] (SExprStar&& star, Atsign, ListInner&& r)  -> ListInner { star.es.push_back(r.e); return { makeList(star.es) }; });
+    addRule([this] (SExprStar&& star)                         -> ListInner { return { makeList(std::move(star.es)) }; });
+    addRule([this] (SExprPlus&& plus, Point, SExprSym&& e)    -> ListInner { return { makeList(std::move(plus.es), e.e) }; });
+    addRule([this] (SExprStar&& star, Atsign, ListInner&& r)  -> ListInner { star.es.push_back(r.e); return { makeList(std::move(star.es)) }; });
     addRule([]     ()                                         -> SExprStar { return { {} }; });
     addRule([]     (SExprStar&& star, SExprSym&& e)           -> SExprStar { star.es.push_back(e.e); return { star.es }; });
     addRule([]     (SExprSym&& e)                             -> SExprPlus { return { { e.e } }; });
     addRule([]     (SExprPlus&& plus, SExprSym&& e)           -> SExprPlus { plus.es.push_back(e.e); return { plus.es }; });
 
     addRule([]     (List&& list)          -> SExprSym { return { list.e }; });
-    addRule([this] (Symbol&& sym)         -> SExprSym { return { pool.emplaceBack(sym) }; });
-    addRule([this] (Number&& num)         -> SExprSym { return { pool.emplaceBack(num) }; });
-    addRule([this] (String&& str)         -> SExprSym { return { pool.emplaceBack(str) }; });
-    addRule([this] (Boolean&& boolean)    -> SExprSym { return { pool.emplaceBack(boolean) }; });
-    addRule([this] (Undefined)            -> SExprSym { return { pool.emplaceBack(Undefined()) }; });
-    addRule([this] (Quote, SExprSym&& e)  -> SExprSym { return { makeList({ pool.emplaceBack(Symbol("quote")), e.e }) }; });
-    addRule([this] (Comma, SExprSym&& e)  -> SExprSym { return { makeList({ pool.emplaceBack(Symbol("unquote")), e.e }) }; });
+    addRule([this] (Symbol&& sym)         -> SExprSym { return { pool.emplaceBack(std::move(sym)) }; });
+    addRule([this] (Number&& num)         -> SExprSym { return { pool.emplaceBack(std::move(num)) }; });
+    addRule([this] (String&& str)         -> SExprSym { return { pool.emplaceBack(std::move(str)) }; });
+    addRule([this] (Boolean&& boolean)    -> SExprSym { return { pool.emplaceBack(std::move(boolean)) }; });
+    addRule([this] (Undefined&& u)        -> SExprSym { return { pool.emplaceBack(std::move(u)) }; });
+    addRule([this] (Quote, SExprSym&& e)  -> SExprSym { return { makeList({ pool.emplaceBack(Symbol{ "quote" }), e.e }) }; });
+    addRule([this] (Comma, SExprSym&& e)  -> SExprSym { return { makeList({ pool.emplaceBack(Symbol{ "unquote" }), e.e }) }; });
 
   }
 
-  SExpr* makeList(const vector<SExpr*> a, SExpr* tail = nullptr) {
-    SExpr* res = tail? tail : pool.emplaceBack(Nil());
+  SExpr* makeList(vector<SExpr*>&& a, SExpr* tail = nullptr) {
+    SExpr* res = tail? tail : pool.emplaceBack(Nil{});
     for (auto it = a.rbegin(); it != a.rend(); it++) res = pool.emplaceBack(*it, res);
     return res;
   }

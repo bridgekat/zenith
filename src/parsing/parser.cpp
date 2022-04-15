@@ -15,6 +15,7 @@ namespace Parsing {
 
   // See: https://en.cppreference.com/w/cpp/utility/variant/visit
   template <typename... Ts> struct Matcher: Ts... { using Ts::operator()...; };
+  template <typename... Ts> Matcher(Ts...) -> Matcher<Ts...>;
 
 
   // Parse greedily, until there are no further possibilities.

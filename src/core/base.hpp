@@ -93,8 +93,8 @@ namespace Core {
     explicit NotImplemented(const std::string& s = ""):
       std::logic_error("\"Not implemented\" code was called" + (s.empty() ? "" : ": " + s)) {}
   };
-  struct NonExhaustive: public NotImplemented {
-    NonExhaustive(): NotImplemented("unknown tagged union state") {}
+  struct NonExhaustive: public Unreachable {
+    NonExhaustive(): Unreachable("unknown tagged union state") {}
   };
 
 }

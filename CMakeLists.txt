@@ -45,6 +45,10 @@ macro (target_default_compile_options TARGET)
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
   endif ()
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wall>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wextra>")
+  endif ()
 endmacro ()
 
 # Add targets
@@ -52,7 +56,6 @@ add_executable (testcore
   src/core/context.cpp
   src/core/expr.cpp
   src/core/fol/fol.cpp
-  src/elab/proof.cpp
   src/elab/procs.cpp
   src/elab/tableau.cpp
   src/testcore.cpp)
@@ -82,7 +85,6 @@ add_executable (testparsing
   src/core/context.cpp
   src/core/expr.cpp
   src/core/fol/fol.cpp
-  src/elab/proof.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/parsing/language.cpp
@@ -113,7 +115,6 @@ add_executable (testserver
   src/core/context.cpp
   src/core/expr.cpp
   src/core/fol/fol.cpp
-  src/elab/proof.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/parsing/language.cpp

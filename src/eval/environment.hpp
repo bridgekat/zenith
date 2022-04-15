@@ -25,12 +25,14 @@ namespace Eval {
   class Environment {
   public:
     Environment();
-    Environment(const Environment&) = default;
-    Environment& operator=(const Environment&) = default;
+    Environment(Environment&&) = default;
+    Environment& operator=(Environment&&) = default;
     ~Environment() = default;
 
     // This will store intermediate and final results on `this.pool`.
-    SExpr* evalStatement(const SExpr* e) { return eval(globalEnv, e->clone(pool)); }
+    SExpr* evalStatement(const SExpr* e) {
+      return eval(globalEnv, e->clone(pool, nil, undefined));
+    }
 
   private:
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
@@ -41,12 +43,12 @@ namespace Eval {
     };
 
     Core::Allocator<SExpr> pool;
-    // Core::Allocator<Core::Expr> epool;
+    Core::Allocator<Core::Expr> epool;
+    Core::FOLContext ctx; // TEMP CODE
     std::vector<std::pair<bool, std::function<Result(SExpr*, SExpr*)>>> prim;
     std::unordered_map<std::string, size_t> primNames;
     SExpr* globalEnv;
-    SExpr* const nil;
-    SExpr* const undefined;
+    SExpr* nil, * undefined;
 
     size_t addPrim(bool evalParams, std::function<Result(SExpr*, SExpr*)> f) {
       size_t res = prim.size();

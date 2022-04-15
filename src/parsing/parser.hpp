@@ -27,10 +27,10 @@ namespace Parsing {
 
   // Convert floating-point precedence in the range [0, 1] to `size_t` in the range [0, 4096)
   // (precision can be specified in the function below)
-  inline size_t makePrec(double prec, bool rightmostLongest) noexcept {
+  constexpr inline size_t makePrec(double prec, bool rightmostLongest) noexcept {
     constexpr size_t maxPrec = 4096 / 2 - 1;
-    size_t res = prec * maxPrec;                    // `res` is now in [0, 2048)
-    return rightmostLongest? res * 2 + 1 : res * 2; // Odd number denotes "rightmost longest"
+    size_t res = static_cast<size_t>(prec * maxPrec); // `res` is now in [0, 2048)
+    return rightmostLongest? res * 2 + 1 : res * 2;   // Odd number denotes "rightmost longest"
   }
 
   // This is more suitable for left-recursive grammars than right-recursive ones.
@@ -93,6 +93,10 @@ namespace Parsing {
       variant<Location, ParseTree, monostate> child;
       size_t numDisrespects = 0; // The "cost" of a parse, used in disambiguation
       bool unresolved = false;   // TODO: store more information about unresolved ambiguity? (e.g. at least one alternative parse)
+      // Explicit constructor declaration required for compilation on Clang 14
+      LinkedState(const State& state, const optional<Location>& prev, const variant<Location, ParseTree, monostate>& child,
+                  size_t numDisrespects = 0, bool unresolved = false):
+        state(state), prev(prev), child(child), numDisrespects(numDisrespects), unresolved(unresolved) {}
     };
 
     // Ephemeral states

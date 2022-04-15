@@ -241,7 +241,8 @@ namespace Parsing {
     void add(State x, size_t i) {
       cl[i].size++;
       List* l = cl[i].head, * r = l->r;
-      List* curr = pool.pushBack({ l, r, x });
+      // List* curr = pool.emplaceBack(l, r, x);
+      List* curr = pool.pushBack(List{ l, r, x });
       l->r = r->l = curr;
       id[x] = { i, curr };
     }
@@ -256,10 +257,12 @@ namespace Parsing {
 
     // Create new class and return its ID (always = partition.size() - 1, just for convenience)
     size_t newClass() {
-      List* head = pool.pushBack({ nullptr, nullptr, 0 });
+      // List* head = pool.emplaceBack(nullptr, nullptr, 0);
+      List* head = pool.pushBack(List{ nullptr, nullptr, 0 });
       head->l = head->r = head;
       size_t index = cl.size();
-      cl.emplace_back(0, head, false);
+      // cl.emplace_back(0, head, false);
+      cl.emplace_back(Class{ 0, head, false });
       return index;
     }
 

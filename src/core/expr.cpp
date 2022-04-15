@@ -45,7 +45,7 @@ namespace Core {
   }
 
   size_t Expr::hash() const noexcept {
-    size_t res = static_cast<size_t>(tag);
+    auto res = static_cast<size_t>(tag);
     switch (tag) {
       case Sort:
         hash_combine(res, static_cast<std::underlying_type_t<SortTag>>(sort.tag));
@@ -152,7 +152,7 @@ namespace Core {
             var.tag == VBound ? "de Bruijn index overflow" :
             var.tag == VFree  ? "free variable not in context" :
             var.tag == VMeta  ? "unexpected metavariable" :
-            "unknown variable tag: " + static_cast<std::underlying_type_t<VarTag>>(var.tag), ctx, this);
+            "unknown variable tag: " + std::to_string(static_cast<std::underlying_type_t<VarTag>>(var.tag)), ctx, this);
         return t->reduce(pool);
       }
       case App: { // Π-elimination

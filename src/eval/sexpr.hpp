@@ -7,6 +7,8 @@
 #include <string>
 #include <variant>
 #include <utility>
+#include <compare>
+#include <any>
 #include <core/base.hpp>
 
 
@@ -14,6 +16,7 @@ namespace Eval {
 
   // See: https://en.cppreference.com/w/cpp/utility/variant/visit
   template <typename... Ts> struct Matcher: Ts... { using Ts::operator()...; };
+  template <typename... Ts> Matcher(Ts...) -> Matcher<Ts...>;
 
   // A generic representation for different tree structures.
   // Intended for use as an exchange / transformation format.
@@ -22,55 +25,49 @@ namespace Eval {
   // (C++23 will allow direct visitation on classes derived from `std::variant`...)
   template <typename T, typename... Ts>
   struct BasicSExpr;
-  template <typename T, typename... Ts>
+  template <typename T>
   struct BasicNil {
-    bool operator==(const BasicNil&) const { return true; };
-    bool operator!=(const BasicNil&) const { return false; };
+    bool operator==(const BasicNil&) const noexcept = default;
   };
-  template <typename T, typename... Ts>
+  template <typename T>
   struct BasicCons {
     T* head, * tail;
-    BasicCons(T* head, T* tail): head(head), tail(tail) {}
-    bool operator==(const BasicCons& r) const { return *head == *r.head && *tail == *r.tail; };
-    bool operator!=(const BasicCons& r) const { return *head != *r.head || *tail != *r.tail; };
+    bool operator==(const BasicCons& r) const noexcept { return *head == *r.head && *tail == *r.tail; };
   };
   template <typename T, typename... Ts>
   struct BasicSExpr {
-    std::variant<BasicNil<T, Ts...>, BasicCons<T, Ts...>, Ts...> v{};
-    bool operator==(const BasicSExpr& r) const { return v == r.v; };
-    bool operator!=(const BasicSExpr& r) const { return v != r.v; };
+    std::variant<BasicNil<T>, BasicCons<T>, Ts...> v{};
+    bool operator==(const BasicSExpr&) const noexcept = default;
   };
 
   // Concrete atom types for SExpr
   class SExpr;
   struct Symbol {
     std::string s;
-    Symbol(const std::string& s): s(s) {}
-    bool operator==(const Symbol& r) const { return s == r.s; };
-    bool operator!=(const Symbol& r) const { return s != r.s; };
+    bool operator==(const Symbol& r) const noexcept = default;
   };
   using Number = int64_t;
   using String = std::string;
-  using Boolean = bool;
-  using Undefined = std::monostate;
-  struct Builtin {
-    size_t index;
-    Builtin(size_t index): index(index) {};
-    bool operator==(const Builtin& r) const { return index == r.index; };
-    bool operator!=(const Builtin& r) const { return index != r.index; };
-  };
+  enum class Boolean: uint8_t { False, True }; // Avoid casting other types to boolean
+  enum class Undefined: uint8_t { Undefined };
   struct Closure {
     SExpr* env, * formal, * es;
-    Closure(SExpr* env, SExpr* formal, SExpr* es): env(env), formal(formal), es(es) {}
-    bool operator==(const Closure& r) const { return env == r.env && formal == r.formal && es == r.es; };
-    bool operator!=(const Closure& r) const { return env != r.env || formal != r.formal || es != r.es; };
+    bool operator==(const Closure&) const noexcept = default;
+  };
+  struct Builtin {
+    size_t index;
+    bool operator==(const Builtin&) const noexcept = default;
+  };
+  struct Native {
+    std::any val;
+    bool operator==(const Native& r) const noexcept { return &val == &r.val; }
   };
 
   // Main SExpr type
   class SExpr;
-  using Nil = BasicNil<SExpr, Symbol, Number, String, Boolean, Undefined, Builtin, Closure>;
-  using Cons = BasicCons<SExpr, Symbol, Number, String, Boolean, Undefined, Builtin, Closure>;
-  using VarType = BasicSExpr<SExpr, Symbol, Number, String, Boolean, Undefined, Builtin, Closure>;
+  using Nil = BasicNil<SExpr>;
+  using Cons = BasicCons<SExpr>;
+  using VarType = BasicSExpr<SExpr, Symbol, Number, String, Boolean, Undefined, Closure, Builtin, Native>;
 
   // Pre (for all methods): there is no "cycle" throughout the tree / DAG
   // Pre & invariant (for all methods): all pointers (in the "active variant") are valid
@@ -78,18 +75,20 @@ namespace Eval {
   public:
     // Convenient constructors
     SExpr(): VarType{} {}
-    SExpr(SExpr* l, SExpr* r): VarType{ Cons(l, r) } {}
-    SExpr(Nil): VarType{} {}
-    SExpr(Cons const& cons): VarType{ cons } {}
+    SExpr(SExpr* l, SExpr* r): VarType{ Cons{ l, r } } {}
+    SExpr(Nil): VarType{ Nil{} } {}
+    SExpr(Cons const& cons):  VarType{ cons } {}
     SExpr(Symbol const& sym): VarType{ sym } {}
     SExpr(Number const& num): VarType{ num } {}
     SExpr(String const& str): VarType{ str } {}
     SExpr(Boolean boolean): VarType{ boolean } {}
-    SExpr(Undefined): VarType{ Undefined() } {}
-    SExpr(Closure const& cl): VarType { cl } {}
-    SExpr(Builtin const& bi): VarType { bi } {}
+    SExpr(Undefined): VarType{ Undefined{} } {}
+    SExpr(Closure const& cl): VarType{ cl } {}
+    SExpr(Builtin const& bi): VarType{ bi } {}
+    SExpr(Native const& nat): VarType{ nat } {}
+    bool operator==(const SExpr& r) const noexcept = default;
 
-    SExpr* clone(Core::Allocator<SExpr>& pool) const;
+    SExpr* clone(Core::Allocator<SExpr>& pool, SExpr* nil, SExpr* undefined) const;
 
     std::string toString() const;
     std::pair<bool, std::string> toStringUntil(const SExpr* p) const;
