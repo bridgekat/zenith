@@ -8,6 +8,10 @@ namespace Core {
   using std::vector;
 
 
+  Context::Context(): pools(), entries(), indices() {
+    pools.emplace_back();
+  }
+
   size_t Context::addDefinition(const string& s, const Expr* e) {
     e->checkType(*this, temp());
     entries.emplace_back(s, e->reduce(temp())->clone(pools.back()));
@@ -53,7 +57,7 @@ namespace Core {
     // Should never throw, for debugging only
     for (size_t i = index; i < entries.size(); i++) {
       try { entries[i].second->checkType(*this, pool1); }
-      catch (InvalidExpr&) { throw Unreachable(); }
+      catch (InvalidExpr&) { unreachable; }
     }
 
     #undef expr

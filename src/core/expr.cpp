@@ -8,10 +8,6 @@ namespace Core {
   using std::vector;
 
 
-  // Allow throwing in `noexcept` functions; we really intend to terminate with an error message
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wterminate"
-
   const Expr* Expr::clone(Allocator<Expr>& pool) const {
     switch (tag) {
       case Sort: return make(pool, sort.tag);
@@ -19,8 +15,7 @@ namespace Core {
       case App: return make(pool, app.l->clone(pool), app.r->clone(pool));
       case Lam: return make(pool, LLam, lam.s, lam.t->clone(pool), lam.r->clone(pool));
       case Pi: return make(pool, PPi, pi.s, pi.t->clone(pool), pi.r->clone(pool));
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   bool Expr::operator==(const Expr& rhs) const noexcept {
@@ -33,15 +28,14 @@ namespace Core {
       case App: return *app.l == *rhs.app.l && *app.r == *rhs.app.r;
       case Lam: return *lam.t == *rhs.lam.t && *lam.r == *rhs.lam.r; // Ignore bound variable names
       case Pi: return *pi.t == *rhs.pi.t && *pi.r == *rhs.pi.r;      // Ignore bound variable names
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   // Using: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
   template <class T>
   inline void hash_combine(size_t& seed, const T& v) noexcept {
     std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   }
 
   size_t Expr::hash() const noexcept {
@@ -68,17 +62,14 @@ namespace Core {
         hash_combine(res, pi.t->hash());
         hash_combine(res, pi.r->hash());
         return res;
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   // Give unnamed bound variables a random name
   string Expr::newName(size_t i) {
+    constexpr size_t Letters = 26;
     string res = "__";
-    do {
-      res.push_back('a' + i % 26);
-      i /= 26;
-    } while (i > 0);
+    do { res.push_back('a' + static_cast<char>(i % Letters)); i /= Letters; } while (i > 0);
     return res;
   }
 
@@ -117,8 +108,7 @@ namespace Core {
         stk.pop_back();
         return res;
       }
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   inline Expr::SortTag imax(Expr::SortTag s, Expr::SortTag t) {
@@ -139,8 +129,7 @@ namespace Core {
           case SProp: return make(pool, SType);
           case SType: return make(pool, SKind);
           case SKind: throw InvalidExpr("\"Kind\" does not have a type", ctx, this);
-        }
-        throw NonExhaustive();
+        } exhaustive;
       }
       case Var: {
         const Expr* t =
@@ -187,8 +176,7 @@ namespace Core {
         if (tr->tag != Sort) throw InvalidExpr("expected proposition or type, got " + tr->toString(ctx, names), ctx, pi.r);
         return make(pool, imax(tt->sort.tag, tr->sort.tag));
       }
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   const Expr* Expr::reduce(Allocator<Expr>& pool) const {
@@ -212,8 +200,7 @@ namespace Core {
         const auto r = pi.r->reduce(pool);
         return (t == pi.t && r == pi.r)? this : make(pool, PPi, pi.s, t, r);
       }
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   size_t Expr::size() const noexcept {
@@ -223,8 +210,7 @@ namespace Core {
       case App: return 1 + app.l->size() + app.r->size();
       case Lam: return 1 + lam.t->size() + lam.r->size();
       case Pi: return 1 + pi.t->size() + pi.r->size();
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   bool Expr::occurs(VarTag vartag, uint64_t id) const noexcept {
@@ -234,8 +220,7 @@ namespace Core {
       case App: return app.l->occurs(vartag, id) || app.r->occurs(vartag, id);
       case Lam: return lam.t->occurs(vartag, id) || lam.r->occurs(vartag, id);
       case Pi: return pi.t->occurs(vartag, id) || pi.r->occurs(vartag, id);
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   size_t Expr::numMeta() const noexcept {
@@ -245,10 +230,7 @@ namespace Core {
       case App: return std::max(app.l->numMeta(), app.r->numMeta());
       case Lam: return std::max(lam.t->numMeta(), lam.r->numMeta());
       case Pi: return std::max(pi.t->numMeta(), pi.r->numMeta());
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
-
-  #pragma GCC diagnostic pop
 
 }

@@ -19,7 +19,7 @@ namespace Core {
   // Invariant: all entries are in beta-reduced form, and are stored in an allocator managed by this `Context`.
   class Context {
   public:
-    Context(): pools(), entries(), indices() { pools.emplace_back(); }
+    Context();
 
     // Add variable unconditionally (for axioms/definitions)
     size_t addDefinition(const std::string& s, const Expr* e);

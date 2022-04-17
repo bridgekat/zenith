@@ -164,7 +164,7 @@ size_t Mu::wordlikePattern(const string& word) {
   if (it == wordlike.end()) {
     Symbol sym = newSymbol();
     size_t pid = addPatternImpl("\"" + word + "\"", sym, lexer.word(word),
-      [] (const ParseTree*) -> std::any { throw Core::Unreachable(); });
+      [] (const ParseTree*) -> std::any { unreachable; });
     it = wordlike.insert({ word, { pid, 0 } }).first;
   }
   it->second.second++;
@@ -173,7 +173,7 @@ size_t Mu::wordlikePattern(const string& word) {
 
 void Mu::removeWordlikePattern(const string& word) {
   auto it = wordlike.find(word);
-  if (it == wordlike.end() || it->second.second < 1) throw Core::Unreachable();
+  if (it == wordlike.end() || it->second.second < 1) unreachable;
   it->second.second--;
   if (it->second.second == 0) {
     lexer.removePattern(it->second.first);
@@ -419,7 +419,7 @@ Mu::Mu() {
   addRule([]     (Vars&& vars, Var&& var)       -> Vars { vars.es.push_back(var.e); return vars; });
   addRuleFor<Expr, Vars>([this] (const ParseTree* x) {
     auto vars = getChild<Vars>(x, 0);
-    if (vars.es.size() < 1) throw Core::Unreachable();
+    if (vars.es.size() < 1) unreachable;
     Core::Expr* res = vars.es[0];
     vars.es.erase(vars.es.begin());
     if (!vars.es.empty()) {
@@ -853,13 +853,13 @@ Mu::Mu() {
 
   addRuleFor<Decl, OpLBrace>
   ([this] (const ParseTree*) {
-    if (scopes.empty()) throw Core::Unreachable();
+    if (scopes.empty()) unreachable;
     scopes.back().second++;
     return Decl{};
   });
   addRuleFor<Decl, OpRBrace>
   ([this] (const ParseTree* x) {
-    if (scopes.empty()) throw Core::Unreachable();
+    if (scopes.empty()) unreachable;
     if (scopes.size() == 1 && scopes.back().second <= 1) throw AnalysisErrorException(x, "Unexpected closing brace");
     scopes.back().second--;
     return Decl{};

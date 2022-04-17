@@ -29,8 +29,8 @@ namespace Parsing {
   // (precision can be specified in the function below)
   constexpr inline size_t makePrec(double prec, bool rightmostLongest) noexcept {
     constexpr size_t maxPrec = 4096 / 2 - 1;
-    size_t res = static_cast<size_t>(prec * maxPrec); // `res` is now in [0, 2048)
-    return rightmostLongest? res * 2 + 1 : res * 2;   // Odd number denotes "rightmost longest"
+    auto res = static_cast<size_t>(prec * maxPrec); // `res` is now in [0, 2048)
+    return rightmostLongest? res * 2 + 1 : res * 2; // Odd number denotes "rightmost longest"
   }
 
   // This is more suitable for left-recursive grammars than right-recursive ones.
@@ -41,13 +41,11 @@ namespace Parsing {
       size_t startPos, endPos;
       vector<Symbol> expected;
       optional<Symbol> got;
-      ErrorInfo(size_t startPos, size_t endPos, const vector<Symbol>& expected, const optional<Symbol>& got):
-        startPos(startPos), endPos(endPos), expected(expected), got(got) {}
     };
     struct AmbiguityInfo {
       size_t startPos, endPos;
-      AmbiguityInfo(size_t startPos, size_t endPos):
-        startPos(startPos), endPos(endPos) {}
+      // Constructor required for compilation on Clang 14 (this is used in `emplace_back`)
+      AmbiguityInfo(size_t startPos, size_t endPos): startPos(startPos), endPos(endPos) {}
     };
 
     // Token stream
@@ -93,7 +91,7 @@ namespace Parsing {
       variant<Location, ParseTree, monostate> child;
       size_t numDisrespects = 0; // The "cost" of a parse, used in disambiguation
       bool unresolved = false;   // TODO: store more information about unresolved ambiguity? (e.g. at least one alternative parse)
-      // Explicit constructor declaration required for compilation on Clang 14
+      // Constructor required for compilation on Clang 14 (this is used in `emplace_back`)
       LinkedState(const State& state, const optional<Location>& prev, const variant<Location, ParseTree, monostate>& child,
                   size_t numDisrespects = 0, bool unresolved = false):
         state(state), prev(prev), child(child), numDisrespects(numDisrespects), unresolved(unresolved) {}

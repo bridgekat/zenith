@@ -3,17 +3,13 @@
 
 namespace Elab::Procs {
 
-  // Allow throwing in `noexcept` functions; we really intend to terminate with an error message
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wterminate"
-
   bool propValue(const Expr* e, const vector<bool>& fvmap) noexcept {
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
-      case Other:   if (e->tag != Expr::Var || e->var.tag != Expr::VFree) throw Unreachable();
+      case Other:   if (e->tag != Expr::Var || e->var.tag != Expr::VFree) unreachable;
                     return (e->var.id < fvmap.size())? fvmap[e->var.id] : false;
-      case Equals:  throw Unreachable();
+      case Equals:  unreachable;
       case True:    return true;
       case False:   return false;
       case Not:     return !propValue(fof.unary.e, fvmap);
@@ -21,11 +17,10 @@ namespace Elab::Procs {
       case Or:      return  propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
       case Implies: return !propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
       case Iff:     return  propValue(fof.binary.l, fvmap) == propValue(fof.binary.r, fvmap);
-      case Forall:  throw Unreachable();
-      case Exists:  throw Unreachable();
-      case Unique:  throw Unreachable();
-    }
-    throw NonExhaustive();
+      case Forall:  unreachable;
+      case Exists:  unreachable;
+      case Unique:  unreachable;
+    } exhaustive;
   }
 
   const Expr* nnf(const Expr* e, Allocator<Expr>& pool, bool negated) {
@@ -46,8 +41,7 @@ namespace Elab::Procs {
       case Exists:    return FOLForm(negated? Forall : Exists, fof.s, nnf(fof.binder.r, pool, negated)).toExpr(pool);
       case Unique:  { const auto [exi, no2] = fof.splitUnique(pool);
                       return FOLForm(negated? Or : And, nnf(exi, pool, negated), nnf(no2, pool, negated)).toExpr(pool); }
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   const Expr* skolemize(const Expr* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool) {
@@ -78,8 +72,7 @@ namespace Elab::Procs {
       case Exists:  { const auto ee = fof.binder.r->makeReplace(makeSkolem(skolem++, metas, pool), pool);
                       return skolemize(ee, meta, skolem, metas, pool); }
       case Unique:    return skolemize(nnf(e, pool), meta, skolem, metas, pool);
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   template <typename T>
@@ -113,8 +106,7 @@ namespace Elab::Procs {
       case Forall:  return {{ e }}; // Not splitted
       case Exists:  return {{ e }}; // Not splitted
       case Unique:  return {{ e }}; // Not splitted
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   string showClauses(const vector<vector<const Expr*>>& cs, const Context& ctx) {
@@ -183,11 +175,8 @@ namespace Elab::Procs {
       case App:  return equalAfterSubs(lhs->app.l, rhs->app.l, subs) && equalAfterSubs(lhs->app.r, rhs->app.r, subs);
       case Lam:  return equalAfterSubs(lhs->lam.t, rhs->lam.t, subs) && equalAfterSubs(lhs->lam.r, rhs->lam.r, subs);
       case Pi:   return equalAfterSubs(lhs->pi.t, rhs->pi.t, subs) && equalAfterSubs(lhs->pi.r, rhs->pi.r, subs);
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
-
-  #pragma GCC diagnostic pop
 
   // A simple anti-unification procedure. O(min(lhs size, rhs size))
   // See: https://en.wikipedia.org/wiki/Anti-unification_(computer_science)#First-order_syntactical_anti-unification
@@ -227,8 +216,7 @@ namespace Elab::Procs {
           const auto r = dfs(lhs->pi.r, rhs->pi.r);
           return (t == lhs->pi.t && r == lhs->pi.r)? lhs : pool.emplaceBack(Expr::PPi, lhs->pi.s, t, r);
         }
-      }
-      throw NonExhaustive();
+      } exhaustive;
     }
 
     tuple<const Expr*, Subs, Subs> operator()(const Expr* lhs, const Expr* rhs) {

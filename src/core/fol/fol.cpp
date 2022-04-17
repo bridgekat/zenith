@@ -9,11 +9,8 @@ namespace Core {
   using std::pair;
 
 
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wterminate"
-
   FOLContext::FOLContext(): Context() {
-    #define assert(expr)  if (!(expr)) throw Unreachable()
+    #define assert(expr)  if (!(expr)) unreachable
     #define prop          Expr::make(pools.back(), Expr::SProp)
     #define type          Expr::make(pools.back(), Expr::SType)
     #define setvar        Expr::make(pools.back(), Expr::VFree, SetVar)
@@ -95,14 +92,13 @@ namespace Core {
       case Forall:  return expr(expr(VFree, Constant::Forall), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
       case Exists:  return expr(expr(VFree, Constant::Exists), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
       case Unique:  return expr(expr(VFree, Constant::Unique), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
-    }
-    throw NonExhaustive();
+    } exhaustive;
   }
 
   pair<const Expr*, const Expr*> FOLForm::splitIff(Allocator<Expr>& pool) const {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
-    if (tag != Iff) throw Unreachable();
+    if (tag != Iff) unreachable;
     return {
       expr(expr(expr(VFree, Constant::Implies), binary.l), binary.r),
       expr(expr(expr(VFree, Constant::Implies), binary.r), binary.l)
@@ -115,7 +111,7 @@ namespace Core {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     using enum Expr::LamTag;
-    if (tag != Unique) throw Unreachable();
+    if (tag != Unique) unreachable;
     const auto setvar  = expr(VFree, Constant::SetVar);
     const auto implies = expr(VFree, Constant::Implies);
     const auto forall  = expr(VFree, Constant::Forall);
@@ -182,12 +178,10 @@ namespace Core {
         stk.push_back(name); res += FOLForm::fromExpr(binder.r).toString(ctx, stk); stk.pop_back();
         return res;
       }
-    }
+    } exhaustive;
     #undef invprec
-    throw NonExhaustive();
   }
 
   #undef expr
-  #pragma GCC diagnostic pop
 
 }

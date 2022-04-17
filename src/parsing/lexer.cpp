@@ -1,17 +1,19 @@
-#include <vector>
-#include <unordered_map>
-#include <core/base.hpp>
 #include "lexer.hpp"
+#include <unordered_map>
+#include <algorithm>
 
 
 namespace Parsing {
 
-  size_t cutFirstCodepoint(const string& s, size_t pos) {
+  // Number of UTF-8 code units (256)
+  constexpr unsigned int CodeUnits = Lexer::CodeUnits;
+
+  size_t cutFirstCodePoint(const string& s, size_t pos) {
     if (pos >= s.size()) return 0;
     size_t i = 1;
     for (; pos + i < s.size(); i++) {
-      unsigned char c = s[pos + i];
-      if ((c & 0b11000000) != 0b10000000) break;
+      char8_t c = s[pos + i];
+      if ((c & 0b11000000) != 0b10000000) break; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
     }
     return i;
   }
@@ -19,7 +21,7 @@ namespace Parsing {
   optional<ParseTree> Lexer::nextToken() {
     string skipped;
     while (!eof()) {
-      auto opt = run(rest, pos);
+      auto opt = run();
       if (opt) {
         if (!skipped.empty()) {
           errors.emplace_back(pos - skipped.size(), pos, skipped);
@@ -28,15 +30,15 @@ namespace Parsing {
         ParseTree res{
           nullptr, nullptr,
           patternSymbol(id),
-          rest.substr(pos, len), id, nullopt,
+          str.substr(pos, len), id, nullopt,
           pos, pos + len
         };
         pos += len;
         return res;
       }
       // !opt
-      size_t len = cutFirstCodepoint(rest, pos);
-      skipped += rest.substr(pos, len);
+      size_t len = cutFirstCodePoint(str, pos);
+      skipped += str.substr(pos, len);
       pos += len;
     }
     // eof()
@@ -53,7 +55,7 @@ namespace Parsing {
   }
 
   // Directly run NFA
-  optional<pair<size_t, size_t>> NFALexer::run(const string& str, size_t pos) const {
+  optional<pair<size_t, size_t>> NFALexer::run() const {
     optional<pair<size_t, size_t>> res = nullopt;
     vector<State> s;
     vector<bool> v(table.size(), false);
@@ -80,7 +82,7 @@ namespace Parsing {
     }
     closure(v, s);
     for (size_t i = 0; pos + i < str.size(); i++) {
-      unsigned char c = str[pos + i];
+      char8_t c = str[pos + i];
       // Reset v[] to false
       for (State x: s) v[x] = false;
       // Move one step
@@ -116,11 +118,11 @@ namespace Parsing {
     unordered_map<vector<bool>, DFALexer::State> mp;
 
     PowersetConstruction(const NFALexer* nfa, DFALexer* dfa): nfa(nfa), dfa(dfa), v(), mp() {}
-    PowersetConstruction(const PowersetConstruction&) = delete;
-    PowersetConstruction& operator=(const PowersetConstruction&) = delete;
+    PowersetConstruction(PowersetConstruction&&) = default;
+    PowersetConstruction& operator=(PowersetConstruction&&) = default;
 
-    void closure(vector<bool>& v, vector<NFALexer::State>& s) const {
-      // Expand to epsilon closure (using DFS)
+    void closure(vector<NFALexer::State>& s) {
+      // Expand `s` and `v` to epsilon closure (using DFS)
       vector<NFALexer::State> stk = s;
       while (!stk.empty()) {
         NFALexer::State nx = stk.back(); stk.pop_back();
@@ -132,14 +134,14 @@ namespace Parsing {
       }
     };
 
+    #define clearv(s_) \
+      for (NFALexer::State i: s_) v[i] = false;
     #define node(x_, s_) \
       x_ = mp[s_] = dfa->table.size(); \
       dfa->table.emplace_back()
     #define trans(s_, c_, t_) \
       dfa->table[s_].has[c_] = true; \
       dfa->table[s_].tr[c_] = t_
-    #define clearv(s_) \
-      for (NFALexer::State i: s_) v[i] = false;
 
     // Invariant: all elements of v[] are false
     void dfs(DFALexer::State x, const vector<NFALexer::State>& s) {
@@ -152,7 +154,7 @@ namespace Parsing {
       dfa->table[x].ac = curr;
       // Compute transitions
       // Invariant: all elements of v[] are false at the end of the loop
-      for (unsigned int c = 0x01; c <= 0xFF; c++) {
+      for (unsigned int c = 1; c < CodeUnits; c++) {
         // Compute u
         vector<NFALexer::State> t;
         for (auto nx: s) for (auto [cc, nu]: nfa->table[nx].tr) {
@@ -162,7 +164,7 @@ namespace Parsing {
           }
         }
         if (t.empty()) continue; // No need to clear v: t is empty
-        closure(v, t);
+        closure(t);
         // Look at u:
         auto it = mp.find(v);
         if (it != mp.end()) {
@@ -188,7 +190,7 @@ namespace Parsing {
         s.push_back(initial);
         v[initial] = true;
       }
-      closure(v, s);
+      closure(s);
       node(dfa->initial, v);
       clearv(s);
       dfs(dfa->initial, s);
@@ -214,8 +216,8 @@ namespace Parsing {
   // (They are directly used as initial partition IDs)
   class PartitionRefinement {
   public:
-    typedef DFALexer::State State;
-    typedef DFALexer::Entry Entry;
+    using State = DFALexer::State;
+    using Entry = DFALexer::Entry;
     struct List { List *l, *r; State x; };
 
     Core::Allocator<List> pool;
@@ -225,17 +227,17 @@ namespace Parsing {
     struct Identity { size_t cl; List* ptr; };
 
     // Ephemeral states
-    vector<vector<pair<unsigned char, State>>> rev; // Reverse edges
-    vector<Class> cl;                   // Classes (size, pointer to head, is used as distinguisher set)
-    vector<Identity> id;                // Identities (class index, pointer to list)
-    vector<size_t> dist;                // Indices of classes used as distinguisher sets
-    vector<State> dom[0x100];           // Character -> domain
-    vector<vector<State>> interStates;  // Class index -> list of intersecting states
+    vector<vector<pair<char8_t, State>>> rev; // Reverse edges
+    vector<Class> cl;                     // Classes (size, pointer to head, is used as distinguisher set)
+    vector<Identity> id;                  // Identities (class index, pointer to list)
+    vector<size_t> dist;                  // Indices of classes used as distinguisher sets
+    array<vector<State>, CodeUnits> dom;  // Character -> domain
+    vector<vector<State>> interStates;    // Class index -> list of intersecting states
 
     explicit PartitionRefinement(DFALexer* dfa):
       pool(), dfa(dfa), rev(), cl(), id(), dist(), dom(), interStates() {}
-    PartitionRefinement(const PartitionRefinement&) = delete;
-    PartitionRefinement& operator=(const PartitionRefinement&) = delete;
+    PartitionRefinement(PartitionRefinement&&) = default;
+    PartitionRefinement& operator=(PartitionRefinement&&) = default;
 
     // Add DFA node `x` to class `i`, overwriting `id[x]`
     void add(State x, size_t i) {
@@ -271,29 +273,29 @@ namespace Parsing {
       auto& initial = dfa->initial;
 
       // Add the dead state
-      size_t dead = table.size();
+      State dead = table.size();
       table.emplace_back();
-      size_t n = table.size();
+      State n = table.size();
       size_t numPatterns = 0;
-      for (size_t i = 0; i < n; i++) {
+      for (State i = 0; i < n; i++) {
         if (table[i].ac) numPatterns = std::max(numPatterns, table[i].ac.value() + 1);
         // Other states now have transitions to the dead state
         // The dead state has all its transitions pointing to itself
-        for (unsigned int c = 0x01; c <= 0xFF; c++) if (!table[i].has[c]) table[i].tr[c] = dead;
+        for (unsigned int c = 1; c < CodeUnits; c++) if (!table[i].has[c]) table[i].tr[c] = dead;
       }
       // `has[]` can be ignored below
 
       // Process reverse edges (arcs)
       rev.clear(); rev.resize(n);
-      for (size_t i = 0; i < n; i++) {
-        for (unsigned int c = 0x01; c <= 0xFF; c++) rev[table[i].tr[c]].emplace_back(c, i);
+      for (State i = 0; i < n; i++) {
+        for (unsigned int c = 1; c < CodeUnits; c++) rev[table[i].tr[c]].emplace_back(static_cast<char8_t>(c), i);
       }
 
       // Initial partition (numPatterns + 1 classes)
       cl.clear();
       for (size_t i = 0; i <= numPatterns; i++) newClass();
       id.clear(); id.resize(n);
-      for (size_t i = 0; i < n; i++) {
+      for (State i = 0; i < n; i++) {
         if (table[i].ac) add(i, table[i].ac.value());
         else             add(i, numPatterns);
       }
@@ -312,14 +314,14 @@ namespace Parsing {
         cl[curr].isDist = false;
 
         // Calculate the domain sets for all c's
-        for (unsigned int c = 0x01; c <= 0xFF; c++) dom[c].clear();
+        for (unsigned int c = 1; c < CodeUnits; c++) dom[c].clear();
         for (const List* p = cl[curr].head->r; p != cl[curr].head; p = p->r) {
           // "Examine transitions" - this occurs a limited number of times, see below
           // Note that the total size of dom[] is bounded by this
           for (auto [c, s]: rev[p->x]) dom[c].push_back(s);
         }
 
-        for (unsigned int c = 0x01; c <= 0xFF; c++) {
+        for (unsigned int c = 1; c < CodeUnits; c++) {
           // Inner loop: time complexity should be O(size of dom[c])
           // Pre: all entries of interStates[] are empty
           interStates.resize(cl.size());
@@ -362,9 +364,9 @@ namespace Parsing {
       // Rebuild `table` and `initial`
       vector<Entry> newTable(cl.size());
       State newInitial = id[initial].cl, newDead = id[dead].cl;
-      for (size_t i = 0; i < table.size(); i++) {
+      for (State i = 0; i < table.size(); i++) {
         State srci = id[i].cl;
-        for (unsigned int c = 0x01; c <= 0xFF; c++) {
+        for (unsigned int c = 1; c < CodeUnits; c++) {
           State dsti = id[table[i].tr[c]].cl;
           if (dsti != newDead) {
             newTable[srci].has[c] = true;
@@ -377,9 +379,9 @@ namespace Parsing {
       initial = newInitial;
 
       // Remove the dead state
-      for (size_t i = 0; i + 1 < table.size(); i++) {
+      for (State i = 0; i + 1 < table.size(); i++) {
         if (i >= newDead) table[i] = table[i + 1];
-        for (unsigned int c = 0x01; c <= 0xFF; c++) {
+        for (unsigned int c = 1; c < CodeUnits; c++) {
           if (table[i].has[c] && table[i].tr[c] > newDead) table[i].tr[c]--;
         }
       }
@@ -422,11 +424,11 @@ namespace Parsing {
   }
 
   // Run DFA
-  optional<pair<size_t, size_t>> DFALexer::run(const string& str, size_t pos) const {
+  optional<pair<size_t, size_t>> DFALexer::run() const {
     optional<pair<size_t, size_t>> res = nullopt;
     State s = initial;
     for (size_t i = 0; pos + i < str.size(); i++) {
-      unsigned char c = str[pos + i];
+      char8_t c = str[pos + i];
       if (!table[s].has[c]) break;
       s = table[s].tr[c];
       // Update result if reaches accepting state
@@ -454,7 +456,7 @@ namespace Parsing {
   */
   string DFALexer::toTextMateGrammar() const {
     // TODO (this is probably too costly and not worth the trouble...)
-    throw Core::NotImplemented();
+    notimplemented;
   }
 
 }

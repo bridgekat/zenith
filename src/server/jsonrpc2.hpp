@@ -60,11 +60,11 @@ namespace Server {
     // See: https://stackoverflow.com/questions/33943601/check-if-stdthread-is-still-running
     // See: https://stackoverflow.com/questions/18365532/should-i-pass-an-stdfunction-by-const-reference
     void addMethod(const string& name, std::function<Coroutine<json>(JSONRPC2Server*, json)> f) {
-      if (inThread.joinable()) throw Core::NotImplemented("cannot add method when server thread is running");
+      if (inThread.joinable()) unreachable;
       methods.emplace(name, f);
     }
     void addNotification(const string& name, std::function<Coroutine<void>(JSONRPC2Server*, json)> f) {
-      if (inThread.joinable()) throw Core::NotImplemented("cannot add method when server thread is running");
+      if (inThread.joinable()) unreachable;
       notifications.emplace(name, f);
     }
 

@@ -21,7 +21,7 @@ namespace Elab {
     Subs res(std::max(a.size(), b.size()), nullptr);
     for (size_t i = 0; i < res.size(); i++) {
       bool af = i < a.size() && a[i], bf = i < b.size() && b[i];
-      if (af && bf) throw Unreachable();
+      if (af && bf) unreachable;
       res[i] = af ? a[i] : bf ? b[i] : nullptr;
     }
     return res;
@@ -31,12 +31,12 @@ namespace Elab {
   string typeToString(unsigned int t) noexcept {
     using enum Tableau::Type;
     switch (t) {
-      case ι: return "ι";
-      case α: return "α";
-      case β: return "β";
-      case γ: return "γ";
-      case δ: return "δ";
-      case γre: return "γre";
+      case Iota:    return "ι";
+      case Alpha:   return "α";
+      case Beta:    return "β";
+      case Gamma:   return "γ";
+      case Delta:   return "δ";
+      case GammaRe: return "γre";
     }
     return "?";
   }
@@ -47,41 +47,37 @@ namespace Elab {
     switch (antesucc) {
       case L:
         switch (fof.tag) {
-          case Other:   return ι;
-          case Equals:  return ι;
-          case True:    return α;
-          case False:   return α;
-          case Not:     return α;
-          case And:     return α;
-          case Or:      return β;
-          case Implies: return β;
-          case Iff:     return α;
-          case Forall:  return γ;
-          case Exists:  return δ;
-          case Unique:  return α;
+          case Other:   return Iota;
+          case Equals:  return Iota;
+          case True:    return Alpha;
+          case False:   return Alpha;
+          case Not:     return Alpha;
+          case And:     return Alpha;
+          case Or:      return Beta;
+          case Implies: return Beta;
+          case Iff:     return Alpha;
+          case Forall:  return Gamma;
+          case Exists:  return Delta;
+          case Unique:  return Alpha;
         }
         break;
       case R:
         switch (fof.tag) {
-          case Other:   return ι;
-          case Equals:  return ι;
-          case True:    return α;
-          case False:   return α;
-          case Not:     return α;
-          case And:     return β;
-          case Or:      return α;
-          case Implies: return α;
-          case Iff:     return β;
-          case Forall:  return δ;
-          case Exists:  return γ;
-          case Unique:  return β;
+          case Other:   return Iota;
+          case Equals:  return Iota;
+          case True:    return Alpha;
+          case False:   return Alpha;
+          case Not:     return Alpha;
+          case And:     return Beta;
+          case Or:      return Alpha;
+          case Implies: return Alpha;
+          case Iff:     return Beta;
+          case Forall:  return Delta;
+          case Exists:  return Gamma;
+          case Unique:  return Beta;
         }
         break;
-    }
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wterminate"
-    throw NonExhaustive();
-    #pragma GCC diagnostic pop
+    } exhaustive;
   }
 
   // Apply `subs` to all of `cont`
@@ -101,7 +97,7 @@ namespace Elab {
             std::cout << "Old: " << e->toString(ctx) << std::endl;
             std::cout << "New: " << newe->toString(ctx) << std::endl;
             debughtml("crash");
-            throw Unreachable();
+            unreachable;
           }
 #endif
           e = newe;
@@ -118,7 +114,7 @@ namespace Elab {
             std::cout << "Old: " << e->toString(ctx) << std::endl;
             std::cout << "New: " << newe->toString(ctx) << std::endl;
             debughtml("crash");
-            throw Unreachable();
+            unreachable;
           }
 #endif
           e = newe;
@@ -157,7 +153,7 @@ namespace Elab {
 
     WithCedent(Tableau* p, const Expr* e, Tableau::Position pos, bool* closed, bool reAdd = false):
         p(p), i(Tableau::classify(pos, e)), pos(pos), ehash(ExprHash(e)), inserted(false), reAdd(reAdd) {
-      if (reAdd) i = Tableau::Type::γre;
+      if (reAdd) i = Tableau::Type::GammaRe;
       inserted = p->branch.hashset[pos].insert(ehash).second;
       if (p->branch.hashset[Tableau::invert(pos)].contains(ehash)) *closed = true;
       if (inserted || reAdd) {
@@ -165,7 +161,7 @@ namespace Elab {
         p->branch.timestamps[i][pos].push_back(p->branch.numCedents);
         p->branch.numCedents++;
         p->branch.numUniversals[i][pos].push_back(p->branch.numUniversal);
-        if (i == Tableau::Type::β) p->branch.betaUsed[pos].push_back(false);
+        if (i == Tableau::Type::Beta) p->branch.betaUsed[pos].push_back(false);
       }
     }
     WithCedent(const WithCedent&) = delete;
@@ -176,7 +172,7 @@ namespace Elab {
         p->branch.timestamps[i][pos].pop_back();
         p->branch.numCedents--;
         p->branch.numUniversals[i][pos].pop_back();
-        if (i == Tableau::Type::β) p->branch.betaUsed[pos].pop_back();
+        if (i == Tableau::Type::Beta) p->branch.betaUsed[pos].pop_back();
       }
       if (inserted) p->branch.hashset[pos].erase(ehash);
     }
@@ -212,7 +208,7 @@ namespace Elab {
 #endif
       bool res = dfs(depth);
 #ifdef CHECK_INVARIANTS
-      if (branch != t) throw Unreachable();
+      if (branch != t) unreachable;
 #endif
       cont.push_back(branch);
       branch = backup;
@@ -229,7 +225,7 @@ namespace Elab {
       for (auto& [q, _]: branch.hashset[invert(pos)]) {
         auto unifier = Procs::unify({{ e, q }}, pool);
         if (unifier.has_value()) {
-          if (!Procs::equalAfterSubs(e, q, unifier.value())) throw Unreachable();
+          if (!Procs::equalAfterSubs(e, q, unifier.value())) unreachable;
           // Optimization: if there's a unifier that doesn't affect other branches, we use that one and discard the rest.
           if (cont.empty() || subsStartsFrom(unifier.value(), cont.back().numUniversal)) {
             vector<Branch> backup = cont;
@@ -240,7 +236,7 @@ namespace Elab {
 #endif
             bool res = closing(depth);
 #ifdef CHECK_INVARIANTS
-            if (cont != t) throw Unreachable();
+            if (cont != t) unreachable;
 #endif
             cont = backup;
             pools.pop_back();
@@ -260,7 +256,7 @@ namespace Elab {
 #endif
           bool res = closing(depth);
 #ifdef CHECK_INVARIANTS
-          if (cont != t) throw Unreachable();
+          if (cont != t) unreachable;
 #endif
           cont = backup;
           pools.pop_back();
@@ -314,7 +310,7 @@ namespace Elab {
       bool res = closed? closing(depth) : dfs(depth + 1);
       if (inserted) cont.pop_back();
 #ifdef CHECK_INVARIANTS
-      if (cont != t) throw Unreachable();
+      if (cont != t) unreachable;
 #endif
       return res;
     };
@@ -339,7 +335,7 @@ namespace Elab {
         WithValue gd(&branch.depth, closed? branch.depth : reentrant ? (branch.depth + 1) : branch.depth);
         return closed? closing(depth) : dfs(reentrant? (depth + 1) : depth);
       } else {
-        if (reentrant) throw Unreachable();
+        if (reentrant) unreachable;
         return closed? closing(depth) : dfs(depth);
       }
     };
@@ -355,7 +351,7 @@ namespace Elab {
       return closed? closing(depth) : dfs(depth);
     };
 
-    constexpr static unsigned int order[] = { ι, α, δ, γ };
+    constexpr static unsigned int order[] = { Iota, Alpha, Delta, Gamma };
 
     for (unsigned int i: order) {
       auto&   ante  = branch.cedents[i][L], & succ  = branch.cedents[i][R];
@@ -365,7 +361,7 @@ namespace Elab {
       if (antei < ante.size()) {
         const Expr* e = ante[antei];
         WithValue gi(&antei, antei + 1);
-        if (!(classify(L, e) == i || (classify(L, e) == γ && i == γre))) throw Unreachable();
+        if (!(classify(L, e) == i || (classify(L, e) == Gamma && i == GammaRe))) unreachable;
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Other:     return iota(L, e);
@@ -374,23 +370,22 @@ namespace Elab {
           case False:     return closing(depth);
           case Not:       return unary(R, fof.unary.e);
           case And:       return alpha(L, fof.binary.l, L, fof.binary.r);
-          case Or:        throw Unreachable();
-          case Implies:   throw Unreachable();
+          case Or:        unreachable;
+          case Implies:   unreachable;
           case Iff:     { const auto [mp, mpr] = fof.splitIff(pool);
                           return alpha(L, mp, L, mpr); }
           case Forall:    return gamma(L, e, false);
           case Exists:    return delta(L, e);
           case Unique:  { const auto [exi, no2] = fof.splitUnique(pool);
                           return alpha(L, exi, L, no2); }
-        }
-        throw Unreachable();
+        } exhaustive;
       }
 
       // Right logical rules (try breaking down one succedent)
       if (succi < succ.size()) {
         const Expr* e = succ[succi];
         WithValue gi(&succi, succi + 1);
-        if (!(classify(R, e) == i || (classify(R, e) == γ && i == γre))) throw Unreachable();
+        if (!(classify(R, e) == i || (classify(R, e) == Gamma && i == GammaRe))) unreachable;
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Other:   return iota(R, e);
@@ -398,15 +393,14 @@ namespace Elab {
           case True:    return closing(depth);
           case False:   return dfs(depth);
           case Not:     return unary(L, fof.unary.e);
-          case And:     throw Unreachable();
+          case And:     unreachable;
           case Or:      return alpha(R, fof.binary.l, R, fof.binary.r);
           case Implies: return alpha(L, fof.binary.l, R, fof.binary.r);
-          case Iff:     throw Unreachable();
+          case Iff:     unreachable;
           case Forall:  return delta(R, e);
           case Exists:  return gamma(R, e, false);
-          case Unique:  throw Unreachable();
-        }
-        throw Unreachable();
+          case Unique:  unreachable;
+        } exhaustive;
       }
     }
 
@@ -416,7 +410,7 @@ namespace Elab {
     // So I have to use a separate `betaUsed` mechanism...
     // TODO: sort by complexity?
     if (branch.depth < maxTabDepth) {
-      unsigned int i = β;
+      unsigned int i = Beta;
       auto&   ante  = branch.cedents[i][L], & succ  = branch.cedents[i][R];
       // size_t& antei = branch.indices[i][L], & succi = branch.indices[i][R];
       auto&   anteu = branch.betaUsed[L],   & succu = branch.betaUsed[R];
@@ -429,7 +423,7 @@ namespace Elab {
         switch (fof.tag) {
           case Or:        res = beta(L, fof.binary.l, L, fof.binary.r); break;
           case Implies:   res = beta(R, fof.binary.l, L, fof.binary.r); break;
-          default:        throw Unreachable();
+          default:        unreachable;
         }
         anteu[ii] = false;
         if (res) return true;
@@ -446,7 +440,7 @@ namespace Elab {
                           res = beta(R, mp, R, mpr); } break;
           case Unique:  { const auto [exi, no2] = fof.splitUnique(pool);
                           res = beta(R, exi, R, no2); } break;
-          default:        throw Unreachable();
+          default:        unreachable;
         }
         succu[ii] = false;
         if (res) return true;
@@ -455,7 +449,7 @@ namespace Elab {
 
     // The relative order of γ's are unimportant, so we could proceed with the insertion order
     if (branch.depth < maxTabDepth) {
-      unsigned int i = γre;
+      unsigned int i = GammaRe;
       auto&   ante  = branch.cedents[i][L], & succ  = branch.cedents[i][R];
       size_t& antei = branch.indices[i][L], & succi = branch.indices[i][R];
 
@@ -465,7 +459,7 @@ namespace Elab {
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Forall:    if (gamma(L, e, true)) return true; break;
-          default:        throw Unreachable();
+          default:        unreachable;
         }
       }
       for (size_t ii = succi; ii < succ.size(); ii++) {
@@ -474,7 +468,7 @@ namespace Elab {
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Exists:    if (gamma(R, e, true)) return true; break;
-          default:        throw Unreachable();
+          default:        unreachable;
         }
       }
     }
@@ -568,7 +562,7 @@ namespace Elab {
             std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
             std::cout << "    " << e->toString(ctx) << std::endl;
             std::cout << "not found in hashset." << std::endl;
-            throw Unreachable();
+            unreachable;
           }
         }
       }
@@ -584,13 +578,13 @@ namespace Elab {
       std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
       std::cout << "    " << eh.e->toString(ctx) << std::endl;
       std::cout << "not found in cedents." << std::endl;
-      throw Unreachable();
+      unreachable;
     }
     for (const ExprHash& eh: ths[1]) {
       std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
       std::cout << "    " << eh.e->toString(ctx) << std::endl;
       std::cout << "not found in cedents." << std::endl;
-      throw Unreachable();
+      unreachable;
     }
   }
 
@@ -600,11 +594,11 @@ namespace Elab {
     for (size_t ind = 0; ind < cont.size(); ind++) {
       const Branch& branch = cont[ind];
       checkBranch(branch);
-      if (branch.cedents[β][L].size() != branch.betaUsed[L].size()) throw Unreachable();
-      if (branch.cedents[β][R].size() != branch.betaUsed[R].size()) throw Unreachable();
+      if (branch.cedents[β][L].size() != branch.betaUsed[L].size()) unreachable;
+      if (branch.cedents[β][R].size() != branch.betaUsed[R].size()) unreachable;
       for (unsigned int i = 0; i < N; i++) {
-        if (branch.cedents[i][L].size() != branch.timestamps[i][L].size()) throw Unreachable();
-        if (branch.cedents[i][L].size() != branch.numUniversals[i][L].size()) throw Unreachable();
+        if (branch.cedents[i][L].size() != branch.timestamps[i][L].size()) unreachable;
+        if (branch.cedents[i][L].size() != branch.numUniversals[i][L].size()) unreachable;
         for (const Expr* e: branch.cedents[i][L]) {
           if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
@@ -612,11 +606,11 @@ namespace Elab {
             std::cout << "But formula in L (" << typeToString(i) << ") has more:" << std::endl;
             std::cout << "    " << e->toString(ctx) << std::endl;
             debughtml("crash");
-            throw Unreachable();
+            unreachable;
           }
         }
-        if (branch.cedents[i][R].size() != branch.timestamps[i][R].size()) throw Unreachable();
-        if (branch.cedents[i][R].size() != branch.numUniversals[i][R].size()) throw Unreachable();
+        if (branch.cedents[i][R].size() != branch.timestamps[i][R].size()) unreachable;
+        if (branch.cedents[i][R].size() != branch.numUniversals[i][R].size()) unreachable;
         for (const Expr* e: branch.cedents[i][R]) {
           if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
@@ -624,7 +618,7 @@ namespace Elab {
             std::cout << "But formula in R (" << typeToString(i) << ") has more:" << std::endl;
             std::cout << "    " << e->toString(ctx) << std::endl;
             debughtml("crash");
-            throw Unreachable();
+            unreachable;
           }
         }
       }
@@ -667,12 +661,12 @@ namespace Elab {
       vector<Item> a;
       for (unsigned int i = 0; i < N; i++) {
         for (size_t j = 0; j < b.cedents[i][L].size(); j++) {
-          bool active = (i == β? !b.betaUsed[L][j] : j >= b.indices[i][L]);
-          a.emplace_back(b.timestamps[i][L][j], L, i, active, b.numUniversals[i][L][j], b.cedents[i][L][j]);
+          bool active = (i == Beta? !b.betaUsed[L][j] : j >= b.indices[i][L]);
+          a.push_back(Item{ b.timestamps[i][L][j], L, i, active, b.numUniversals[i][L][j], b.cedents[i][L][j] });
         }
         for (size_t j = 0; j < b.cedents[i][R].size(); j++) {
-          bool active = (i == β? !b.betaUsed[R][j] : j >= b.indices[i][R]);
-          a.emplace_back(b.timestamps[i][R][j], R, i, active, b.numUniversals[i][R][j], b.cedents[i][R][j]);
+          bool active = (i == Beta? !b.betaUsed[R][j] : j >= b.indices[i][R]);
+          a.push_back(Item{ b.timestamps[i][R][j], R, i, active, b.numUniversals[i][R][j], b.cedents[i][R][j] });
         }
       }
       sort(a.begin(), a.end());

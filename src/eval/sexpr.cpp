@@ -1,4 +1,5 @@
 #include "sexpr.hpp"
+#include <sstream>
 
 
 namespace Eval {
@@ -17,8 +18,7 @@ namespace Eval {
       [&] (String const& str) { return pool.emplaceBack(String{ str }); },
       [&] (Boolean boolean)   { return pool.emplaceBack(Boolean{ boolean }); },
       [&] (Undefined)         { return pool.emplaceBack(Undefined{}); },
-      [&] (Closure const&)    { throw Core::NotImplemented();
-                                return pool.emplaceBack(Undefined{}); },
+      [&] (Closure const&)    -> SExpr* { notimplemented; },
       [&] (Builtin const& bi) { return pool.emplaceBack(Builtin{ bi }); },
       [&] (Native const& nat) { return pool.emplaceBack(Native{ nat }); }
     }, v);
@@ -59,8 +59,8 @@ namespace Eval {
       []  (Undefined)         { return make_pair(false, string("#undefined")); },
       []  (Closure const& cl) { return make_pair(false, "#<closure params: " + cl.formal->toString() + ", body: " + cl.es->toString() + "...>"); },
       []  (Builtin const& bi) { return make_pair(false, "#<builtin procedure index: " + std::to_string(bi.index) + ">"); },
-      []  (Native const& nat) { return make_pair(false, "#<native type: " + string(nat.val.type().name()) +
-                                                        ", addr: " + std::to_string(reinterpret_cast<uintptr_t>(&nat.val)) + ">"); }
+      []  (Native const& nat) { std::stringstream addr; addr << &nat.val;
+                                return make_pair(false, "#<native type: " + string(nat.val.type().name()) + ", addr: " + addr.str() + ">"); }
     }, v);
   }
 

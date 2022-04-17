@@ -4,6 +4,7 @@
 #define EXPR_HPP_
 
 #include <cstdint>
+#include <stdexcept>
 #include "base.hpp"
 #include "context.hpp"
 
@@ -37,8 +38,8 @@ namespace Core {
     Expr(SortTag sorttag): tag(Sort), sort{ sorttag } {}
     Expr(VarTag vartag, uint64_t id): tag(Var), var{ vartag, id } {}
     Expr(const Expr* l, const Expr* r): tag(App), app{ l, r } {}
-    Expr(LamTag, const std::string& s, const Expr* t, const Expr* r): tag(Lam), lam{ s, t, r } {}
-    Expr(PiTag, const std::string& s, const Expr* t, const Expr* r): tag(Pi), pi{ s, t, r } {}
+    Expr(LamTag, std::string s, const Expr* t, const Expr* r): tag(Lam), lam{ std::move(s), t, r } {}
+    Expr(PiTag, std::string s, const Expr* t, const Expr* r): tag(Pi), pi{ std::move(s), t, r } {}
 
     // Immutability + non-trivial members in union = impossible to make a copy constructor...
     // We use pointers to `Expr`s constructed in `Allocator`s anyway, so this is not a big problem
@@ -47,10 +48,10 @@ namespace Core {
     // Destructor needed for std::string in union
     ~Expr() {
       switch (tag) {
-        case Sort: case Var: case App: break;
-        case Lam: lam.s.~basic_string(); break;
-        case Pi: pi.s.~basic_string(); break;
-      }
+        case Sort: case Var: case App: return;
+        case Lam: lam.s.~basic_string(); return;
+        case Pi: pi.s.~basic_string(); return;
+      } exhaustive;
     }
 
     // Deep copy whole expression to `pool`
@@ -115,8 +116,7 @@ namespace Core {
           const auto r = pi.r->updateVars(f, pool, n + 1);
           return (t == pi.t && r == pi.r)? this : make(pool, PPi, pi.s, t, r);
         }
-      }
-      throw NonExhaustive();
+      } exhaustive;
     }
 
     // Make a free variable into an overflow variable (lifetime of the resulting expression is bounded by `this` and `pool`)

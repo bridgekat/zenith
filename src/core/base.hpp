@@ -1,13 +1,12 @@
-// Core :: Allocator, Unreachable, NotImplemented, NonExhaustive
+// Core :: Allocator...
 
 #ifndef BASE_HPP_
 #define BASE_HPP_
 
+#include <iostream>
 #include <vector>
 #include <memory>
-#include <utility>
-#include <string>
-#include <stdexcept>
+#include <exception>
 
 
 namespace Core {
@@ -77,26 +76,19 @@ namespace Core {
     std::size_t next;
 
     void deallocateBlocks() noexcept {
-      for (size_t i = 0; i < blocks.size(); i++) {
+      for (std::size_t i = 0; i < blocks.size(); i++) {
         std::destroy_n(blocks[i], (i + 1 == blocks.size() && next > 0)? next : blockSize);
         alloc.deallocate(blocks[i], blockSize);
       }
     }
   };
-
-  // Some exception classes...
-  struct Unreachable: public std::logic_error {
-    explicit Unreachable(const std::string& s = ""):
-      std::logic_error("\"Unreachable\" code was reached" + (s.empty() ? "" : ": " + s)) {}
-  };
-  struct NotImplemented: public std::logic_error {
-    explicit NotImplemented(const std::string& s = ""):
-      std::logic_error("\"Not implemented\" code was called" + (s.empty() ? "" : ": " + s)) {}
-  };
-  struct NonExhaustive: public Unreachable {
-    NonExhaustive(): Unreachable("unknown tagged union state") {}
-  };
-
+  
 }
+
+#define unreachable { std::cerr << R"("Unreachable" code was reached: )" << \
+  __FILE__ << ":" << __LINE__ << ", at function " << static_cast<const char*>(__func__) << std::endl; std::terminate(); }
+#define notimplemented { std::cerr << R"("Not implemented" code was called: )" << \
+  __FILE__ << ":" << __LINE__ << ", at function " << static_cast<const char*>(__func__) << std::endl; std::terminate(); }
+#define exhaustive unreachable
 
 #endif // BASE_HPP_

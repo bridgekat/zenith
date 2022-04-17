@@ -31,7 +31,7 @@ namespace Server {
     std::vector<bool> lineBreak(n + 1, false);
     for (size_t i = 0; i <= n; i++) {
       if (content.substr(i, eol.size()) == eol) {
-        if (i + eol.size() > n) throw Core::Unreachable();
+        if (i + eol.size() > n) unreachable;
         lineBreak[i + eol.size()] = true;
       }
     }

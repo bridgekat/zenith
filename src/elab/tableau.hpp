@@ -64,7 +64,7 @@ namespace Elab {
     // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ" (existential).
     // (TODO: "ε" (equational) and "φ" (second-order universal))
     enum Position: unsigned int { L, R };
-    enum Type: unsigned int { ι, α, β, γ, γre, δ, N };
+    enum Type: unsigned int { Iota, Alpha, Beta, Gamma, GammaRe, Delta, N };
 
     struct Branch {
       vector<const Expr*> cedents[N][2];
@@ -77,7 +77,7 @@ namespace Elab {
       vector<size_t> timestamps[N][2]; // DEBUG CODE
       vector<size_t> numUniversals[N][2]; // DEBUG CODE
 
-      auto operator<=>(const Branch& r) const noexcept = default;
+      bool operator==(const Branch& r) const noexcept = default;
     };
 
     Tableau(const Context& ctx) noexcept:
@@ -90,7 +90,7 @@ namespace Elab {
         branch.cedents[i][L].push_back(e);
         branch.timestamps[i][L].push_back(branch.numCedents++);
         branch.numUniversals[i][L].push_back(0);
-        if (i == β) branch.betaUsed[L].push_back(false);
+        if (i == Beta) branch.betaUsed[L].push_back(false);
       }
     }
 
@@ -101,7 +101,7 @@ namespace Elab {
         branch.cedents[i][R].push_back(e);
         branch.timestamps[i][R].push_back(branch.numCedents++);
         branch.numUniversals[i][R].push_back(0);
-        if (i == β) branch.betaUsed[R].push_back(false);
+        if (i == Beta) branch.betaUsed[R].push_back(false);
       }
     }
 

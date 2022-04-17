@@ -25,7 +25,7 @@ namespace Eval {
 
   // Convenient pattern-matching functions (throw customized exceptions on failure)
   template <typename T>
-  T& expect(SExpr*) { throw Core::Unreachable(); }
+  T& expect(SExpr*) { unreachable; }
   #define declareExpect(T, msg) \
     template <> \
     T& expect<T>(SExpr* e) { \
@@ -133,8 +133,8 @@ namespace Eval {
         if (holds<Cons>(lhs)) {
           // Function definition
           const auto [sym, formal] = get<Cons>(lhs);
-          const auto es = t;
-          env = extend(env, expect<Symbol>(sym).s, pool.emplaceBack(Closure{ env, formal, es }));
+          const auto body = t;
+          env = extend(env, expect<Symbol>(sym).s, pool.emplaceBack(Closure{ env, formal, body }));
         } else {
           // General definition (ignores more arguments)
           const auto sym = lhs;
@@ -170,8 +170,8 @@ namespace Eval {
         if (holds<Cons>(lhs)) {
           // Function definition
           const auto [_, formal] = get<Cons>(lhs);
-          const auto es = t;
-          *refs[i++] = pool.emplaceBack(Closure{ env, formal, es });
+          const auto body = t;
+          *refs[i++] = pool.emplaceBack(Closure{ env, formal, body });
         } else {
           // General definition (ignores more arguments)
           const auto [val, _] = expect<Cons>(t);
@@ -191,8 +191,8 @@ namespace Eval {
       for (auto it = env; holds<Cons>(it); it = get<Cons>(it).tail) {
         const auto curr = get<Cons>(it).head;
         if (holds<Cons>(curr)) {
-          const auto [lhs, t] = get<Cons>(curr);
-          auto&      [rhs, _] = get<Cons>(t);
+          const auto [lhs, t1] = get<Cons>(curr);
+          auto&      [rhs, t2] = get<Cons>(t1);
           if (holds<Symbol>(lhs) && get<Symbol>(lhs).s == s) { rhs = val; return undefined; }
         }
       }
@@ -370,7 +370,7 @@ namespace Eval {
     primNames["MakeBound"] = addPrim(true, [this] (SExpr*, SExpr* e) -> Result {
       const auto [h, t] = expect<Cons>(e);
       const auto [h1, t1] = expect<Cons>(t);
-      uint64_t id = static_cast<uint64_t>(expect<Number>(h1));
+      auto id = static_cast<uint64_t>(expect<Number>(h1));
       const auto res = SExprToExpr(h, epool)->makeBound(id, epool);
       return ExprToSExpr(res, pool);
     });
@@ -405,57 +405,59 @@ namespace Eval {
   }
 
   SExpr* Environment::eval(SExpr* env, SExpr* e) {
-    restart:
+    while (true) {
+      // Evaluate current `e` under current `env`
 
-    if (holds<Symbol>(e)) {
-      // Symbols: evaluate to their bound values
-      string sym = get<Symbol>(e).s;
-      const auto val = lookup(env, sym);
-      if (val) return val;
-      const auto it = primNames.find(sym);
-      if (it != primNames.end()) return pool.emplaceBack(Builtin{ it->second });
-      throw PartialEvalError("unbound symbol \"" + sym + "\"", e);
+      if (holds<Symbol>(e)) {
+        // Symbols: evaluate to their bound values
+        string sym = get<Symbol>(e).s;
+        const auto val = lookup(env, sym);
+        if (val) return val;
+        const auto it = primNames.find(sym);
+        if (it != primNames.end()) return pool.emplaceBack(Builtin{ it->second });
+        throw PartialEvalError("unbound symbol \"" + sym + "\"", e);
 
-    } else if (holds<Cons>(e)) {
-      // Non-empty lists: evaluate as function application
-      try {
-        const auto [head, tail] = get<Cons>(e);
-        const auto ehead = eval(env, head);
+      } else if (holds<Cons>(e)) {
+        // Non-empty lists: evaluate as function application
+        try {
+          const auto [head, tail] = get<Cons>(e);
+          const auto ehead = eval(env, head);
 
-        if (holds<Builtin>(ehead)) {
-          // Primitive function application
-          const auto [evalParams, f] = prim[get<Builtin>(ehead).index];
-          const auto res = f(env, evalParams? evalList(env, tail) : tail);
-          // No tail call, return
-          if (!res.env) return res.e;
-          // Tail call
-          env = res.env;
-          e = res.e;
-          goto restart;
+          if (holds<Builtin>(ehead)) {
+            // Primitive function application
+            const auto [evalParams, f] = prim[get<Builtin>(ehead).index];
+            const auto res = f(env, evalParams? evalList(env, tail) : tail);
+            // No tail call, return
+            if (!res.env) return res.e;
+            // Tail call
+            env = res.env;
+            e = res.e;
+            continue;
+          }
+
+          if (holds<Closure>(ehead)) {
+            // Lambda function application
+            const auto cl = get<Closure>(ehead);
+            const auto params = evalList(env, tail);
+            // Evaluate body as tail call
+            env = cl.env;
+            bool matched = matchSimple(params, cl.formal, env);
+            if (!matched) throw EvalError("pattern matching failed: " + cl.formal->toString() + " ?= " + params->toString(), tail, e);
+            e = evalListExceptLast(env, cl.es);
+            continue;
+          }
+
+          throw EvalError("head element " + ehead->toString() + " is not a function", head, e);
+
+        } catch (PartialEvalError& ex) {
+          // "Decorate" partial exceptions with more context, and rethrow a (complete) exception
+          throw EvalError(ex.what(), ex.at, e);
         }
 
-        if (holds<Closure>(ehead)) {
-          // Lambda function application
-          const auto cl = get<Closure>(ehead);
-          const auto params = evalList(env, tail);
-          // Evaluate body as tail call
-          env = cl.env;
-          bool matched = matchSimple(params, cl.formal, env);
-          if (!matched) throw EvalError("pattern matching failed: " + cl.formal->toString() + " ?= " + params->toString(), tail, e);
-          e = evalListExceptLast(env, cl.es);
-          goto restart;
-        }
-
-        throw EvalError("head element " + ehead->toString() + " is not a function", head, e);
-
-      } catch (PartialEvalError& ex) {
-        // "Decorate" partial exceptions with more context, and rethrow a (complete) exception
-        throw EvalError(ex.what(), ex.at, e);
+      } else {
+        // Everything else: evaluates to itself
+        return e;
       }
-
-    } else {
-      // Everything else: evaluates to itself
-      return e;
     }
   }
 
@@ -528,13 +530,12 @@ namespace Eval {
       case App: return cons(sym("App"),                     cons(ExprToSExpr(e->app.l, pool), cons(ExprToSExpr(e->app.r, pool), nil)));
       case Lam: return cons(sym("Lam"), cons(str(e->lam.s), cons(ExprToSExpr(e->lam.t, pool), cons(ExprToSExpr(e->lam.r, pool), nil))));
       case Pi:  return cons(sym("Pi"),  cons(str(e->pi.s),  cons(ExprToSExpr(e->pi.t,  pool), cons(ExprToSExpr(e->pi.r,  pool), nil))));
-    }
+    } exhaustive;
     #undef cons
     #undef nil
     #undef sym
     #undef str
     #undef num
-    throw Core::NonExhaustive();
   }
 
   const Expr* SExprToExpr(SExpr* e, Allocator<Expr>& pool) {

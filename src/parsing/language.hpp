@@ -128,9 +128,9 @@ namespace Parsing {
     ReturnType get(const ParseTree* x) {
       std::type_index tid = typeid(ReturnType);
       auto it = mp.find(tid);
-      if (it == mp.end()) throw Core::Unreachable("Language: unknown symbol");
+      if (it == mp.end()) unreachable;
       Symbol sym = it->second;
-      if (x->id != sym) throw Core::Unreachable("Language: symbol mismatch");
+      if (x->id != sym) unreachable;
       return std::any_cast<ReturnType>(symbols[sym].action(x));
     }
 
@@ -140,10 +140,10 @@ namespace Parsing {
     ReturnType getChild(const ParseTree* x, size_t index) {
       x = x->c;
       for (size_t i = 0; i < index; i++) {
-        if (!x) throw Core::Unreachable("Language: unexpected null pointer");
+        if (!x) unreachable;
         x = x->s;
       }
-      if (!x) throw Core::Unreachable("Language: unexpected null pointer");
+      if (!x) unreachable;
       return get<ReturnType>(x);
     }
 
@@ -153,11 +153,11 @@ namespace Parsing {
     std::optional<ReturnType> nextSentence() {
       std::type_index tid = typeid(ReturnType);
       auto it = mp.find(tid);
-      if (it == mp.end()) throw Core::Unreachable("Language: unknown start symbol");
+      if (it == mp.end()) unreachable;
       Symbol start = it->second;
       ParseTree* x = nextSentenceImpl(start);
       if (!x) return std::nullopt;
-      if (x->id != start) throw Core::Unreachable("Language: parsing completed with unexpected root node");
+      if (x->id != start) unreachable;
       return std::any_cast<ReturnType>(symbols[start].action(x));
     }
 
@@ -178,7 +178,7 @@ namespace Parsing {
         [this, action] (const ParseTree* x) {
           vector<std::any> params;
           for (ParseTree* p = x->c; p; p = p->s) params.push_back(symbols[p->id].action(p));
-          if (params.size() != sizeof...(ParamTypes)) throw Core::Unreachable("Langugage: arity does not match");
+          if (params.size() != sizeof...(ParamTypes)) unreachable;
           return action(std::move(std::any_cast<typename std::decay<ParamTypes>::type>(params[Indices]))...);
         },
         prec);

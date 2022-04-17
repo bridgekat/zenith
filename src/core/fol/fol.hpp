@@ -39,28 +39,16 @@ namespace Core {
     const std::string s{};
 
     FOLForm(Tag tag): tag(tag), unary{ nullptr } {
-      switch (tag) {
-        case True: case False: break;
-        default: throw Unreachable();
-      }
+      switch (tag) { case True: case False: return; default: unreachable; }
     }
     FOLForm(Tag tag, const Expr* e): tag(tag), unary{ e } {
-      switch (tag) {
-        case Not: case Other: break;
-        default: throw Unreachable();
-      }
+      switch (tag) { case Not: case Other: return; default: unreachable; }
     }
     FOLForm(Tag tag, const Expr* l, const Expr* r): tag(tag), binary{ l, r } {
-      switch (tag) {
-        case Equals: case And: case Or: case Implies: case Iff: break;
-        default: throw Unreachable();
-      }
+      switch (tag) { case Equals: case And: case Or: case Implies: case Iff: return; default: unreachable; }
     }
-    FOLForm(Tag tag, const std::string& s, const Expr* r): tag(tag), binder{ r }, s(s) {
-      switch (tag) {
-        case Forall: case Exists: case Unique: break;
-        default: throw Unreachable();
-      }
+    FOLForm(Tag tag, std::string s, const Expr* r): tag(tag), binder{ r }, s(std::move(s)) {
+      switch (tag) { case Forall: case Exists: case Unique: return; default: unreachable; }
     }
     FOLForm(const FOLForm&) = default;
 

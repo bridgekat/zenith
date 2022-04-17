@@ -53,17 +53,17 @@ namespace Parsing {
   }
 
   Symbol Language::newSymbol(const string& name) {
-    Symbol sym = symbols.size();
+    Symbol sym = static_cast<Symbol>(symbols.size());
     // symbols.emplace_back(...)
     symbols.push_back(Entry{ name, [sym] (const ParseTree* x) -> std::any {
-      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
-      throw Core::Unreachable("Language: no matching rule or pattern");
+      if (x->id != sym) unreachable;
+      unreachable;
     }});
     return sym;
   }
 
   void Language::setAsIgnoredSymbol(const string& name, Symbol sym) {
-    if (parser.ignoredSymbol) throw Core::Unreachable("Language: at most one ignored symbol can be set");
+    if (parser.ignoredSymbol) unreachable;
     parser.ignoredSymbol = sym;
     symbols[sym].name = name;
   }
@@ -76,7 +76,7 @@ namespace Parsing {
     // Add new handler for new pattern
     auto prev = symbols[sym].action;
     symbols[sym].action = [sym, pid, prev, action] (const ParseTree* x) -> std::any {
-      if (x->id != sym) throw Core::Unreachable("Language: unexpected symbol");
+      if (x->id != sym) unreachable;
       if (x->patternIndex.has_value() && x->patternIndex.value() == pid) return action(x);
       return prev(x);
     };
@@ -93,7 +93,7 @@ namespace Parsing {
     // Add new handler for new rule
     auto prev = symbols[lhs].action;
     symbols[lhs].action = [lhs, rid, prev, action] (const ParseTree* x) -> std::any {
-      if (x->id != lhs) throw Core::Unreachable("Language: unexpected symbol");
+      if (x->id != lhs) unreachable;
       if (x->ruleIndex.has_value() && x->ruleIndex.value() == rid) return action(x);
       return prev(x);
     };

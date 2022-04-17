@@ -4,22 +4,25 @@
 #define LEXER_HPP_
 
 #include <vector>
-#include <algorithm>
+#include <array>
+#include <utility>
 #include <optional>
-#include <compare>
 #include <string>
+#include <limits>
+#include <core/base.hpp>
 
 
 namespace Parsing {
 
   using std::vector;
+  using std::array;
   using std::pair, std::make_pair;
   using std::optional, std::make_optional, std::nullopt;
   using std::string;
 
 
   // Symbol ID (Lean name: "syntactic category")
-  using Symbol = unsigned int;
+  using Symbol = size_t;
 
   // Parse tree node, also used as tokens (Lean name: "syntax")
   struct ParseTree {
@@ -34,19 +37,24 @@ namespace Parsing {
   // A common (abstract) base class for lexers.
   class Lexer {
   public:
+    // See: https://stackoverflow.com/questions/39646958/constexpr-static-member-before-after-c17
+    static constexpr unsigned int SegBegin = 128;
+    static constexpr unsigned int CodeUnits = 256;
+    static_assert(CodeUnits == static_cast<unsigned int>(std::numeric_limits<char8_t>::max()) + 1);
+
     struct ErrorInfo {
       size_t startPos, endPos;
       string lexeme;
-      ErrorInfo(size_t startPos, size_t endPos, const std::string& lexeme):
-        startPos(startPos), endPos(endPos), lexeme(lexeme) {}
+      ErrorInfo(size_t startPos, size_t endPos, std::string lexeme):
+        startPos(startPos), endPos(endPos), lexeme(std::move(lexeme)) {}
     };
 
     virtual ~Lexer() = default;
 
-    bool eof() const noexcept { return pos >= rest.size(); }
+    bool eof() const noexcept { return pos >= str.size(); }
     size_t position() const noexcept { return pos; }
     void setPosition(size_t p) noexcept { pos = p; }
-    void setString(const string& s) { pos = 0; rest = s; }
+    void setString(const string& s) { pos = 0; str = s; }
 
     // All errors will be logged
     optional<ParseTree> nextToken();
@@ -56,22 +64,21 @@ namespace Parsing {
     virtual Symbol patternSymbol(size_t id) const = 0;
 
   protected:
-    Lexer(): pos(0), rest(), errors() {};
-
-  private:
     size_t pos;
-    string rest;
+    string str;
     vector<ErrorInfo> errors;
 
+    Lexer(): pos(0), str(), errors() {};
+
     // Returns longest match in the form of (length, pattern ID)
-    virtual optional<pair<size_t, size_t>> run(const string& s, size_t pos) const = 0;
+    virtual optional<pair<size_t, size_t>> run() const = 0;
   };
 
   // Implementation based on NFA. You may add patterns after construction.
   class NFALexer: public Lexer {
   public:
-    typedef unsigned int State;
-    typedef pair<State, State> NFA;
+    using State = size_t;
+    using NFA = pair<State, State>;
 
     NFALexer(): Lexer(), table(), patterns() {}
 
@@ -80,7 +87,7 @@ namespace Parsing {
     size_t addPattern(Symbol sym, NFA nfa) {
       size_t id = patterns.size();
       auto& o = table[nfa.second].ac;
-      if (o) throw Core::Unreachable("NFALexer: accepting state already marked (NFA already used)");
+      if (o) unreachable;
       o = id;
       // patterns.emplace_back(nfa.first, sym, true);
       patterns.push_back(Pattern{ nfa.first, sym, true });
@@ -90,7 +97,7 @@ namespace Parsing {
     // Returns true if pattern was previously active
     // Other pattern IDs are unaffected
     bool removePattern(size_t id) {
-      if (id >= patterns.size()) throw Core::Unreachable("NFALexer: index out of range");
+      if (id >= patterns.size()) unreachable;
       if (!patterns[id].active) return false;
       patterns[id].active = false;
       return true;
@@ -101,21 +108,21 @@ namespace Parsing {
     }
 
     #define node(x) State x = table.size(); table.emplace_back()
-    #define trans(s, c, t) table[s].tr.emplace_back(c, t)
+    #define trans(s, c, t) table[s].tr.emplace_back(static_cast<char8_t>(c), t)
 
     // Some useful pattern constructors (equivalent to regexes)
     NFA epsilon() {
       node(s); node(t); trans(s, 0, t);
       return { s, t };
     }
-    NFA ch_vec(const vector<unsigned char>& ls) {
+    NFA ch_vec(const vector<char8_t>& ls) {
       node(s); node(t);
       for (auto c: ls) trans(s, c, t);
       return { s, t };
     }
     template <typename... Ts>
-    NFA ch(Ts... a) { return ch_vec({ static_cast<unsigned char>(a)... }); }
-    NFA range(unsigned char a, unsigned char b) {
+    NFA ch(Ts... a) { return ch_vec({ static_cast<char8_t>(a)... }); }
+    NFA range(char8_t a, char8_t b) {
       node(s); node(t);
       for (unsigned int i = a; i <= b; i++) trans(s, i, t);
       return { s, t };
@@ -127,9 +134,9 @@ namespace Parsing {
     template <typename... Ts>
     NFA concat(NFA a, Ts... b) { return concat2(a, concat(b...)); }
     NFA concat(NFA a) { return a; }
-    NFA word(const string& str) {
+    NFA word(const string& word) {
       node(s); State t = s;
-      for (unsigned char c: str) {
+      for (char8_t c: word) {
         node(curr);
         trans(t, c, curr);
         t = curr;
@@ -157,17 +164,17 @@ namespace Parsing {
       return { a.first, a.second };
     }
     NFA plus(NFA a)   { return concat2(a, star(a)); }
-    NFA any()         { return range(0x01, 0xFF); }
-    NFA utf8segment() { return range(0x80, 0xFF); }
-    NFA except_vec(const vector<unsigned char>& ls) {
-      vector<bool> f(0x100, true);
-      for (auto c: ls) f[c] = false;
+    NFA any()         { return range(1, CodeUnits - 1); }
+    NFA utf8segment() { return range(SegBegin, CodeUnits - 1); }
+    NFA except_vec(const vector<char8_t>& ls) {
+      array<bool, CodeUnits> f{};
+      for (auto c: ls) f[c] = true;
       node(s); node(t);
-      for (unsigned int i = 0x01; i <= 0xFF; i++) if (f[i]) trans(s, i, t);
+      for (unsigned int i = 1; i < CodeUnits; i++) if (!f[i]) trans(s, i, t);
       return { s, t };
     }
     template <typename... Ts>
-    NFA except(Ts... a) { return except_vec({ static_cast<unsigned char>(a)... }); }
+    NFA except(Ts... a) { return except_vec({ static_cast<char8_t>(a)... }); }
 
     #undef node
     #undef trans
@@ -178,7 +185,7 @@ namespace Parsing {
   private:
     // The transition & accepting state table
     struct Entry {
-      vector<pair<unsigned char, State>> tr;
+      vector<pair<char8_t, State>> tr;
       optional<size_t> ac;
       Entry(): tr(), ac() {}
     };
@@ -191,7 +198,7 @@ namespace Parsing {
     };
     vector<Pattern> patterns;
 
-    optional<pair<size_t, size_t>> run(const string& s, size_t pos) const override;
+    optional<pair<size_t, size_t>> run() const override;
 
     friend class PowersetConstruction;
   };
@@ -199,7 +206,7 @@ namespace Parsing {
   // Implementation based on DFA. Could only be constructed from an `NFALexer`.
   class DFALexer: public Lexer {
   public:
-    typedef unsigned int State;
+    using State = size_t;
 
     // Create DFA from NFA
     explicit DFALexer(const NFALexer& nfa);
@@ -222,8 +229,8 @@ namespace Parsing {
   private:
     // The transition & accepting state table
     struct Entry {
-      bool has[0x100];
-      State tr[0x100];
+      array<bool, CodeUnits> has;
+      array<State, CodeUnits> tr;
       optional<size_t> ac;
       Entry(): has{}, tr{}, ac() {}
     };
@@ -233,7 +240,7 @@ namespace Parsing {
     // Mapping from pattern ID to symbol ID
     vector<Symbol> patternSymbols;
 
-    optional<pair<size_t, size_t>> run(const string& s, size_t pos) const override;
+    optional<pair<size_t, size_t>> run() const override;
 
     friend class PowersetConstruction;
     friend class PartitionRefinement;

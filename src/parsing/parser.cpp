@@ -1,9 +1,6 @@
-#include <utility>
-#include <optional>
+#include "parser.hpp"
 #include <algorithm>
 #include <unordered_map>
-#include <core/base.hpp>
-#include "parser.hpp"
 
 
 namespace Parsing {
@@ -31,7 +28,7 @@ namespace Parsing {
       auto [index, nextToken] = run();
       if (index) { // Successful parse
         if (error) errors.push_back(*error);
-        if (sentence.empty()) throw Core::Unreachable("EarleyParser: nullable sentences can lead to infinite loop");
+        if (sentence.empty()) unreachable;
         return getParseTree(Location{ dpa.size() - 1, *index }, pool);
       }
       if (!nextToken) { // EOF
@@ -56,7 +53,7 @@ namespace Parsing {
 
   // For use in `nextSentence()` only
   EarleyParser::ErrorInfo EarleyParser::lastError(size_t startPos, size_t endPos, const optional<Symbol>& got) const {
-    if (dpa.size() != sentence.size() + 1) throw Core::Unreachable();
+    if (dpa.size() != sentence.size() + 1) unreachable;
     size_t pos = sentence.size();
 
     vector<Symbol> expected;
@@ -69,7 +66,7 @@ namespace Parsing {
     size_t len = std::unique(expected.begin(), expected.end()) - expected.begin();
     expected.resize(len);
 
-    return ErrorInfo(startPos, endPos, expected, got);
+    return { startPos, endPos, expected, got };
   }
 
   vector<EarleyParser::ErrorInfo> EarleyParser::popErrors() {
@@ -163,6 +160,7 @@ namespace Parsing {
     vector<bool> isAdded(numSymbols, false);
 
     // A hash function for DP states
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
     auto hash = [this] (const State& x) { return x.startPos * 524287u + (totalLength[x.ruleIndex] + x.rulePos); };
     unordered_map<State, size_t, decltype(hash)> mp(0, hash);
 
@@ -335,7 +333,7 @@ namespace Parsing {
   // Returns -1 to keep old, 1 to use new, 0 for unresolved (keeping old)
   int EarleyParser::disambiguate(size_t pos, const LinkedState& old, const LinkedState& curr) const noexcept {
     const Rule& rule = rules[old.state.ruleIndex];
-    // if (old.state != curr.state) throw Core::Unreachable();
+    // if (old.state != curr.state) unreachable;
     if      (old.numDisrespects < curr.numDisrespects) return -1;
     else if (old.numDisrespects > curr.numDisrespects) return 1;
     else {
@@ -347,7 +345,7 @@ namespace Parsing {
     }
   }
 
-  #define assert(expr) if (!(expr)) throw Core::Unreachable()
+  #define assert(expr) if (!(expr)) unreachable
 
   // Constructs an empty parse tree for a nullable symbol.
   ParseTree* EarleyParser::nullParseTree(size_t pos, Symbol id, Core::Allocator<ParseTree>& pool) const {
@@ -423,7 +421,7 @@ namespace Parsing {
 
     // Link nodes together
     ParseTree** last = &res->c;
-    for (auto rit = children.rbegin(); rit != children.rend(); rit++) {
+    for (auto rit = children.rbegin(); rit != children.rend(); rit++) { // NOLINT(modernize-loop-convert)
       *last = *rit;
       last = &(*rit)->s;
     }
@@ -444,7 +442,7 @@ namespace Parsing {
   }
 
   string EarleyParser::showStates(const vector<string>& names) const {
-    if (dpa.size() != sentence.size() + 1) throw Core::Unreachable();
+    if (dpa.size() != sentence.size() + 1) unreachable;
     string res = "";
     for (size_t pos = 0; pos <= sentence.size(); pos++) {
       res += "States at position " + std::to_string(pos) + ":\n";

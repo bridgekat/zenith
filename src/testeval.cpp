@@ -160,7 +160,7 @@ public:
 
   SExpr* makeList(vector<SExpr*>&& a, SExpr* tail = nullptr) {
     SExpr* res = tail? tail : pool.emplaceBack(Nil{});
-    for (auto it = a.rbegin(); it != a.rend(); it++) res = pool.emplaceBack(*it, res);
+    for (auto it = a.rbegin(); it != a.rend(); it++) res = pool.emplaceBack(*it, res); // NOLINT(modernize-loop-convert)
     return res;
   }
 
@@ -172,7 +172,9 @@ public:
     lexer.setString(str);
     while (!parser.eof()) {
       auto opt = Language::nextSentence<SExprSym>();
-      for (auto& ex: Language::popParsingErrors()) {
+      auto err = Language::popParsingErrors();
+      if (!err.empty()) {
+        auto& ex = err[0];
         cout << endl;
         cout << "× " << ex.what() << endl;
         cout << "| " << endl;

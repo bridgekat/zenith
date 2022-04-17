@@ -50,8 +50,7 @@ namespace Server {
 
     while (s != "") {
       size_t p = s.find(": ");
-      if (p == string::npos)
-        throw Core::NotImplemented("unexpected line in JSON-RPC header, no \": \" found in \"" + s + "\"");
+      if (p == string::npos) notimplemented;
       string key = s.substr(0, p), value = s.substr(p + 2);
       // log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
 
@@ -59,11 +58,8 @@ namespace Server {
         std::stringstream ss(value);
         ss >> n;
       } else if (key == "Content-Type") {
-        if (value != CONTENT_TYPE_VALUE)
-          throw Core::NotImplemented("unexpected \"Content-Type\" value in JSON-RPC header: \"" + value + "\"");
-      } else {
-        throw Core::NotImplemented("unexpected key in JSON-RPC header: \"" + key + "\"");
-      }
+        if (value != CONTENT_TYPE_VALUE) notimplemented;
+      } else notimplemented;
 
       // Get next line
       s = getline();
@@ -100,7 +96,7 @@ namespace Server {
 
         // Handle JSON request
         if (j.is_object()) handleRequest(j);
-        else if (j.is_array()) throw Core::NotImplemented("batch requests in JSON-RPC is not supported yet");
+        else if (j.is_array()) notimplemented;
         else { sendError(INVALID_REQUEST, "ill-formed JSON request, expected array or object"); continue; }
       }
     });
@@ -110,14 +106,13 @@ namespace Server {
   void JSONRPC2Server::handleRequest(const json& j) {
 
     // Check if the the version number is present and correct
-    if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0")
-      throw Core::NotImplemented("only JSON-RPC 2.0 is supported");
+    if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0") notimplemented;
 
     // Determine the type of the message
     bool hasid = false;
     int64_t id;
     if (j.contains("id") && !j["id"].is_null()) {
-      if (j["id"].is_string()) throw Core::NotImplemented("string-typed `id` in JSON-RPC is not supported yet");
+      if (j["id"].is_string()) notimplemented;
       if (j["id"].is_number_integer()) {
         hasid = true;
         id = j["id"].get<int64_t>();
@@ -127,7 +122,7 @@ namespace Server {
     if (j.contains("method") && j["method"].is_string()) {
       json params;
       if (j.contains("params") && !j["params"].is_null()) {
-        if (j["params"].is_array()) throw Core::NotImplemented("array-typed `params` in JSON-RPC is not supported yet");
+        if (j["params"].is_array()) notimplemented;
         if (j["params"].is_object()) params = j["params"];
       }
       if (hasid) {
@@ -204,9 +199,7 @@ namespace Server {
       // Erase using `id` instead of `it`, as `requests` could have been modified by the coroutine
       requests.erase(id);
 
-    } else {
-      throw Core::NotImplemented("unknown JSON-RPC message type");
-    }
+    } else notimplemented;
 
   }
 
