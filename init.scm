@@ -1,4 +1,3 @@
-{
 (define (car (h . _)) h)
 (define (cdr (_ . t)) t)
 (define hd car)
@@ -26,10 +25,8 @@
 
 (define expr @ list->Expr (forall "x" @ exists "y" @ equals (bv 1) (bv 0)))
 expr
-(Print expr)
-(PrintFOL expr)
-(Print @ CheckType expr)
-// (Expr->list @ CheckType expr)
-}
-
+(Expr.Print expr)
+(Expr.PrintFOL expr)
+(Expr.Print @ Expr.CheckType expr)
+(Expr->list @ Expr.CheckType expr)
 

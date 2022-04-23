@@ -37,7 +37,6 @@ namespace Parsing {
   // A common (abstract) base class for lexers.
   class Lexer {
   public:
-    // See: https://stackoverflow.com/questions/39646958/constexpr-static-member-before-after-c17
     static constexpr unsigned int SegBegin = 128;
     static constexpr unsigned int CodeUnits = 256;
     static_assert(CodeUnits == static_cast<unsigned int>(std::numeric_limits<char8_t>::max()) + 1);

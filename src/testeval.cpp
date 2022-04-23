@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <sstream>
 #include "core.hpp"
 #include "parsing/language.hpp"
 #include "eval/sexpr.hpp"
@@ -11,62 +13,47 @@ using std::vector;
 using std::cin, std::cout, std::endl;
 using Core::Allocator;
 using Parsing::ParseTree, Parsing::makePrec;
-using namespace Eval;
 
-
-// ===================
-// Symbol declarations
-// ===================
-
-#define symbol(T) \
-  struct T; \
-  template <> struct Parsing::SymbolName<T> { \
-    static const string get() { return #T; } \
-  }; \
-  struct T
-
-#define assymbol(T) \
-  template <> struct Parsing::SymbolName<T> { \
-    static const string get() { return #T; } \
-  }; \
-
-// Terminal symbols
-
-symbol(Blank) {};
-symbol(LParen) {};
-symbol(RParen) {};
-symbol(LBracket) {};
-symbol(RBracket) {};
-symbol(Point) {};
-symbol(Quote) {};
-symbol(Comma) {};
-symbol(Atsign) {};
-
-assymbol(Symbol);
-assymbol(Number);
-assymbol(String);
-assymbol(Boolean);
-assymbol(Undefined);
-
-// Nonterminal symbols
-
-symbol(List) { SExpr* e; };
-symbol(ListInner) { SExpr* e; };
-symbol(SExprStar) { vector<SExpr*> es; }; // Zero or more `SExpr`s
-symbol(SExprPlus) { vector<SExpr*> es; }; // One or more `SExpr`s
-symbol(SExprSym) { SExpr* e; };
-
-#undef symbol
-#undef assymbol
 
 class Lisp: public Parsing::Language {
 public:
 
-  // ====================================
-  // Patterns, rules and semantic actions
-  // ====================================
+  // ===================
+  // Symbol declarations
+  // ===================
+
+  // Terminal symbols
+
+  struct Blank {};
+  struct LParen {};
+  struct RParen {};
+  struct LBracket {};
+  struct RBracket {};
+  struct Point {};
+  struct Quote {};
+  struct Comma {};
+  struct Atsign {};
+
+  using Symbol = Eval::Symbol;
+  using Number = Eval::Number;
+  using String = Eval::String;
+  using Boolean = Eval::Boolean;
+  using Undefined = Eval::Undefined;
+
+  // Nonterminal symbols
+
+  struct List { Eval::SExpr* e; };
+  struct ListInner { Eval::SExpr* e; };
+  struct SExprStar { vector<Eval::SExpr*> es; }; // Zero or more `SExpr`s
+  struct SExprPlus { vector<Eval::SExpr*> es; }; // One or more `SExpr`s
+  struct SExpr { Eval::SExpr* e; };
+  struct Statement { Eval::SExpr* e; }; // Start symbol
 
   Lisp(): pool(), env() {
+
+    // ====================================
+    // Patterns, rules and semantic actions
+    // ====================================
 
     // Terminal symbols
     // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#s-expressions
@@ -83,7 +70,7 @@ public:
     #define any         lexer.any
     #define utf8segment lexer.utf8segment
     #define except      lexer.except
-    
+
     addPattern([] (const string&) -> Blank { return {}; },
       star(ch(' ', '\t', '\n', '\v', '\f', '\r')));
     addPattern([] (const string&) -> Blank { return {}; },
@@ -114,7 +101,7 @@ public:
     addPattern([] (const string& lexeme) -> Number { return std::stoi(lexeme); },
       alt(plus(range('0', '9')),
           concat(ch('0'), ch('x', 'X'), plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F'))))));
-    addPattern([] (const string& lexeme) -> String { return SExpr::unescapeString(lexeme.substr(1, lexeme.size() - 2)); },
+    addPattern([] (const string& lexeme) -> String { return Eval::SExpr::unescapeString(lexeme.substr(1, lexeme.size() - 2)); },
       concat(ch('"'), star(alt(except('"', '\\'), concat(ch('\\'), ch('"', '\\', 'a', 'b', 'f', 'n', 'r', 't', 'v')))), ch('"')));
     addPattern([] (const string&) -> Boolean { return Boolean::True; },  alt(word("#true"), word("#t")));
     addPattern([] (const string&) -> Boolean { return Boolean::False; }, alt(word("#false"), word("#f")));
@@ -140,26 +127,27 @@ public:
     addRule([]     (LParen, ListInner&& inner, RParen)        -> List { return { inner.e }; });
     addRule([]     (LBracket, ListInner&& inner, RBracket)    -> List { return { inner.e }; });
     addRule([this] (SExprStar&& star)                         -> ListInner { return { makeList(std::move(star.es)) }; });
-    addRule([this] (SExprPlus&& plus, Point, SExprSym&& e)    -> ListInner { return { makeList(std::move(plus.es), e.e) }; });
+    addRule([this] (SExprPlus&& plus, Point, SExpr&& e)       -> ListInner { return { makeList(std::move(plus.es), e.e) }; });
     addRule([this] (SExprStar&& star, Atsign, ListInner&& r)  -> ListInner { star.es.push_back(r.e); return { makeList(std::move(star.es)) }; });
     addRule([]     ()                                         -> SExprStar { return { {} }; });
-    addRule([]     (SExprStar&& star, SExprSym&& e)           -> SExprStar { star.es.push_back(e.e); return { star.es }; });
-    addRule([]     (SExprSym&& e)                             -> SExprPlus { return { { e.e } }; });
-    addRule([]     (SExprPlus&& plus, SExprSym&& e)           -> SExprPlus { plus.es.push_back(e.e); return { plus.es }; });
+    addRule([]     (SExprStar&& star, SExpr&& e)              -> SExprStar { star.es.push_back(e.e); return { star.es }; });
+    addRule([]     (SExpr&& e)                                -> SExprPlus { return { { e.e } }; });
+    addRule([]     (SExprPlus&& plus, SExpr&& e)              -> SExprPlus { plus.es.push_back(e.e); return { plus.es }; });
 
-    addRule([]     (List&& list)          -> SExprSym { return { list.e }; });
-    addRule([this] (Symbol&& sym)         -> SExprSym { return { pool.emplaceBack(std::move(sym)) }; });
-    addRule([this] (Number&& num)         -> SExprSym { return { pool.emplaceBack(std::move(num)) }; });
-    addRule([this] (String&& str)         -> SExprSym { return { pool.emplaceBack(std::move(str)) }; });
-    addRule([this] (Boolean&& boolean)    -> SExprSym { return { pool.emplaceBack(std::move(boolean)) }; });
-    addRule([this] (Undefined&& u)        -> SExprSym { return { pool.emplaceBack(std::move(u)) }; });
-    addRule([this] (Quote, SExprSym&& e)  -> SExprSym { return { makeList({ pool.emplaceBack(Symbol{ "quote" }), e.e }) }; });
-    addRule([this] (Comma, SExprSym&& e)  -> SExprSym { return { makeList({ pool.emplaceBack(Symbol{ "unquote" }), e.e }) }; });
+    addRule([]     (List&& list)        -> SExpr { return { list.e }; });
+    addRule([this] (Symbol&& sym)       -> SExpr { return { pool.emplaceBack(std::move(sym)) }; });
+    addRule([this] (Number&& num)       -> SExpr { return { pool.emplaceBack(std::move(num)) }; });
+    addRule([this] (String&& str)       -> SExpr { return { pool.emplaceBack(std::move(str)) }; });
+    addRule([this] (Boolean&& boolean)  -> SExpr { return { pool.emplaceBack(std::move(boolean)) }; });
+    addRule([this] (Undefined&& undef)  -> SExpr { return { pool.emplaceBack(std::move(undef)) }; });
+    addRule([this] (Quote, SExpr&& e)   -> SExpr { return { makeList({ pool.emplaceBack(Symbol{ "quote" }), e.e }) }; });
+    addRule([this] (Comma, SExpr&& e)   -> SExpr { return { makeList({ pool.emplaceBack(Symbol{ "unquote" }), e.e }) }; });
+    addRule([]     (SExpr&& e)          -> Statement { return { e.e }; });
 
   }
 
-  SExpr* makeList(vector<SExpr*>&& a, SExpr* tail = nullptr) {
-    SExpr* res = tail? tail : pool.emplaceBack(Nil{});
+  Eval::SExpr* makeList(vector<Eval::SExpr*>&& a, Eval::SExpr* tail = nullptr) {
+    Eval::SExpr* res = tail? tail : pool.emplaceBack(Eval::Nil{});
     for (auto it = a.rbegin(); it != a.rend(); it++) res = pool.emplaceBack(*it, res); // NOLINT(modernize-loop-convert)
     return res;
   }
@@ -171,10 +159,10 @@ public:
   void evalPrint(const string& str) {
     lexer.setString(str);
     while (!parser.eof()) {
-      auto opt = Language::nextSentence<SExprSym>();
-      auto err = Language::popParsingErrors();
+      const auto& opt = Language::nextSentence<Statement>();
+      const auto& err = Language::popParsingErrors();
       if (!err.empty()) {
-        auto& ex = err[0];
+        const auto& ex = err[0];
         cout << endl;
         cout << "× " << ex.what() << endl;
         cout << "| " << endl;
@@ -185,11 +173,12 @@ public:
         return;
       }
       if (!opt) break;
-      const SExpr* e = opt->e;
+      const auto& e = opt->e;
       try {
-        SExpr* res = env.evalStatement(e);
-        if (*res != SExpr(Undefined())) cout << res->toString() << endl;
-      } catch (EvalError& ex) {
+        const auto& res = env.evalStatement(e);
+        if (*res != Eval::SExpr(Eval::Undefined{})) cout << res->toString() << endl;
+        pool.clear();
+      } catch (Eval::EvalError& ex) {
         const auto& [found, prefix] = ex.e->toStringUntil(ex.at);
         cout << endl;
         if (found) {
@@ -209,27 +198,44 @@ public:
   }
 
 private:
-  Allocator<SExpr> pool;
-  Environment env;
+  Allocator<Eval::SExpr> pool;
+  Eval::Environment env;
 };
 
+// See: https://stackoverflow.com/questions/116038/how-do-i-read-an-entire-file-into-a-stdstring-in-c
+string readFile(std::ifstream&& in) {
+  std::ostringstream sstr;
+  sstr << in.rdbuf();
+  return sstr.str();
+}
+
 int main() {
-  Lisp lisp;
+  Lisp interpreter;
 
   while (true) {
     string in;
     cout << ">> ";
     std::getline(cin, in);
-    if (in == "{") {
-      in = "";
-      string curr;
-      std::getline(cin, curr);
-      while (curr != "}") {
-        in += curr;
+    if (in.starts_with(':')) {
+      in = in.substr(1);
+      /* if (in.starts_with("reset")) { // Reset state
+        in = in.substr(5);
+        interpreter.reset();
+      } else */ if (in.starts_with('{')) { // Multi-line input
+        in = in.substr(1);
+        string curr;
         std::getline(cin, curr);
+        while (curr != ":}") {
+          in += curr;
+          std::getline(cin, curr);
+        }
+      } else if (in.starts_with("load")) { // Load file
+        in = in.substr(4);
+        while (in.starts_with(' ')) in = in.substr(1);
+        in = readFile(std::ifstream(in));
       }
     }
-    lisp.evalPrint(in);
+    interpreter.evalPrint(in);
   }
 
   return 0;

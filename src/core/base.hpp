@@ -9,6 +9,13 @@
 #include <exception>
 
 
+#define unreachable { std::cerr << R"("Unreachable" code was reached: )" << \
+  __FILE__ << ":" << __LINE__ << ", at function " << static_cast<const char*>(__func__) << std::endl; std::terminate(); }
+#define notimplemented { std::cerr << R"("Not implemented" code was called: )" << \
+  __FILE__ << ":" << __LINE__ << ", at function " << static_cast<const char*>(__func__) << std::endl; std::terminate(); }
+#define exhaustive unreachable
+
+
 namespace Core {
 
   // A simple region-based memory allocator: https://news.ycombinator.com/item?id=26433654
@@ -16,18 +23,22 @@ namespace Core {
   template <typename T>
   class Allocator {
   public:
-    Allocator(std::size_t blockSize = 1024):
+    constexpr static std::size_t DefaultBlockSize = 1024;
+
+    Allocator(std::size_t blockSize = DefaultBlockSize):
       blockSize(blockSize),
       alloc(),
       blocks(),
       next(0) {}
 
+    Allocator(const Allocator&) = delete;
     Allocator(Allocator&& r) noexcept:
       blockSize(r.blockSize),
       alloc(std::move(r.alloc)),
       blocks(std::move(r.blocks)), // Guarantees to leave r.blocks empty
       next(std::exchange(r.next, 0)) {}
 
+    Allocator& operator=(const Allocator&) = delete;
     Allocator& operator=(Allocator&& r) noexcept {
       if (this != &r) {
         deallocateBlocks();
@@ -84,11 +95,5 @@ namespace Core {
   };
   
 }
-
-#define unreachable { std::cerr << R"("Unreachable" code was reached: )" << \
-  __FILE__ << ":" << __LINE__ << ", at function " << static_cast<const char*>(__func__) << std::endl; std::terminate(); }
-#define notimplemented { std::cerr << R"("Not implemented" code was called: )" << \
-  __FILE__ << ":" << __LINE__ << ", at function " << static_cast<const char*>(__func__) << std::endl; std::terminate(); }
-#define exhaustive unreachable
 
 #endif // BASE_HPP_

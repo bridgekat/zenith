@@ -25,8 +25,10 @@ namespace Eval {
   class Environment {
   public:
     Environment();
-    Environment(Environment&&) = default;
-    Environment& operator=(Environment&&) = default;
+    Environment(const Environment&) = delete;
+    Environment(Environment&&) = delete;
+    Environment& operator=(const Environment&) = delete;
+    Environment& operator=(Environment&&) = delete;
     ~Environment() = default;
 
     // This will store intermediate and final results on `this.pool`.
@@ -42,11 +44,13 @@ namespace Eval {
       Result(SExpr* env, SExpr* e): env(env), e(e) {};
     };
 
-    Core::Allocator<SExpr> pool;
-    Core::Allocator<Core::Expr> epool;
-    Core::FOLContext ctx; // TEMP CODE
     std::vector<std::pair<bool, std::function<Result(SExpr*, SExpr*)>>> prim;
     std::unordered_map<std::string, size_t> primNames;
+
+    Core::Allocator<SExpr> pool;
+    Core::Allocator<Core::Expr> epool;
+    Core::FOLContext globalCtx;
+
     SExpr* globalEnv;
     SExpr* nil, * undefined;
 

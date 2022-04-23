@@ -48,6 +48,15 @@ macro (target_default_compile_options TARGET)
   if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wall>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wextra>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_CONCEPT_CHECKS>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
+  endif ()
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    target_compile_options  (${TARGET} PRIVATE "/MP")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:/W4>")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:/permissive->")
+    target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:/fsanitize=address>")
   endif ()
 endmacro ()
 
@@ -69,6 +78,8 @@ add_executable (testeval
   src/core/context.cpp
   src/core/expr.cpp
   src/core/fol/fol.cpp
+  src/elab/procs.cpp
+  src/elab/elab.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/parsing/language.cpp
@@ -79,21 +90,6 @@ target_default_compile_options  (testeval)
 target_include_directories      (testeval PRIVATE src)
 if (ipo_supprted)
   set_target_oproperties        (testeval PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-endif ()
-
-add_executable (testparsing
-  src/core/context.cpp
-  src/core/expr.cpp
-  src/core/fol/fol.cpp
-  src/parsing/lexer.cpp
-  src/parsing/parser.cpp
-  src/parsing/language.cpp
-  src/mu.cpp
-  src/testparsing.cpp)
-target_default_compile_options  (testparsing)
-target_include_directories      (testparsing PRIVATE src)
-if (ipo_supprted)
-  set_target_oproperties        (testparsing PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()
 
 # See: https://json.nlohmann.me/integration/cmake/#fetchcontent

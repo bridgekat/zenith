@@ -31,7 +31,7 @@ namespace Eval {
   };
   template <typename T>
   struct BasicCons {
-    T* head, * tail;
+    T* head{}, * tail{};
     bool operator==(const BasicCons& r) const noexcept { return *head == *r.head && *tail == *r.tail; };
   };
   template <typename T, typename... Ts>
@@ -60,7 +60,7 @@ namespace Eval {
   };
   struct Native {
     std::any val;
-    bool operator==(const Native& r) const noexcept { return &val == &r.val; }
+    bool operator==(const Native& r) const noexcept { return this == &r; }
   };
 
   // Main SExpr type

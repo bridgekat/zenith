@@ -76,6 +76,13 @@ namespace Core {
       return toString(ctx, stk);
     }
 
+    // Controls the Π-formation rule
+    constexpr static SortTag imax(SortTag s, SortTag t) {
+      if (s == Expr::SProp || t == Expr::SProp) return Expr::SProp;
+      // (`s` and `t` are `Expr::SType` or `Expr::SKind`)
+      return (s == Expr::SKind || t == Expr::SKind)? Expr::SKind : Expr::SType;
+    }
+
     // Check if the subtree is a well-formed term (1), type (2), proof (3) or formula (4).
     // (1) Returns a well-formed, beta-reduced expression of type `Type`, representing the type of the term;
     // (2) Returns `Type` itself;

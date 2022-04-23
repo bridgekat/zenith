@@ -112,21 +112,20 @@ namespace Parsing {
   // Function object for the DFA construction from NFA
   class PowersetConstruction {
   public:
-    const NFALexer* nfa;
-    DFALexer* dfa;
+    const NFALexer& nfa;
+    DFALexer& dfa;
     vector<bool> v;
     unordered_map<vector<bool>, DFALexer::State> mp;
 
-    PowersetConstruction(const NFALexer* nfa, DFALexer* dfa): nfa(nfa), dfa(dfa), v(), mp() {}
-    PowersetConstruction(PowersetConstruction&&) = default;
-    PowersetConstruction& operator=(PowersetConstruction&&) = default;
+    PowersetConstruction(const NFALexer& nfa, DFALexer& dfa):
+      nfa(nfa), dfa(dfa), v(), mp() {}
 
     void closure(vector<NFALexer::State>& s) {
       // Expand `s` and `v` to epsilon closure (using DFS)
       vector<NFALexer::State> stk = s;
       while (!stk.empty()) {
         NFALexer::State nx = stk.back(); stk.pop_back();
-        for (auto [cc, nu]: nfa->table[nx].tr) if (cc == 0 && !v[nu]) {
+        for (auto [cc, nu]: nfa.table[nx].tr) if (cc == 0 && !v[nu]) {
           s.push_back(nu);
           stk.push_back(nu);
           v[nu] = true;
@@ -137,27 +136,27 @@ namespace Parsing {
     #define clearv(s_) \
       for (NFALexer::State i: s_) v[i] = false;
     #define node(x_, s_) \
-      x_ = mp[s_] = dfa->table.size(); \
-      dfa->table.emplace_back()
+      x_ = mp[s_] = dfa.table.size(); \
+      dfa.table.emplace_back()
     #define trans(s_, c_, t_) \
-      dfa->table[s_].has[c_] = true; \
-      dfa->table[s_].tr[c_] = t_
+      dfa.table[s_].has[c_] = true; \
+      dfa.table[s_].tr[c_] = t_
 
     // Invariant: all elements of v[] are false
     void dfs(DFALexer::State x, const vector<NFALexer::State>& s) {
       // Check if `s` contains accepting states
       optional<size_t> curr;
       for (auto ns: s) {
-        auto opt = nfa->table[ns].ac;
+        auto opt = nfa.table[ns].ac;
         if (opt && (!curr || curr.value() < opt.value())) curr = opt;
       }
-      dfa->table[x].ac = curr;
+      dfa.table[x].ac = curr;
       // Compute transitions
       // Invariant: all elements of v[] are false at the end of the loop
       for (unsigned int c = 1; c < CodeUnits; c++) {
         // Compute u
         vector<NFALexer::State> t;
-        for (auto nx: s) for (auto [cc, nu]: nfa->table[nx].tr) {
+        for (auto nx: s) for (auto [cc, nu]: nfa.table[nx].tr) {
           if (cc == c && !v[nu]) {
             t.push_back(nu);
             v[nu] = true;
@@ -183,21 +182,20 @@ namespace Parsing {
 
     void operator() () {
       vector<NFALexer::State> s;
-      v.clear(); v.resize(nfa->table.size());
+      v.clear(); v.resize(nfa.table.size());
       mp.clear();
       // Initial states
-      for (const auto& [initial, sym, active]: nfa->patterns) if (active) {
+      for (const auto& [initial, sym, active]: nfa.patterns) if (active) {
         s.push_back(initial);
         v[initial] = true;
       }
       closure(s);
-      node(dfa->initial, v);
+      node(dfa.initial, v);
       clearv(s);
-      dfs(dfa->initial, s);
+      dfs(dfa.initial, s);
       // Copy mapping from pattern ID to symbol ID
-      for (const auto& [initial, sym, active]: nfa->patterns) {
-        dfa->patternSymbols.push_back(sym);
-      }
+      for (const auto& [initial, sym, active]: nfa.patterns)
+        dfa.patternSymbols.push_back(sym);
     }
 
     #undef node
@@ -206,7 +204,7 @@ namespace Parsing {
   };
 
   DFALexer::DFALexer(const NFALexer& nfa): Lexer(), table(), initial(0), patternSymbols() {
-    PowersetConstruction(&nfa, this)();
+    PowersetConstruction(nfa, *this)();
   }
 
   // Function object for the DFA state minimization
@@ -221,23 +219,21 @@ namespace Parsing {
     struct List { List *l, *r; State x; };
 
     Core::Allocator<List> pool;
-    DFALexer* dfa;
+    DFALexer& dfa;
 
     struct Class { size_t size; List* head; bool isDist; };
     struct Identity { size_t cl; List* ptr; };
 
     // Ephemeral states
     vector<vector<pair<char8_t, State>>> rev; // Reverse edges
-    vector<Class> cl;                     // Classes (size, pointer to head, is used as distinguisher set)
-    vector<Identity> id;                  // Identities (class index, pointer to list)
-    vector<size_t> dist;                  // Indices of classes used as distinguisher sets
-    array<vector<State>, CodeUnits> dom;  // Character -> domain
-    vector<vector<State>> interStates;    // Class index -> list of intersecting states
+    vector<Class> cl;                         // Classes (size, pointer to head, is used as distinguisher set)
+    vector<Identity> id;                      // Identities (class index, pointer to list)
+    vector<size_t> dist;                      // Indices of classes used as distinguisher sets
+    array<vector<State>, CodeUnits> dom;      // Character -> domain
+    vector<vector<State>> interStates;        // Class index -> list of intersecting states
 
-    explicit PartitionRefinement(DFALexer* dfa):
+    explicit PartitionRefinement(DFALexer& dfa):
       pool(), dfa(dfa), rev(), cl(), id(), dist(), dom(), interStates() {}
-    PartitionRefinement(PartitionRefinement&&) = default;
-    PartitionRefinement& operator=(PartitionRefinement&&) = default;
 
     // Add DFA node `x` to class `i`, overwriting `id[x]`
     void add(State x, size_t i) {
@@ -269,8 +265,8 @@ namespace Parsing {
     }
 
     void operator() () {
-      auto& table = dfa->table;
-      auto& initial = dfa->initial;
+      auto& table = dfa.table;
+      auto& initial = dfa.initial;
 
       // Add the dead state
       State dead = table.size();
@@ -420,7 +416,7 @@ namespace Parsing {
   };
 
   void DFALexer::optimize() {
-    PartitionRefinement(this)();
+    PartitionRefinement(*this)();
   }
 
   // Run DFA

@@ -111,12 +111,6 @@ namespace Core {
     } exhaustive;
   }
 
-  inline Expr::SortTag imax(Expr::SortTag s, Expr::SortTag t) {
-    if (s == Expr::SProp || t == Expr::SProp) return Expr::SProp;
-    // (`s` and `t` are `Expr::SType` or `Expr::SKind`)
-    return (s == Expr::SKind || t == Expr::SKind)? Expr::SKind : Expr::SType;
-  }
-
   // Check if the subtree is a well-formed term (1), type (2), proof (3) or formula (4).
   // (1) Returns a well-formed, beta-reduced expression of type `Type`, representing the type of the term;
   // (2) Returns `Type` itself;
@@ -124,37 +118,26 @@ namespace Core {
   // (4) Returns `Prop` itself.
   const Expr* Expr::checkType(const Context& ctx, Allocator<Expr>& pool, vector<const Expr*>& stk, vector<string>& names) const {
     switch (tag) {
-      case Sort: {
+      case Sort:
         switch (sort.tag) {
           case SProp: return make(pool, SType);
           case SType: return make(pool, SKind);
           case SKind: throw InvalidExpr("\"Kind\" does not have a type", ctx, this);
         } exhaustive;
-      }
-      case Var: {
-        const Expr* t =
-          var.tag == VBound ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : nullptr) :
-          var.tag == VFree  ? (var.id < ctx.size() ? ctx[var.id]                  : nullptr) :
-          nullptr;
-        if (!t)
-          throw InvalidExpr(
-            var.tag == VBound ? "de Bruijn index overflow" :
-            var.tag == VFree  ? "free variable not in context" :
-            var.tag == VMeta  ? "unexpected metavariable" :
-            "unknown variable tag: " + std::to_string(static_cast<std::underlying_type_t<VarTag>>(var.tag)), ctx, this);
-        return t->reduce(pool);
-      }
+      case Var:
+        switch (var.tag) {
+          case VBound: if (var.id < stk.size()) return stk[stk.size() - 1 - var.id]->reduce(pool); else throw InvalidExpr("de Bruijn index overflow", ctx, this);
+          case VFree:  if (var.id < ctx.size()) return ctx[var.id]                 ->reduce(pool); else throw InvalidExpr("free variable not in context", ctx, this);
+          case VMeta:  throw InvalidExpr("unexpected metavariable", ctx, this);
+        } exhaustive;
       case App: { // Π-elimination
-        if (!app.l || !app.r) throw InvalidExpr("unexpected null pointer", ctx, this);
         const auto tl = app.l->checkType(ctx, pool, stk, names);
         const auto tr = app.r->checkType(ctx, pool, stk, names);
-        // By postcondition of checkType(), returned type expression is arity-correct (no null pointers)
         if (tl->tag != Pi) throw InvalidExpr("expected function, term has type " + tl->toString(ctx, names), ctx, app.l);
         if (*tl->pi.t != *tr) throw InvalidExpr("argument type mismatch, expected " + tl->pi.t->toString(ctx, names) + ", got " + tr->toString(ctx, names), ctx, app.r);
         return tl->pi.r->makeReplace(app.r, pool)->reduce(pool);
       }
       case Lam: { // Π-introduction
-        if (!lam.t || !lam.r) throw InvalidExpr("unexpected null pointer", ctx, this);
         const auto tt = lam.t->checkType(ctx, pool, stk, names);
         if (tt->tag != Sort) throw InvalidExpr("expected proposition or type, got " + tt->toString(ctx, names), ctx, lam.t);
         names.push_back(lam.s);
@@ -165,15 +148,14 @@ namespace Core {
         return make(pool, PPi, lam.s, lam.t->reduce(pool), tr);
       }
       case Pi: { // Π-formation
-        if (!pi.t || !pi.r) throw InvalidExpr("unexpected null pointer", ctx, this);
         const auto tt = pi.t->checkType(ctx, pool, stk, names);
         if (tt->tag != Sort) throw InvalidExpr("expected proposition or type, got " + tt->toString(ctx, names), ctx, pi.t);
         names.push_back(pi.s);
         stk.push_back(pi.t);
         const auto tr = pi.r->checkType(ctx, pool, stk, names);
+        if (tr->tag != Sort) throw InvalidExpr("expected proposition or type, got " + tr->toString(ctx, names), ctx, pi.r);
         names.pop_back();
         stk.pop_back();
-        if (tr->tag != Sort) throw InvalidExpr("expected proposition or type, got " + tr->toString(ctx, names), ctx, pi.r);
         return make(pool, imax(tt->sort.tag, tr->sort.tag));
       }
     } exhaustive;

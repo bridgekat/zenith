@@ -1,4 +1,4 @@
-// Parsing :: SymbolName, Language
+// Parsing :: Language
 
 #ifndef LANGUAGE_HPP_
 #define LANGUAGE_HPP_
@@ -18,12 +18,6 @@ namespace Parsing {
   using std::string;
   using std::vector;
   using std::unordered_map;
-
-
-  // Specialize this for human-friendly type names (in debugging `Language`)
-  // See: https://stackoverflow.com/questions/4484982/how-to-convert-typename-t-to-string-in-c
-  template <typename T> struct SymbolName { static const string get() { return typeid(T).name(); } };
-  // #define DEMANGLE_SYMBOL_NAME(T) template <> struct SymbolName<T> { static const char* get() { return #T; } };
 
 
   // Lexer + parser + pretty-printer in one place, with variadic templates and other C++ magics.
@@ -82,7 +76,7 @@ namespace Parsing {
 
     // Set as ignored symbol; can only be called at most once currently.
     template <typename T>
-    void setAsIgnoredSymbol() { return setAsIgnoredSymbol(SymbolName<T>::get(), getSymbol<T>()); }
+    void setAsIgnoredSymbol() { return setAsIgnoredSymbol(typeid(T).name(), getSymbol<T>()); }
     void setAsIgnoredSymbol(const string& name, Symbol sym);
 
     // Add pattern for terminal symbol.
@@ -91,7 +85,7 @@ namespace Parsing {
     size_t addPattern(T action, NFALexer::NFA pattern) {
       using U = LambdaConverter<T>;
       return addPatternImpl(
-        SymbolName<typename U::ReturnType>::get(),
+        typeid(typename U::ReturnType).name(),
         getSymbol<typename U::ReturnType>(),
         pattern,
         [action] (const ParseTree* x) { return action(x->lexeme.value()); });
@@ -103,7 +97,7 @@ namespace Parsing {
     size_t addRule(T action, size_t prec = 0) {
       using U = LambdaConverter<T>;
       return addRuleIndexed(
-        SymbolName<typename U::ReturnType>::get(),
+        typeid(typename U::ReturnType).name(),
         typename U::ConvertedType(action),
         typename U::IndexSequence(),
         prec);
@@ -115,7 +109,7 @@ namespace Parsing {
     template <typename ReturnType, typename... ParamTypes>
     size_t addRuleFor(std::function<ReturnType(const ParseTree*)> action, size_t prec = 0) {
       return addRuleImpl(
-        SymbolName<ReturnType>::get(),
+        typeid(ReturnType).name(),
         getSymbol<ReturnType>(),
         vector<Symbol>{ getSymbol<ParamTypes>()... },
         action,

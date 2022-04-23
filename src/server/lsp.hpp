@@ -3,6 +3,7 @@
 #ifndef LSP_HPP_
 #define LSP_HPP_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <optional>
@@ -16,92 +17,92 @@ namespace Server::LSP {
   using std::optional;
 
 
-  #define conv(T) \
+  #define structconv(T) \
     struct T; \
     void to_json(nlohmann::json&, const T&); \
     void from_json(const nlohmann::json&, T&); \
     struct T
 
   #define enumconv(T) \
-    enum class T: unsigned int; \
+    enum class T: uint32_t; \
     void to_json(nlohmann::json&, const T&); \
     void from_json(const nlohmann::json&, T&); \
-    enum class T: unsigned int
+    enum class T: uint32_t
 
-  enum class DiagnosticSeverity: unsigned int { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFORMATION = 3, HINT = 4 };
-  enum class DiagnosticTag: unsigned int { UNKNOWN = 0, UNNECESSARY = 1, DEPRECATED = 2 };
-  enum class MessageType: unsigned int { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFO = 3, LOG = 4 };
+  enum class DiagnosticSeverity: uint32_t { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFORMATION = 3, HINT = 4 };
+  enum class DiagnosticTag: uint32_t { UNKNOWN = 0, UNNECESSARY = 1, DEPRECATED = 2 };
+  enum class MessageType: uint32_t { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFO = 3, LOG = 4 };
   enumconv(MarkupKind) { PLAINTEXT = 0, MARKDOWN = 1 };
 
   using DocumentUri = string;
   using URI = string;
 
-  conv(Position) {
-    unsigned int line{};
-    unsigned int character{};
+  structconv(Position) {
+    uint32_t line{};
+    uint32_t character{};
   };
 
-  conv(Range) {
+  structconv(Range) {
     Position start{};
     Position end{};
   };
 
-  conv(TextDocumentItem) {
+  structconv(TextDocumentItem) {
     DocumentUri uri{};
     optional<string> languageId{};
-    optional<int> version{};
+    optional<int32_t> version{};
     optional<string> text{};
   };
 
-  conv(TextDocumentIdentifier) {
+  structconv(TextDocumentIdentifier) {
     DocumentUri uri{};
   };
 
-  conv(VersionedTextDocumentIdentifier): public TextDocumentIdentifier {
-    int version{};
+  structconv(VersionedTextDocumentIdentifier): public TextDocumentIdentifier {
+    int32_t version{};
   };
 
-  conv(TextDocumentContentChangeEvent) {
+  structconv(TextDocumentContentChangeEvent) {
     optional<Range> range{};
     string text{};
   };
 
-  conv(CodeDescription) {
+  structconv(CodeDescription) {
     URI href{};
   };
 
-  conv(Location) {
+  structconv(Location) {
     DocumentUri uri{};
     Range range{};
   };
 
-  conv(DiagnosticsRelatedInformation) {
+  structconv(DiagnosticsRelatedInformation) {
     Location location{};
     string message{};
   };
 
-  conv(Diagnostic) {
+  structconv(Diagnostic) {
     Range range{};
     string message{};
     optional<DiagnosticSeverity> severity{};
-    optional<int> code{};
+    optional<int32_t> code{};
     optional<CodeDescription> codeDescription{};
     optional<vector<DiagnosticTag>> tags{};
     optional<vector<DiagnosticsRelatedInformation>> relatedInformation{};
     optional<string> source{};
   };
 
-  conv(MarkupContent) {
+  structconv(MarkupContent) {
     MarkupKind kind{};
     string value{};
   };
 
-  conv(MarkedString) { // Outgoing only?
+  structconv(MarkedString) { // Outgoing only?
     string language{};
     string value{};
   };
 
-  #undef conv
+  #undef structconv
 
 }
 
