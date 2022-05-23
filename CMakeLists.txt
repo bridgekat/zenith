@@ -82,7 +82,6 @@ add_executable (testeval
   src/elab/elab.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
-  src/parsing/language.cpp
   src/eval/sexpr.cpp
   src/eval/environment.cpp
   src/testeval.cpp)
@@ -113,8 +112,6 @@ add_executable (testserver
   src/core/fol/fol.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
-  src/parsing/language.cpp
-  src/mu.cpp
   src/server/jsonrpc2.cpp
   src/server/languageserver.cpp
   src/server/lsp.cpp

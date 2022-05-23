@@ -5,7 +5,6 @@
 
 namespace Parsing {
 
-  // Number of UTF-8 code units (256)
   constexpr unsigned int CodeUnits = Lexer::CodeUnits;
 
   size_t cutFirstCodePoint(const string& s, size_t pos) {
@@ -18,40 +17,31 @@ namespace Parsing {
     return i;
   }
 
-  optional<ParseTree> Lexer::nextToken() {
+  optional<Token> Lexer::nextToken() {
     string skipped;
     while (!eof()) {
       auto opt = run();
       if (opt) {
         if (!skipped.empty()) {
-          errors.emplace_back(pos - skipped.size(), pos, skipped);
+          // errors.emplace_back(pos - skipped.size(), pos, skipped);
+          errors.push_back(ErrorInfo{ pos - skipped.size(), pos, skipped });
         }
         auto [len, id] = opt.value();
-        ParseTree res{
-          nullptr, nullptr,
-          patternSymbol(id),
-          str.substr(pos, len), id, nullopt,
-          pos, pos + len
-        };
+        Token res{ id, pos, pos + len, str.substr(pos, len) };
         pos += len;
         return res;
       }
-      // !opt
+      // Mid: !opt
       size_t len = cutFirstCodePoint(str, pos);
       skipped += str.substr(pos, len);
       pos += len;
     }
-    // eof()
+    // Mid: eof()
     if (!skipped.empty()) {
-      errors.emplace_back(pos - skipped.size(), pos, skipped);
+      // errors.emplace_back(pos - skipped.size(), pos, skipped);
+      errors.push_back(ErrorInfo{ pos - skipped.size(), pos, skipped });
     }
     return nullopt;
-  }
-
-  vector<Lexer::ErrorInfo> Lexer::popErrors() {
-    vector<ErrorInfo> res;
-    res.swap(errors);
-    return res;
   }
 
   // Directly run NFA
@@ -76,14 +66,14 @@ namespace Parsing {
     };
 
     // Initial states
-    for (const auto& [initial, sym, active]: patterns) if (active) {
+    for (const auto& initial: patterns) {
       s.push_back(initial);
       v[initial] = true;
     }
     closure(v, s);
     for (size_t i = 0; pos + i < str.size(); i++) {
       char8_t c = str[pos + i];
-      // Reset v[] to false
+      // Reset v[] to all false
       for (State x: s) v[x] = false;
       // Move one step
       vector<State> t;
@@ -185,7 +175,7 @@ namespace Parsing {
       v.clear(); v.resize(nfa.table.size());
       mp.clear();
       // Initial states
-      for (const auto& [initial, sym, active]: nfa.patterns) if (active) {
+      for (const auto& initial: nfa.patterns) {
         s.push_back(initial);
         v[initial] = true;
       }
@@ -193,9 +183,6 @@ namespace Parsing {
       node(dfa.initial, v);
       clearv(s);
       dfs(dfa.initial, s);
-      // Copy mapping from pattern ID to symbol ID
-      for (const auto& [initial, sym, active]: nfa.patterns)
-        dfa.patternSymbols.push_back(sym);
     }
 
     #undef node
@@ -203,7 +190,7 @@ namespace Parsing {
     #undef clearv
   };
 
-  DFALexer::DFALexer(const NFALexer& nfa): Lexer(), table(), initial(0), patternSymbols() {
+  DFALexer::DFALexer(const NFALexer& nfa): Lexer(), table(), initial(0) {
     PowersetConstruction(nfa, *this)();
   }
 
@@ -239,7 +226,6 @@ namespace Parsing {
     void add(State x, size_t i) {
       cl[i].size++;
       List* l = cl[i].head, * r = l->r;
-      // List* curr = pool.emplaceBack(l, r, x);
       List* curr = pool.pushBack(List{ l, r, x });
       l->r = r->l = curr;
       id[x] = { i, curr };
@@ -255,12 +241,10 @@ namespace Parsing {
 
     // Create new class and return its ID (always = partition.size() - 1, just for convenience)
     size_t newClass() {
-      // List* head = pool.emplaceBack(nullptr, nullptr, 0);
       List* head = pool.pushBack(List{ nullptr, nullptr, 0 });
       head->l = head->r = head;
       size_t index = cl.size();
-      // cl.emplace_back(0, head, false);
-      cl.emplace_back(Class{ 0, head, false });
+      cl.push_back(Class{ 0, head, false });
       return index;
     }
 
@@ -319,7 +303,7 @@ namespace Parsing {
 
         for (unsigned int c = 1; c < CodeUnits; c++) {
           // Inner loop: time complexity should be O(size of dom[c])
-          // Pre: all entries of interStates[] are empty
+          // Mid: all entries of interStates[] are empty
           interStates.resize(cl.size());
           for (State x: dom[c]) interStates[id[x].cl].push_back(x);
           for (State x: dom[c]) {
@@ -348,12 +332,12 @@ namespace Parsing {
             if (cl[i].isDist || cl[interi].size <= cl[i].size) {
               dist.push_back(interi);
               cl[interi].isDist = true;
-            } else { // (!cl[i].isDist && cl[i].size < cl[interi].size)
+            } else { // Mid: !cl[i].isDist && cl[i].size < cl[interi].size
               dist.push_back(i);
               cl[i].isDist = true;
             }
           }
-          // Post: all interStates[] are empty at this time
+          // Mid: all interStates[] are empty
         }
       }
 
@@ -432,27 +416,6 @@ namespace Parsing {
       if (curr) res = { i + 1, curr.value() };
     }
     return res;
-  }
-
-  /*
-  * It is so confusing that different "regular expression" implementations actually provide different
-  * non-regular extensions and even different behaviors on basic constructs like alternation!
-  * The `grep` in POSIX follows the "leftmost longest match" rule, and the same can be said for this lexer.
-  * For example, if you match string `ab` with the pattern `a|ab`, you will get `ab`.
-  * However, "modern" regex engines like the ones used in TextMate and VSCode use "non-greedy alternation"
-  * and this behavior cannot be changed. The above pattern will match `a` only!
-  * This creates a problem if we want to use a single, unified representation for lexical rules, as our
-  * automata-based lexers cannot "mix" greedy and non-greedy constructs (we must use either the longest
-  * match or the shortest one...)
-  *
-  * The following algorithm will convert our DFA representation into regexes that uses "negative lookahead"
-  * to simulate "greedy alternation" -- the regex accepts only if no further matches are available.
-  * See: https://macromates.com/manual/en/regular_expressions
-  * See: https://courses.engr.illinois.edu/cs374/fa2017/extra_notes/01_nfa_to_reg.pdf
-  */
-  string DFALexer::toTextMateGrammar() const {
-    // TODO (this is probably too costly and not worth the trouble...)
-    notimplemented;
   }
 
 }

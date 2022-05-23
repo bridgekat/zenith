@@ -93,7 +93,7 @@ namespace Core {
       }
     }
   };
-  
+
 }
 
 #endif // BASE_HPP_

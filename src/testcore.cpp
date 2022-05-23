@@ -305,7 +305,7 @@ int main() {
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
     cout << FOLForm::fromExpr(Procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
-    
+
     e = forall("x", bin(app(fv(P), bv(0)), Implies, exists("y", exists("z", bin(app(fv(Q), bv(1)), Or, un(Not, exists("z", bin(app(fv(P), bv(0)), And, app(fv(Q), bv(0))))))))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
