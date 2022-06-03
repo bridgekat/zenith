@@ -9,6 +9,14 @@ namespace Parsing {
   using std::optional, std::make_optional, std::nullopt;
 
 
+  bool operator==(const EarleyParser::State& a, const EarleyParser::State& b) {
+    return a.startPos == b.startPos && a.rule == b.rule && a.progress == b.progress;
+  }
+
+  bool operator==(const EarleyParser::Location& a, const EarleyParser::Location& b) {
+    return a.pos == b.pos && a.i == b.i;
+  }
+
   // Parse greedily, until there are no further possibilities.
   // Parsing is considered successful only when the last position contains a completed root symbol.
   bool EarleyParser::nextSentence() {

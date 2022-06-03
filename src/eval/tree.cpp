@@ -14,11 +14,11 @@ namespace Eval {
       [&] (Cons const& x)   { return pool.emplaceBack(x.head->clone(pool, nil, unit),
                                                       x.tail->clone(pool, nil, unit)); },
       [&] (Symbol const& x) { return pool.emplaceBack(x); },
-      [&] (Bool const& x)   { return pool.emplaceBack(x); },
+      [&] (Prim const& x)   { return pool.emplaceBack(x); },
       [&] (Nat64 const& x)  { return pool.emplaceBack(x); },
       [&] (String const& x) { return pool.emplaceBack(x); },
       [&] (Bool const& x)   { return pool.emplaceBack(x); },
-      [&] (Unit const& x)   { return unit; },
+      [&] (Unit const&)     { return unit; },
       [&] (Closure const&)  -> Tree* { notimplemented; },
       [&] (Native const& x) { return pool.emplaceBack(x); }
     }, v);
@@ -52,12 +52,12 @@ namespace Eval {
         if (q == p) return make_pair(true, res);
         return make_pair(false, res + ")");
       },
-      []  (Symbol const& x)  { return make_pair(false, x.name); },
+      []  (Symbol const& x)  { return make_pair(false, x.val); },
       []  (Prim const& x)    { return make_pair(false, "#<primitive " + std::to_string(x.id) + ">"); },
       []  (Nat64 const& x)   { return make_pair(false, std::to_string(x.val)); },
       []  (String const& x)  { return make_pair(false, "\"" + escapeString(x.val) + "\""); },
       []  (Bool const& x)    { return make_pair(false, string(x.val? "#true" : "#false")); },
-      []  (Unit const& x)    { return make_pair(false, string("#unit")); },
+      []  (Unit const&)      { return make_pair(false, string("#unit")); },
       []  (Closure const& x) { return make_pair(false, "#<closure params: " + x.formal->toString() + ", body: " + x.es->toString() + "...>"); },
       []  (Native const& x)  { std::stringstream addr; addr << &x.val;
                                return make_pair(false, "#<native type: " + string(x.val.type().name()) + ", addr: " + addr.str() + ">"); }

@@ -27,7 +27,7 @@ namespace Parsing {
     struct LinkedState { State state; vector<pair<Location, Location>> links; };
     struct ErrorInfo { size_t startPos, endPos; vector<Symbol> expected; optional<Symbol> got; };
     struct AmbiguityInfo { size_t startPos, endPos; };
-    static constexpr Location Leaf{ -1u, -1u };
+    static constexpr Location Leaf{ static_cast<size_t>(-1), static_cast<size_t>(-1) };
 
     // The given Lexer reference must be valid over the EarleyParser's lifetime.
     EarleyParser(Lexer& lexer):
@@ -45,13 +45,6 @@ namespace Parsing {
       return id;
     }
 
-    // Remove pattern (patterns with greater IDs will have their IDs decreased by one)
-    void removePattern(size_t id) noexcept {
-      if (id >= patterns.size()) unreachable;
-      patterns.erase(patterns.begin() + id);
-      dirty = true;
-    }
-
     size_t addRule(Symbol sym, Prec prec, vector<pair<Symbol, Prec>> derived) {
       size_t id = rules.size();
       rules.push_back(Rule{ { sym, prec }, std::move(derived) });
@@ -59,12 +52,8 @@ namespace Parsing {
       return id;
     }
 
-    // Remove rule (rules with greater IDs will have their IDs decreased by one)
-    void removeRule(size_t id) noexcept {
-      if (id >= rules.size()) unreachable;
-      rules.erase(rules.begin() + id);
-      dirty = true;
-    }
+    void clearPatterns() noexcept { patterns.clear(); dirty = true; }
+    void clearRules() noexcept { rules.clear(); dirty = true; }
 
     // State getters (references remain valid until state change)
     bool eof() const noexcept { return lexer.eof(); }

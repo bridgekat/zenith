@@ -8,8 +8,6 @@
 #include <utility>
 #include <optional>
 #include <string>
-#include <cstdint>
-#include <limits>
 #include <core/base.hpp>
 
 
@@ -30,10 +28,9 @@ namespace Parsing {
   // A common (abstract) base class for lexers.
   class Lexer {
   public:
+    struct ErrorInfo { size_t startPos, endPos; string lexeme; };
     static constexpr unsigned int SegBegin = 128;
     static constexpr unsigned int CodeUnits = 256;
-    static_assert(std::numeric_limits<char8_t>::max() == CodeUnits - 1);
-    struct ErrorInfo { size_t startPos, endPos; string lexeme; };
 
     virtual ~Lexer() = default;
 
@@ -73,44 +70,43 @@ namespace Parsing {
       return id;
     }
 
-    // Remove pattern (patterns with greater IDs will have their IDs decreased by one)
-    void removePattern(size_t id) {
-      if (id >= patterns.size()) unreachable;
-      patterns.erase(patterns.begin() + id);
-      for (Entry& e: table) if (e.ac) {
-        if (*e.ac == id) e.ac = nullopt;
-        else if (*e.ac > id) e.ac = *e.ac - 1;
-      }
+    void clearPatterns() noexcept {
+      table.clear();
+      patterns.clear();
     }
 
     #define node(x) State x = table.size(); table.emplace_back()
     #define trans(s, c, t) table[s].tr.emplace_back(static_cast<char8_t>(c), t)
 
     // Some useful pattern constructors (equivalent to regexes)
-    NFA epsilon() {
+    NFA empty() {
       node(s); node(t); trans(s, 0, t);
       return { s, t };
     }
-    NFA ch_vec(const vector<char8_t>& ls) {
+    NFA any() { return range(1, CodeUnits - 1); }
+    NFA utf8segment() { return range(SegBegin, CodeUnits - 1); }
+    template <typename... Ts>
+    NFA chars(Ts... a) { return charsvec({ static_cast<char8_t>(a)... }); }
+    NFA charsvec(const vector<char8_t>& ls) {
       node(s); node(t);
       for (auto c: ls) trans(s, c, t);
       return { s, t };
     }
     template <typename... Ts>
-    NFA ch(Ts... a) { return ch_vec({ static_cast<char8_t>(a)... }); }
+    NFA except(Ts... a) { return exceptvec({ static_cast<char8_t>(a)... }); }
+    NFA exceptvec(const vector<char8_t>& ls) {
+      array<bool, CodeUnits> f{};
+      for (auto c: ls) f[c] = true;
+      node(s); node(t);
+      for (unsigned int i = 1; i < CodeUnits; i++) if (!f[i]) trans(s, i, t);
+      return { s, t };
+    }
     NFA range(char8_t a, char8_t b) {
       node(s); node(t);
       for (unsigned int i = a; i <= b; i++) trans(s, i, t);
       return { s, t };
     }
-    NFA concat2(NFA a, NFA b) {
-      for (auto [c, t]: table[b.first].tr) trans(a.second, c, t);
-      return { a.first, b.second };
-    }
-    template <typename... Ts>
-    NFA concat(NFA a, Ts... b) { return concat2(a, concat(b...)); }
-    NFA concat(NFA a) { return a; }
-    NFA word(const string& word) {
+    NFA word(const vector<char8_t>& word) {
       node(s); State t = s;
       for (char8_t c: word) {
         node(curr);
@@ -119,7 +115,9 @@ namespace Parsing {
       }
       return { s, t };
     }
-    NFA alt_vec(const vector<NFA>& ls) {
+    template <typename... Ts>
+    NFA alt(Ts... a) { return altvec({ a... }); }
+    NFA altvec(const vector<NFA>& ls) {
       node(s); node(t);
       for (auto a: ls) {
         trans(s, 0, a.first);
@@ -128,29 +126,26 @@ namespace Parsing {
       return { s, t };
     }
     template <typename... Ts>
-    NFA alt(Ts... a) { return alt_vec({ a... }); }
+    NFA concat(Ts... a) { return concatvec({ a... }); }
+    NFA concatvec(const vector<NFA>& ls) {
+      if (ls.empty()) unreachable;
+      for (size_t i = 0; i + 1 < ls.size(); i++) {
+        auto a = ls[i], b = ls[i + 1];
+        for (auto [c, t]: table[b.first].tr) trans(a.second, c, t);
+      }
+      return { ls.front().first, ls.back().second };
+    }
+    NFA opt(NFA a) {
+      trans(a.first, 0, a.second);
+      return { a.first, a.second };
+    }
     NFA star(NFA a) {
       node(s); node(t);
       trans(s, 0, a.first); trans(a.second, 0, t);
       trans(a.second, 0, a.first); trans(s, 0, t);
       return { s, t };
     }
-    NFA opt(NFA a) {
-      trans(a.first, 0, a.second);
-      return { a.first, a.second };
-    }
-    NFA plus(NFA a)   { return concat2(a, star(a)); }
-    NFA any()         { return range(1, CodeUnits - 1); }
-    NFA utf8segment() { return range(SegBegin, CodeUnits - 1); }
-    NFA except_vec(const vector<char8_t>& ls) {
-      array<bool, CodeUnits> f{};
-      for (auto c: ls) f[c] = true;
-      node(s); node(t);
-      for (unsigned int i = 1; i < CodeUnits; i++) if (!f[i]) trans(s, i, t);
-      return { s, t };
-    }
-    template <typename... Ts>
-    NFA except(Ts... a) { return except_vec({ static_cast<char8_t>(a)... }); }
+    NFA plus(NFA a) { return concat(a, star(a)); }
 
     #undef node
     #undef trans

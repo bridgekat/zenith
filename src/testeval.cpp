@@ -4,16 +4,16 @@
 #include <fstream>
 #include <sstream>
 #include "core.hpp"
-#include "eval/sexpr.hpp"
-#include "eval/environment.hpp"
+#include "eval/tree.hpp"
+#include "eval/evaluator.hpp"
 
 using std::string;
 using std::vector;
 using std::cin, std::cout, std::endl;
 using Core::Allocator;
-using Parsing::ParseTree, Parsing::makePrec;
+using Eval::Evaluator, Eval::EvalError;
 
-
+/*
 class Lisp: public Parsing::Language {
 public:
 
@@ -85,7 +85,7 @@ public:
     addPattern([] (const string&) -> LBracket { return {}; }, word("["));
     addPattern([] (const string&) -> RBracket { return {}; }, word("]"));
     addPattern([] (const string&) -> Point { return {}; }, word("."));
-    addPattern([] (const string&) -> Quote { return {}; }, word("'"));
+    addPattern([] (const string&) -> Quote { return {}; }, word("`"));
     addPattern([] (const string&) -> Comma { return {}; }, word(","));
     addPattern([] (const string&) -> Atsign { return {}; }, word("@"));
 
@@ -200,6 +200,7 @@ private:
   Allocator<Eval::SExpr> pool;
   Eval::Environment env;
 };
+*/
 
 // See: https://stackoverflow.com/questions/116038/how-do-i-read-an-entire-file-into-a-stdstring-in-c
 string readFile(std::ifstream&& in) {
@@ -209,7 +210,7 @@ string readFile(std::ifstream&& in) {
 }
 
 int main() {
-  Lisp interpreter;
+  Evaluator evaluator;
 
   while (true) {
     string in;
@@ -219,7 +220,7 @@ int main() {
       in = in.substr(1);
       /* if (in.starts_with("reset")) { // Reset state
         in = in.substr(5);
-        interpreter.reset();
+        evaluator.reset();
       } else */ if (in.starts_with('{')) { // Multi-line input
         in = in.substr(1);
         string curr;
@@ -234,7 +235,12 @@ int main() {
         in = readFile(std::ifstream(in));
       }
     }
-    interpreter.evalPrint(in);
+    evaluator.setString(in);
+    while (true) {
+      const auto res = evaluator.evalNextStatement();
+      if (!res) break;
+      cout << res->toString() << endl;
+    }
   }
 
   return 0;

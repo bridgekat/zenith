@@ -82,8 +82,8 @@ add_executable (testeval
   src/elab/elab.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
-  src/eval/sexpr.cpp
-  src/eval/environment.cpp
+  src/eval/tree.cpp
+  src/eval/evaluator.cpp
   src/testeval.cpp)
 target_default_compile_options  (testeval)
 target_include_directories      (testeval PRIVATE src)

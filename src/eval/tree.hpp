@@ -42,7 +42,7 @@ namespace Eval {
 
   // Concrete atom types for Tree
   class Tree;
-  struct Symbol  { std::string name;          bool operator==(const Symbol&)   const noexcept = default; };
+  struct Symbol  { std::string val;           bool operator==(const Symbol&)   const noexcept = default; };
   struct Prim    { size_t id;                 bool operator==(const Prim&)     const noexcept = default; };
   struct Nat64   { uint64_t val;              bool operator==(const Nat64&)    const noexcept = default; };
   struct String  { std::string val;           bool operator==(const String&)   const noexcept = default; };
@@ -62,7 +62,6 @@ namespace Eval {
   class Tree: public VarType {
   public:
     // Convenient constructors
-    Tree(): VarType{} {}
     Tree(Tree* l, Tree* r): VarType{ Cons{ l, r } } {}
     Tree(Nil const& x): VarType{ x } {}
     Tree(Cons const& x): VarType{ x } {}
