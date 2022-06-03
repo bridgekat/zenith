@@ -66,13 +66,22 @@ namespace Parsing {
   }
   */
 
-  string EarleyParser::showState(const State& s, const vector<string>& names) const {
-    string res = std::to_string(s.startPos) + ", " + names.at(rules[s.rule].lhs.first) + " ::= ";
+  string EarleyParser::showState(const LinkedState& ls, const vector<string>& names) const {
+    const auto& [s, links] = ls;
+    string res = std::to_string(s.startPos) + ", [" + names.at(rules[s.rule].lhs.first) + "] ::= ";
     for (size_t i = 0; i < rules[s.rule].rhs.size(); i++) {
       if (i == s.progress) res += "|";
-      res += names.at(rules[s.rule].rhs[i].first);
+      res += "[" + names.at(rules[s.rule].rhs[i].first) + "]";
     }
     if (s.progress == rules[s.rule].rhs.size()) res += "|";
+    // TEMP CODE
+    res += "\n";
+    res += "Links:";
+    for (const auto& [next, child]: links) {
+      res += " [>(" + std::to_string(next.pos) + ", " + std::to_string(next.i) + ")";
+      res += " v(" + std::to_string(child.pos) + ", " + std::to_string(child.i) + ")]";
+    }
+    res += "\n";
     return res;
   }
 
@@ -81,9 +90,9 @@ namespace Parsing {
     string res = "";
     for (size_t pos = 0; pos <= sentence.size(); pos++) {
       res += "States at position " + std::to_string(pos) + ":\n";
-      for (const LinkedState& ls: dpa[pos]) res += showState(ls.state, names) + "\n";
+      for (const LinkedState& ls: dpa[pos]) res += showState(ls, names);
       res += "\n";
-      if (pos < sentence.size()) res += "Next token: " + names.at(patterns.at(sentence[pos].pattern).first) + "\n";
+      if (pos < sentence.size()) res += "Next token: [" + names.at(patterns.at(sentence[pos].pattern).first) + "]\n";
     }
     return res;
   }
@@ -123,23 +132,24 @@ namespace Parsing {
       }
     }
 
-    // Also sort all non-empty (non-nullable) rules by symbol ID (for faster access in `run()`).
+    // Sort all non-empty (non-nullable) rules by symbol ID (for faster access in `run()`).
+    // Also accumulate the lengths of RHS (plus one) of the production rules (for better hashing in `run()`)
     sorted.clear();
+    totalLength.clear();
+    totalLength.push_back(0);
     for (size_t i = 0; i < rules.size(); i++) {
       const auto& [lhs, rhs] = rules[i];
       if (emptyRule[lhs.first] != i) sorted.push_back(i);
+      totalLength.push_back(totalLength[i] + rhs.size() + 1);
     }
     std::sort(sorted.begin(), sorted.end(), [this] (size_t i, size_t j) { return rules[i].lhs < rules[j].lhs; });
     size_t n = sorted.size();
 
     // For each symbol find the index of its first production rule (for faster access in `run()`, if none then set to `n`)
-    // Also accumulate the lengths of RHS (plus one) of the production rules (for better hashing in `run()`)
     firstRule = vector<size_t>(numSymbols, n);
-    totalLength = vector<size_t>(n, 0);
     for (size_t i = 0; i < n; i++) {
       const auto& [lhs, rhs] = rules[sorted[i]];
       if (firstRule[lhs.first] == n) firstRule[lhs.first] = i;
-      if (i + 1 < n) totalLength[i + 1] = totalLength[i] + rules[i].rhs.size() + 1;
     }
   }
 
@@ -305,7 +315,22 @@ namespace Parsing {
         const auto& [state, links] = dpa[pos][i];
         rev[pos][i].state = state;
         for (const auto& [prev, child]: links) {
-          rev[prev.pos][prev.i].links.push_back({ { pos, i }, child });
+          if (child == Leaf) {
+            rev[prev.pos][prev.i].links.push_back({ { pos, i }, Leaf });
+          } else {
+            // TODO: optimize?
+            optional<Location> dual;
+            const auto& [cstate, clinks] = dpa[child.pos][child.i];
+            for (size_t j = 0; j < dpa[cstate.startPos].size(); j++) {
+              const auto& [dstate, dlinks] = dpa[cstate.startPos][j];
+              if (dstate.startPos == cstate.startPos && dstate.rule == cstate.rule && dstate.progress == 0) {
+                dual = { cstate.startPos, j };
+                break;
+              }
+            }
+            if (!dual) unreachable;
+            rev[prev.pos][prev.i].links.push_back({ { pos, i }, *dual });
+          }
         }
       }
     }

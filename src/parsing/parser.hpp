@@ -26,14 +26,13 @@ namespace Parsing {
     struct Location { size_t pos, i; };
     struct LinkedState { State state; vector<pair<Location, Location>> links; };
     struct ErrorInfo { size_t startPos, endPos; vector<Symbol> expected; optional<Symbol> got; };
-    struct AmbiguityInfo { size_t startPos, endPos; };
     static constexpr Location Leaf{ static_cast<size_t>(-1), static_cast<size_t>(-1) };
 
     // The given Lexer reference must be valid over the EarleyParser's lifetime.
     EarleyParser(Lexer& lexer):
       lexer(lexer), startSymbol(), ignoredSymbol(), patterns(), rules(),
       dirty(true), numSymbols(0), emptyRule(), sorted(), firstRule(), totalLength(),
-      sentence(), dpa(), errors(), ambiguities() {}
+      sentence(), dpa(), errors() {}
 
     void setStartSymbol(optional<size_t> sym) noexcept { startSymbol = sym; dirty = true; }
     void setIgnoredSymbol(optional<size_t> sym) noexcept { ignoredSymbol = sym; dirty = true; }
@@ -66,13 +65,12 @@ namespace Parsing {
     const auto& getSentence() const noexcept { return sentence; }
     const auto& getForest() const noexcept { return dpa; }
     auto popErrors() { return std::exchange(errors, {}); }
-    auto popAmbiguities() { return std::exchange(ambiguities, {}); }
 
     // Run parsing algorithm
     bool nextSentence();
 
     // Debug output
-    string showState(const State& s, const vector<string>& names) const;
+    string showState(const LinkedState& ls, const vector<string>& names) const;
     string showStates(const vector<string>& names) const;
 
   private:
@@ -88,8 +86,7 @@ namespace Parsing {
 
     vector<Token> sentence;                         // Parsed tokens
     vector<vector<LinkedState>> dpa;                // The DP array (aka. "shared packed parse forest (SPPF)")
-    vector<ErrorInfo> errors;
-    vector<AmbiguityInfo> ambiguities;
+    vector<ErrorInfo> errors;                       // Parsing errors
 
     // The parsing algorithm
     void process();

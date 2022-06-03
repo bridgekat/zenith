@@ -17,10 +17,18 @@
 
 namespace Eval {
 
+  // Parsing error exception
+  struct ParsingError: public std::runtime_error {
+    size_t startPos, endPos;
+    ParsingError(const std::string& s, size_t startPos, size_t endPos):
+      std::runtime_error(s), startPos(startPos), endPos(endPos) {}
+  };
+
   // Evaluation error exception
   struct EvalError: public std::runtime_error {
     const Tree* at, * e;
-    EvalError(const std::string& s, const Tree* at, const Tree* e): std::runtime_error(s), at(at), e(e) {}
+    EvalError(const std::string& s, const Tree* at, const Tree* e):
+      std::runtime_error(s), at(at), e(e) {}
     EvalError(const EvalError&) = default;
     EvalError& operator=(const EvalError&) = default;
   };
@@ -41,6 +49,9 @@ namespace Eval {
     // Evaluates next statement, returns result, or `nullptr` on reaching EOF.
     // This will store intermediate and final results on `this.pool`.
     Tree* evalNextStatement();
+
+    // #####
+    std::vector<ParsingError> popParsingErrors();
 
   private:
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
@@ -106,8 +117,8 @@ namespace Eval {
     Tree* extend(Tree* env, const std::string& sym, Tree* e);
     Tree* lookup(Tree* env, const std::string& sym);
 
-    std::vector<Tree*> resolve(Parsing::EarleyParser::Location loc, size_t numResults, size_t maxDepth);
-    Tree* resolve(size_t numResults = 64, size_t maxDepth = 4096);
+    std::vector<Tree*> resolve(Parsing::EarleyParser::Location loc, size_t rightPos, size_t numResults, size_t maxDepth);
+    Tree* resolve(size_t numResults = 16, size_t maxDepth = 64);
     Tree* expand(Tree* e);
     Tree* expandList(Tree* e);
     Tree* eval(Tree* env, Tree* e);

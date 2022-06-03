@@ -1,5 +1,7 @@
 #include "evaluator.hpp"
 
+#include <iostream>
+using std::cin, std::cout, std::endl;
 
 namespace Eval {
 
@@ -13,7 +15,49 @@ namespace Eval {
 
   Tree* Evaluator::evalNextStatement() {
     if (!parser.nextSentence()) return nullptr;
-    return eval(globalEnv, expand(resolve()));
+    auto e = resolve(); cout << e->toString() << endl;
+    // cout << parser.showStates(syncatNames) << endl;
+    e = expand(e); cout << e->toString() << endl;
+    e = eval(globalEnv, e);
+    return e;
+  }
+
+  vector<ParsingError> Evaluator::popParsingErrors() {
+    vector<ParsingError> res;
+    // See: https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
+    for (const auto& e: lexer.popErrors()) {
+      res.emplace_back("Parsing error, unexpected characters: " + e.lexeme, e.startPos, e.endPos);
+    }
+    for (const auto& e: parser.popErrors()) {
+      string s = "Parsing error, expected one of:\n";
+      bool first = true;
+      for (Parsing::Symbol sym: e.expected) {
+        string name = syncatNames[sym];
+        if (name.empty()) name = "(" + std::to_string(sym) + ")";
+        s += (first? "" : ", ") + name;
+        first = false;
+      }
+      s += "\n";
+      if (e.got) {
+        string name = syncatNames[*e.got];
+        if (name.empty()) name = "(" + std::to_string(*e.got) + ")";
+        s += "got token " + name;
+      } else {
+        s += "but reached the end of file";
+      }
+      res.emplace_back(s, e.startPos, e.endPos);
+    }
+    /*
+    for (const auto& e: parser.popAmbiguities()) {
+      string s = "Warning: unresolved ambiguity\n";
+      s += "(Alternative parse tree display has not been implemented yet;"
+           " you can try adding commas and parentheses or modifying notations to eliminate ambiguity."
+           " If you cannot get rid of this message, it is likely that the base grammar is incorrect;"
+           " you may submit an issue on GitHub.)";
+      res.emplace_back(e.startPos, e.endPos, s);
+    }
+    */
+    return res;
   }
 
   // Throw this when you don't know about the parent expression,
@@ -175,7 +219,7 @@ namespace Eval {
       const auto& [sym, v]  = expect<Cons>(lhs);
       const auto& [pre, _2] = expect<Cons>(v);
       string sname = expect<Symbol>(sym).val;
-      size_t sid = (sname == "_")? IgnoredSyncat : getSyncat(sname);
+      size_t sid = (sname == "_")? StartSyncat : getSyncat(sname);
       size_t rid = ruleNames.size();
       ruleNames.push_back(expect<Symbol>(name).val);
       if (parser.addRule(sid, expect<Nat64>(pre).val, listSyncats(rhs)) != rid) unreachable;
@@ -243,12 +287,12 @@ namespace Eval {
                chars("/"))),
       pattern("left_paren'",    "left_paren",  word("(")),
       pattern("right_paren'",   "right_paren", word(")")),
-      pattern("quote'",         "quote",       word("`")),
-      pattern("comma'",         "comma",       word(",")),
-      pattern("string_symbol",  "tree",
+      // pattern("quote'",         "quote",       word("`")),
+      // pattern("comma'",         "comma",       word(",")),
+      pattern("symbol'",        "tree",
         concat(alt(range('a', 'z'), range('A', 'Z'), chars("_'"), utf8seg),
                star(alt(range('a', 'z'), range('A', 'Z'), range('0', '9'), chars("_'"), utf8seg)))),
-      pattern("string_nat64",   "tree",
+      pattern("nat64'",         "tree",
         alt(plus(range('0', '9')),
             concat(chars("0"), chars("xX"), plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F')))))),
       pattern("string'",        "tree",
@@ -282,7 +326,8 @@ namespace Eval {
     setRules(list(
       rule("nil'",  syncat("list"), list()),
       rule("cons'", syncat("list"), list(syncat("tree"), syncat("list"))),
-      rule("tree'", syncat("tree"), list(syncat("left_paren"), syncat("list"), syncat("right_paren")))
+      rule("tree'", syncat("tree"), list(syncat("left_paren"), syncat("list"), syncat("right_paren"))),
+      rule("id'",   syncat("_"),    list(syncat("tree")))
     ));
 
     #undef syncat
@@ -463,24 +508,6 @@ namespace Eval {
     #undef binary
     #undef binpred
 
-    // [?]
-    addPrimitive("string_symbol", { true, [this] (Tree*, Tree* e) -> Result {
-      const auto& [h, _] = expect<Cons>(e);
-      return pool.emplaceBack(Symbol{ expect<String>(h).val });
-    }});
-    addPrimitive("string_nat64", { true, [this] (Tree*, Tree* e) -> Result {
-      const auto& [h, _] = expect<Cons>(e);
-      return pool.emplaceBack(Nat64{ std::stoull(expect<String>(h).val) });
-    }});
-    addPrimitive("string_escape", { true, [this] (Tree*, Tree* e) -> Result {
-      const auto& [h, _] = expect<Cons>(e);
-      return pool.emplaceBack(String{ Tree::escapeString(expect<String>(h).val) });
-    }});
-    addPrimitive("string_unescape", { true, [this] (Tree*, Tree* e) -> Result {
-      const auto& [h, _] = expect<Cons>(e);
-      return pool.emplaceBack(String{ Tree::unescapeString(expect<String>(h).val) });
-    }});
-
     // [√] For debugging?
     addPrimitive("print", { true, [this] (Tree*, Tree* e) -> Result {
       return pool.emplaceBack(String{ e->toString() });
@@ -594,26 +621,28 @@ namespace Eval {
     return a.pos == b.pos && a.i == b.i;
   }
 
-  vector<Tree*> Evaluator::resolve(EarleyParser::Location loc, size_t numResults, size_t maxDepth) {
+  vector<Tree*> Evaluator::resolve(EarleyParser::Location loc, size_t rightPos, size_t numResults, size_t maxDepth) {
     // TODO: save results for explored nodes
     // TODO: optimise out dead ends
     vector<Tree*> res;
-    if (numResults == 0 || maxDepth == 0) return res;
+    if (loc.pos > rightPos || numResults == 0 || maxDepth == 0) return res;
 
     const auto& [state, links] = parser.getForest()[loc.pos][loc.i];
     if (state.progress == parser.getRule(state.rule).rhs.size()) {
+      if (loc.pos < rightPos) return res;
+      // Mid: loc.pos == rightPos
       res.push_back(nil);
     }
 
     // Inv: numResults > 0
     for (const auto& [next, child]: links) {
-      vector<Tree*> nextRes = resolve(next, numResults, maxDepth - 1);
+      vector<Tree*> nextRes = resolve(next, rightPos, numResults, maxDepth - 1);
       vector<Tree*> childRes;
       if (child == EarleyParser::Leaf) {
         const auto& tok = parser.getSentence()[loc.pos];
         childRes = { cons(sym(patternNames[tok.pattern]), cons(str(tok.lexeme), nil)) };
       } else {
-        childRes = resolve(child, numResults, maxDepth - 1);
+        childRes = resolve(child, next.pos, numResults, maxDepth - 1);
       }
       // Inv: numResults > 0
       for (Tree* n: nextRes) {
@@ -647,10 +676,10 @@ namespace Eval {
       const auto& [state, links] = forest[0][i];
       const auto& [lhs, rhs] = parser.getRule(state.rule);
       if (state.startPos == 0 && lhs.first == StartSyncat && state.progress == 0) {
-        vector<Tree*> curr = resolve({ 0, i }, numResults, maxDepth);
+        vector<Tree*> curr = resolve({ 0, i }, parser.getSentence().size(), numResults, maxDepth);
         // Inv: numResults > 0
         for (Tree* x: curr) {
-          all.push_back(cons(sym(ruleNames[state.rule]), x));
+          all.push_back(x);
           numResults--;
           if (numResults == 0) break;
         }
@@ -660,7 +689,9 @@ namespace Eval {
     if (all.empty()) notimplemented;
     if (all.size() > 1) {
       // Ambiguous
-      notimplemented;
+      // notimplemented;
+      cout << "Ambiguous" << endl;
+      for (const auto& parse: all) cout << parse->toString() << endl;
     }
     // Mid: all.size() == 1
     return all[0];
@@ -685,6 +716,15 @@ namespace Eval {
 
           if (holds<Symbol>(head)) {
             // TEMP CODE
+            if (get<Symbol>(head).val == "symbol'") {
+              string s = expect<String>(expect<Cons>(tail).head).val;
+              e = pool.emplaceBack(Symbol{ s });
+              continue;
+            }
+            if (get<Symbol>(head).val == "nat64'") {
+              string s = expect<String>(expect<Cons>(tail).head).val;
+              return pool.emplaceBack(Nat64{ std::stoull(s) });
+            }
             if (get<Symbol>(head).val == "string'") {
               string s = expect<String>(expect<Cons>(tail).head).val;
               s = s.substr(1, s.size() - 2);
@@ -700,6 +740,12 @@ namespace Eval {
               continue;
             }
             if (get<Symbol>(head).val == "tree'") {
+              const auto& [left, v] = expect<Cons>(tail);
+              const auto& [mid,  _] = expect<Cons>(v);
+              e = mid;
+              continue;
+            }
+            if (get<Symbol>(head).val == "id'") {
               e = expect<Cons>(tail).head;
               continue;
             }
