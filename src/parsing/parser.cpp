@@ -30,7 +30,6 @@ namespace Parsing {
       if (found) { // Successful parse
         if (sentence.empty()) notimplemented;
         if (error) errors.push_back(*error);
-        reverseLinks();
         return true;
       }
       if (!nextToken) { // EOF
@@ -39,7 +38,6 @@ namespace Parsing {
           else error->endPos = sentence.back().endPos;
         }
         if (error) errors.push_back(*error);
-        reverseLinks();
         return false;
       }
       // Mid: !index && nextToken
@@ -54,18 +52,6 @@ namespace Parsing {
     }
   }
 
-  /*
-  size_t EarleyParser::toCharsStart(size_t pos) const noexcept {
-    if (pos >= sentence.size()) return sentence.empty()? 0 : sentence.back().endPos;
-    return sentence[pos].startPos;
-  }
-
-  size_t EarleyParser::toCharsEnd(size_t pos) const noexcept {
-    if (pos >= sentence.size()) return sentence.empty()? 0 : sentence.back().endPos;
-    return sentence[pos].endPos;
-  }
-  */
-
   string EarleyParser::showState(const LinkedState& ls, const vector<string>& names) const {
     const auto& [s, links] = ls;
     string res = std::to_string(s.startPos) + ", [" + names.at(rules[s.rule].lhs.first) + "] ::= ";
@@ -74,14 +60,15 @@ namespace Parsing {
       res += "[" + names.at(rules[s.rule].rhs[i].first) + "]";
     }
     if (s.progress == rules[s.rule].rhs.size()) res += "|";
-    // TEMP CODE
     res += "\n";
+    /*
     res += "Links:";
     for (const auto& [next, child]: links) {
       res += " [>(" + std::to_string(next.pos) + ", " + std::to_string(next.i) + ")";
       res += " v(" + std::to_string(child.pos) + ", " + std::to_string(child.i) + ")]";
     }
     res += "\n";
+    */
     return res;
   }
 
@@ -106,10 +93,9 @@ namespace Parsing {
   // (I am not going to dig too deep into the theories about different parsing algorithms now!)
 
   void EarleyParser::process() {
-    if (!startSymbol) notimplemented;
 
     // Find the number of symbols involved.
-    numSymbols = *startSymbol + 1;
+    numSymbols = startSymbol + 1;
     for (const auto& [lhs, rhs]: rules) {
       numSymbols = std::max(numSymbols, lhs.first + 1);
       for (const auto& r: rhs) numSymbols = std::max(numSymbols, r.first + 1);
@@ -171,7 +157,7 @@ namespace Parsing {
 
     // Initial states
     dpa.emplace_back();
-    for (size_t i = firstRule[*startSymbol]; i < sorted.size() && rules[sorted[i]].lhs.first == *startSymbol; i++) {
+    for (size_t i = firstRule[startSymbol]; i < sorted.size() && rules[sorted[i]].lhs.first == startSymbol; i++) {
       State s{ 0, sorted[i], 0 };
       mp[s] = dpa[0].size();
       dpa[0].push_back(LinkedState{ s, {} });
@@ -270,7 +256,7 @@ namespace Parsing {
     for (size_t i = 0; i < dpa[pos].size(); i++) {
       State s = dpa[pos][i].state;
       const auto& [lhs, rhs] = rules[s.rule];
-      if (lhs.first == *startSymbol && s.startPos == 0 && s.progress == rhs.size()) found = true;
+      if (lhs.first == startSymbol && s.startPos == 0 && s.progress == rhs.size()) found = true;
     }
 
     /*
@@ -305,36 +291,6 @@ namespace Parsing {
     */
 
     return { found, nextToken };
-  }
-
-  void EarleyParser::reverseLinks() {
-    vector<vector<LinkedState>> rev(dpa.size());
-    for (size_t pos = 0; pos < dpa.size(); pos++) rev[pos].resize(dpa[pos].size());
-    for (size_t pos = 0; pos < dpa.size(); pos++) {
-      for (size_t i = 0; i < dpa[pos].size(); i++) {
-        const auto& [state, links] = dpa[pos][i];
-        rev[pos][i].state = state;
-        for (const auto& [prev, child]: links) {
-          if (child == Leaf) {
-            rev[prev.pos][prev.i].links.push_back({ { pos, i }, Leaf });
-          } else {
-            // TODO: optimize?
-            optional<Location> dual;
-            const auto& [cstate, clinks] = dpa[child.pos][child.i];
-            for (size_t j = 0; j < dpa[cstate.startPos].size(); j++) {
-              const auto& [dstate, dlinks] = dpa[cstate.startPos][j];
-              if (dstate.startPos == cstate.startPos && dstate.rule == cstate.rule && dstate.progress == 0) {
-                dual = { cstate.startPos, j };
-                break;
-              }
-            }
-            if (!dual) unreachable;
-            rev[prev.pos][prev.i].links.push_back({ { pos, i }, *dual });
-          }
-        }
-      }
-    }
-    dpa = std::move(rev);
   }
 
   // For use in `nextSentence()` only

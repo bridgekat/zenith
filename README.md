@@ -8,7 +8,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 
 (I am not aiming to make any serious ITP software! This is just a "toy" system for inexperienced users (and AI) to interact with, so I will just try to make the UI as intuitive as possible while keeping the background theory simple. It seems like first-order logic with equality (with natural deduction) + meta-variables (for axiom schemata) + extension by definitions are already enough for this...)
 
-(Update: just found out that using dependent type theory as a meta-logic actually *simplifies* code 🤣. But I'm not going to add anything beyond basic Π-types and β-reduction for now. No intensional equality, no inductive types, the thing is there just to express first-order logic and second-order schema rules in a more manageable way...)
+(Update: just found out that using dependent type theory as a meta-logic actually *simplifies* code 😂. But I'm not going to add anything beyond basic Π-types and β-reduction for now. No intensional equality, no inductive types, the thing is there just to express first-order logic and second-order schema rules in a more manageable way...)
 
 
 ## To do list
@@ -27,13 +27,14 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [ ] Modifying, fading, etc.
   - [ ] Parser & pretty-printer (WIP)
     - [x] [Parsing algorithms](src/parsing/)
-    - [ ] Customizable syntax
+    - [x] Customizable syntax
     - [ ] Pretty-printer
   - [ ] MM1-style Scheme interpreter (I just want more flexible notations/macros... not sure if this is necessary)
     - [x] Primitive forms and procedures
+    - [x] Macros
     - [ ] Formula and context representation
-    - [ ] Macros
-    - [ ] Calling C++ and Python code for tactics (if I could make this far...)
+    - [ ] **Compiler! (as part of the WACC project)**
+    - [ ] Calling external C++ and Python code for tactics (if I could make this far...)
   - [ ] Partial checking
   - [ ] Interactive proof-searching
     - [x] [Sequent calculus (analytic tableaux) with optimizations](src/elab/tableau.hpp) (WIP)
@@ -42,7 +43,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [ ] Resolution and other "disjunctive-prove"/"conjunctive-refutation" methods (for generating instantiations; requires tableau to translate)
     - [ ] Higher-order unification
     - [ ] Equational reasoning
-    - [ ] Try applying machine learning (could be a third year individual project...)
+    - [ ] Try applying machine learning (could be a final year individual project...)
   - [ ] Proof transformation
     - [ ] "Definition erasure" for exporting proofs
     - [ ] Exporting proofs to MM0 (first-order only)

@@ -50,10 +50,10 @@ namespace Eval {
     // This will store intermediate and final results on `this.pool`.
     Tree* evalNextStatement();
 
-    // #####
+    // Returns and clears error log
     std::vector<ParsingError> popParsingErrors();
 
-  private:
+  protected:
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
     struct Result {
       Tree* env, * e;
@@ -117,8 +117,8 @@ namespace Eval {
     Tree* extend(Tree* env, const std::string& sym, Tree* e);
     Tree* lookup(Tree* env, const std::string& sym);
 
-    std::vector<Tree*> resolve(Parsing::EarleyParser::Location loc, size_t rightPos, size_t numResults, size_t maxDepth);
-    Tree* resolve(size_t numResults = 16, size_t maxDepth = 64);
+    std::vector<Tree*> resolve(Parsing::EarleyParser::Location loc, const std::vector<Tree*>& right, size_t maxDepth);
+    Tree* resolve(size_t maxDepth = 64);
     Tree* expand(Tree* e);
     Tree* expandList(Tree* e);
     Tree* eval(Tree* env, Tree* e);

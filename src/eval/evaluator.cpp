@@ -47,16 +47,6 @@ namespace Eval {
       }
       res.emplace_back(s, e.startPos, e.endPos);
     }
-    /*
-    for (const auto& e: parser.popAmbiguities()) {
-      string s = "Warning: unresolved ambiguity\n";
-      s += "(Alternative parse tree display has not been implemented yet;"
-           " you can try adding commas and parentheses or modifying notations to eliminate ambiguity."
-           " If you cannot get rid of this message, it is likely that the base grammar is incorrect;"
-           " you may submit an issue on GitHub.)";
-      res.emplace_back(e.startPos, e.endPos, s);
-    }
-    */
     return res;
   }
 
@@ -287,8 +277,6 @@ namespace Eval {
                chars("/"))),
       pattern("left_paren'",    "left_paren",  word("(")),
       pattern("right_paren'",   "right_paren", word(")")),
-      // pattern("quote'",         "quote",       word("`")),
-      // pattern("comma'",         "comma",       word(",")),
       pattern("symbol'",        "tree",
         concat(alt(range('a', 'z'), range('A', 'Z'), chars("_'"), utf8seg),
                star(alt(range('a', 'z'), range('A', 'Z'), range('0', '9'), chars("_'"), utf8seg)))),
@@ -413,7 +401,7 @@ namespace Eval {
       return { env, beginList(env, es) };
     }});
 
-    // [√] Global definitions will become effective only on the next statement...
+    // [√] Global definitions will become effective only on the curr statement...
     // For local definitions, use `letrec*`.
     addPrimitive("define", { false, [this] (Tree* env, Tree* e) -> Result {
       const auto& [lhs, t] = expect<Cons>(e);
@@ -621,77 +609,59 @@ namespace Eval {
     return a.pos == b.pos && a.i == b.i;
   }
 
-  vector<Tree*> Evaluator::resolve(EarleyParser::Location loc, size_t rightPos, size_t numResults, size_t maxDepth) {
-    // TODO: save results for explored nodes
-    // TODO: optimise out dead ends
-    vector<Tree*> res;
-    if (loc.pos > rightPos || numResults == 0 || maxDepth == 0) return res;
-
+  vector<Tree*> Evaluator::resolve(EarleyParser::Location loc, const vector<Tree*>& right, size_t maxDepth) {
+    if (maxDepth == 0) return {};
     const auto& [state, links] = parser.getForest()[loc.pos][loc.i];
-    if (state.progress == parser.getRule(state.rule).rhs.size()) {
-      if (loc.pos < rightPos) return res;
-      // Mid: loc.pos == rightPos
-      res.push_back(nil);
-    }
-
-    // Inv: numResults > 0
-    for (const auto& [next, child]: links) {
-      vector<Tree*> nextRes = resolve(next, rightPos, numResults, maxDepth - 1);
-      vector<Tree*> childRes;
-      if (child == EarleyParser::Leaf) {
-        const auto& tok = parser.getSentence()[loc.pos];
-        childRes = { cons(sym(patternNames[tok.pattern]), cons(str(tok.lexeme), nil)) };
-      } else {
-        childRes = resolve(child, next.pos, numResults, maxDepth - 1);
-      }
-      // Inv: numResults > 0
-      for (Tree* n: nextRes) {
-        // Inv: numResults > 0
-        for (Tree* c: childRes) {
-          // Mid: numResults > 0
-          res.push_back(cons(c, n));
-          numResults--;
-          if (numResults == 0) break;
-        }
-        if (numResults == 0) break;
-      }
-      if (numResults == 0) break;
-    }
+    vector<Tree*> res;
 
     if (state.progress == 0) {
-      for (auto& x: res) {
-        x = cons(sym(ruleNames[state.rule]), x);
+      // Whole rule completed
+      for (Tree* r: right) res.push_back(cons(sym(ruleNames[state.rule]), r));
+      return res;
+    }
+
+    // One step to left
+    for (const auto& [prevLink, childLink]: links) {
+      vector<Tree*> child;
+      if (childLink == EarleyParser::Leaf) {
+        const auto& tok = parser.getSentence()[loc.pos - 1];
+        child = { cons(sym(patternNames[tok.pattern]), cons(str(tok.lexeme), nil)) };
+      } else {
+        child = resolve(childLink, { nil }, maxDepth - 1);
       }
+      vector<Tree*> curr;
+      for (Tree* c: child) for (Tree* r: right) curr.push_back(cons(c, r));
+      vector<Tree*> final = resolve(prevLink, curr, maxDepth);
+      for (Tree* f: final) res.push_back(f);
     }
 
     return res;
   }
 
-  Tree* Evaluator::resolve(size_t numResults, size_t maxDepth) {
-    vector<Tree*> all;
+  Tree* Evaluator::resolve(size_t maxDepth) {
+    const size_t pos = parser.getSentence().size();
     const auto& forest = parser.getForest();
-    if (forest.empty() || numResults == 0) unreachable;
-    // Inv: numResults > 0
-    for (size_t i = 0; i < forest[0].size(); i++) {
-      const auto& [state, links] = forest[0][i];
+    if (pos >= forest.size()) unreachable;
+    // Mid: pos < forest.size()
+
+    vector<Tree*> all;
+    for (size_t i = 0; i < forest[pos].size(); i++) {
+      const auto& [state, links] = forest[pos][i];
       const auto& [lhs, rhs] = parser.getRule(state.rule);
-      if (state.startPos == 0 && lhs.first == StartSyncat && state.progress == 0) {
-        vector<Tree*> curr = resolve({ 0, i }, parser.getSentence().size(), numResults, maxDepth);
-        // Inv: numResults > 0
-        for (Tree* x: curr) {
-          all.push_back(x);
-          numResults--;
-          if (numResults == 0) break;
-        }
-        if (numResults == 0) break;
+      if (state.startPos == 0 && lhs.first == StartSyncat && state.progress == rhs.size()) {
+        vector<Tree*> final = resolve({ pos, i }, { nil }, maxDepth);
+        for (Tree* f: final) all.push_back(f);
       }
     }
-    if (all.empty()) notimplemented;
+
+    if (all.empty()) {
+      // Failed to resolve (possibly due to excessive depth or infinite expansion)
+      notimplemented;
+    }
     if (all.size() > 1) {
       // Ambiguous
-      // notimplemented;
-      cout << "Ambiguous" << endl;
       for (const auto& parse: all) cout << parse->toString() << endl;
+      notimplemented;
     }
     // Mid: all.size() == 1
     return all[0];
@@ -719,7 +689,8 @@ namespace Eval {
             if (get<Symbol>(head).val == "symbol'") {
               string s = expect<String>(expect<Cons>(tail).head).val;
               e = pool.emplaceBack(Symbol{ s });
-              continue;
+              return e; // TEMP CODE
+              // continue;
             }
             if (get<Symbol>(head).val == "nat64'") {
               string s = expect<String>(expect<Cons>(tail).head).val;
@@ -737,17 +708,20 @@ namespace Eval {
               const auto& [lhs, v] = expect<Cons>(tail);
               const auto& [rhs, _] = expect<Cons>(v);
               e = pool.emplaceBack(lhs, rhs);
-              continue;
+              return e; // TEMP CODE
+              // continue;
             }
             if (get<Symbol>(head).val == "tree'") {
               const auto& [left, v] = expect<Cons>(tail);
               const auto& [mid,  _] = expect<Cons>(v);
               e = mid;
-              continue;
+              return e; // TEMP CODE
+              // continue;
             }
             if (get<Symbol>(head).val == "id'") {
               e = expect<Cons>(tail).head;
-              continue;
+              return e; // TEMP CODE
+              // continue;
             }
             // END TEMP CODE
 
@@ -759,7 +733,8 @@ namespace Eval {
               if (!matched) throw EvalError("pattern matching failed: " + cl.formal->toString() + " ?= " + tail->toString(), tail, e);
               e = eval(env, beginList(env, cl.es));
               // Make sure the new tree is also fully expanded
-              continue;
+              return e; // TEMP CODE
+              // continue;
             }
           }
 

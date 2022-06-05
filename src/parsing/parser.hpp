@@ -30,12 +30,12 @@ namespace Parsing {
 
     // The given Lexer reference must be valid over the EarleyParser's lifetime.
     EarleyParser(Lexer& lexer):
-      lexer(lexer), startSymbol(), ignoredSymbol(), patterns(), rules(),
+      lexer(lexer), startSymbol(0), ignoredSymbol(0), patterns(), rules(),
       dirty(true), numSymbols(0), emptyRule(), sorted(), firstRule(), totalLength(),
       sentence(), dpa(), errors() {}
 
-    void setStartSymbol(optional<size_t> sym) noexcept { startSymbol = sym; dirty = true; }
-    void setIgnoredSymbol(optional<size_t> sym) noexcept { ignoredSymbol = sym; dirty = true; }
+    void setStartSymbol(Symbol sym) noexcept { startSymbol = sym; dirty = true; }
+    void setIgnoredSymbol(Symbol sym) noexcept { ignoredSymbol = sym; dirty = true; }
 
     size_t addPattern(Symbol sym, Prec prec) {
       size_t id = patterns.size();
@@ -75,7 +75,7 @@ namespace Parsing {
 
   private:
     Lexer& lexer;                                   // Token stream
-    optional<Symbol> startSymbol, ignoredSymbol;    // Starting & ignored symbol ID
+    Symbol startSymbol, ignoredSymbol;              // Starting & ignored symbol ID
     vector<pair<Symbol, Prec>> patterns;            // Pattern ID -> symbol mapping
     vector<Rule> rules;                             // Production rules
 
@@ -91,7 +91,6 @@ namespace Parsing {
     // The parsing algorithm
     void process();
     pair<bool, optional<Token>> run();
-    void reverseLinks();
     ErrorInfo lastError(size_t startPos, size_t endPos, const optional<Symbol>& got) const;
   };
 
