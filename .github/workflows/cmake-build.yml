@@ -20,6 +20,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Set up GCC
+      uses: egor-tensin/setup-gcc@v1
+      with:
+        version: 11
+
     - name: CMake FetchContent Cache
       # See https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
       uses: actions/cache@v3.0.3
@@ -38,16 +43,16 @@ jobs:
       run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
       shell: bash
       env:
-        CC:   gcc-10
-        CXX:  g++-10
+        CC:   gcc-11
+        CXX:  g++-11
 
     - name: Build
       # Build your program with the given configuration
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
       shell: bash
       env:
-        CC:   gcc-10
-        CXX:  g++-10
+        CC:   gcc-11
+        CXX:  g++-11
 
     - name: Test
       working-directory: ${{github.workspace}}/build
@@ -56,5 +61,5 @@ jobs:
       run: ctest -C ${{env.BUILD_TYPE}}
       shell: bash
       env:
-        CC:   gcc-10
-        CXX:  g++-10
+        CC:   gcc-11
+        CXX:  g++-11
