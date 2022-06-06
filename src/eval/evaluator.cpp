@@ -15,8 +15,8 @@ namespace Eval {
 
   Tree* Evaluator::evalNextStatement() {
     if (!parser.nextSentence()) return nullptr;
-    auto e = resolve(); cout << e->toString() << endl;
     // cout << parser.showStates(syncatNames) << endl;
+    auto e = resolve(); // cout << e->toString() << endl;
     e = expand(e); cout << e->toString() << endl;
     e = eval(globalEnv, e);
     return e;
@@ -113,16 +113,6 @@ namespace Eval {
     return *e == *pat;
   }
 
-  void Evaluator::setRules(Tree* e) {
-    rules = e;
-    updateParsing();
-  }
-
-  void Evaluator::setPatterns(Tree* e) {
-    patterns = e;
-    updateParsing();
-  }
-
   vector<char8_t> stringToCharVec(const string& s) {
     vector<char8_t> res;
     for (char c: s) res.push_back(static_cast<char8_t>(c));
@@ -173,7 +163,7 @@ namespace Eval {
   }
 
   // TODO: handle exceptions, refactor
-  void Evaluator::updateParsing() {
+  void Evaluator::setSyntax(Tree* p, Tree* r) {
     syncatNames.clear();
     nameSyncats.clear();
     patternNames.clear();
@@ -181,6 +171,9 @@ namespace Eval {
     lexer.clearPatterns();
     parser.clearPatterns();
     parser.clearRules();
+
+    patterns = p;
+    rules = r;
 
     // Add ignored and starting syncats
     syncatNames.push_back("_"); parser.setIgnoredSymbol(IgnoredSyncat);
@@ -246,11 +239,13 @@ namespace Eval {
     const auto btrue  = pool.emplaceBack(Bool{ true });
     const auto bfalse = pool.emplaceBack(Bool{ false });
 
-    // ========================
-    // Default lexical patterns
-    // ========================
+    // ==============
+    // Default syntax
+    // ==============
 
-    #define pattern(name, syncat, pat) list(sym(name), list(sym(syncat), nat(0)), pat)
+    #define syncat(s) list(sym(s), nat(0))
+    #define pattern(name, lhs, pat) list(sym(name), lhs, pat)
+    #define rule(name, lhs, rhs) list(sym(name), lhs, rhs)
     #define empty       list(sym("empty"))
     #define any         list(sym("any"))
     #define utf8seg     list(sym("utf8seg"))
@@ -264,10 +259,10 @@ namespace Eval {
     #define star(pat)   list(sym("star"), pat)
     #define plus(pat)   list(sym("plus"), pat)
 
-    setPatterns(list(
-      pattern("blank'",         "_", star(chars(" \f\n\r\t\v"))),
-      pattern("line_comment'",  "_", concat(word("//"), star(except("\n\r")))),
-      pattern("block_comment'", "_",
+    Tree* defaultPatterns = list(
+      pattern("_", syncat("_"), star(chars(" \f\n\r\t\v"))),                // Blank
+      pattern("_", syncat("_"), concat(word("//"), star(except("\n\r")))),  // Line comment
+      pattern("_", syncat("_"),                                             // Block comment
         concat(word("/*"),
                star(concat(star(except("*")),
                            plus(chars("*")),
@@ -275,22 +270,35 @@ namespace Eval {
                star(except("*")),
                plus(chars("*")),
                chars("/"))),
-      pattern("left_paren'",    "left_paren",  word("(")),
-      pattern("right_paren'",   "right_paren", word(")")),
-      pattern("symbol'",        "tree",
+      pattern("symbol'", syncat("tree"),
         concat(alt(range('a', 'z'), range('A', 'Z'), chars("_'"), utf8seg),
                star(alt(range('a', 'z'), range('A', 'Z'), range('0', '9'), chars("_'"), utf8seg)))),
-      pattern("nat64'",         "tree",
+      pattern("nat64'", syncat("tree"),
         alt(plus(range('0', '9')),
             concat(chars("0"), chars("xX"), plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F')))))),
-      pattern("string'",        "tree",
+      pattern("string'", syncat("tree"),
         concat(chars("\""),
                star(alt(except("\\\""),
                         concat(chars("\\"), chars("\\\"abfnrtv")))),
-               chars("\"")))
-    ));
+               chars("\""))),
+      pattern("_", syncat("left_paren"), word("(")),
+      pattern("_", syncat("right_paren"), word(")")),
+      pattern("_", syncat("period"), word("."))
+    );
 
+    Tree* defaultRules = list(
+      rule("nil'",    syncat("list"), list()),
+      rule("cons'",   syncat("list"), list(syncat("tree"), syncat("list"))),
+      rule("period'", syncat("list"), list(syncat("tree"), syncat("period"), syncat("tree"))),
+      rule("tree'",   syncat("tree"), list(syncat("left_paren"), syncat("list"), syncat("right_paren"))),
+      rule("id'",     syncat("_"),    list(syncat("tree")))
+    );
+
+    setSyntax(defaultPatterns, defaultRules);
+
+    #undef syncat
     #undef pattern
+    #undef rule
     #undef empty
     #undef any
     #undef utf8seg
@@ -303,23 +311,6 @@ namespace Eval {
     #undef opt
     #undef star
     #undef plus
-
-    // =====================
-    // Default grammar rules
-    // =====================
-
-    #define syncat(s) list(sym(s), nat(0))
-    #define rule(name, lhs, rhs) list(sym(name), lhs, rhs)
-
-    setRules(list(
-      rule("nil'",  syncat("list"), list()),
-      rule("cons'", syncat("list"), list(syncat("tree"), syncat("list"))),
-      rule("tree'", syncat("tree"), list(syncat("left_paren"), syncat("list"), syncat("right_paren"))),
-      rule("id'",   syncat("_"),    list(syncat("tree")))
-    ));
-
-    #undef syncat
-    #undef rule
     #undef list
 
     // ===============
@@ -335,8 +326,8 @@ namespace Eval {
     // [√] Elimination rule for `Bool`
     addPrimitive("cond", { false, [this] (Tree* env, Tree* e) -> Result {
       const auto& [test, t] = expect<Cons>(e);
-      const auto& [iftrue, t1] = expect<Cons>(t);
-      const auto& iffalse = (holds<Cons>(t1)? get<Cons>(t1).head : unit);
+      const auto& [iftrue, u] = expect<Cons>(t);
+      const auto& iffalse = (holds<Cons>(u)? get<Cons>(u).head : unit);
       bool result = expect<Bool>(eval(env, test)).val;
       return { env, result? iftrue : iffalse };
     }});
@@ -347,13 +338,14 @@ namespace Eval {
 
     // [√] Elimination rule for sealed `Tree`
     addPrimitive("match", { false, [this] (Tree* env, Tree* e) -> Result {
-      const auto& [head, clauses] = expect<Cons>(e);
+      const auto& [head, t] = expect<Cons>(e);
+      const auto& [clauses, _] = expect<Cons>(t);
       const auto& target = eval(env, head);
       for (auto it = clauses; holds<Cons>(it); it = get<Cons>(it).tail) {
-        const auto& [pat, t1] = expect<Cons>(get<Cons>(it).head);
+        const auto& [pat, u] = expect<Cons>(get<Cons>(it).head);
         Tree* newEnv = env;
         if (match(target, pat, newEnv)) {
-          const auto& [expr, _] = expect<Cons>(t1);
+          const auto& [expr, _] = expect<Cons>(u);
           return { newEnv, expr };
         }
       }
@@ -453,10 +445,13 @@ namespace Eval {
       return { env, h }; // Let it restart and evaluate
     }});
     addPrimitive("env", { true, [] (Tree* env, Tree*) -> Result { return env; }});
-    addPrimitive("get_patterns", { true, [this] (Tree*, Tree*) -> Result { return patterns; }});
-    addPrimitive("set_patterns", { true, [this] (Tree*, Tree* e) -> Result { setPatterns(expect<Cons>(e).head); return unit; }});
-    addPrimitive("get_rules", { true, [this] (Tree*, Tree*) -> Result { return rules; }});
-    addPrimitive("set_rules", { true, [this] (Tree*, Tree* e) -> Result { setRules(expect<Cons>(e).head); return unit; }});
+    addPrimitive("get_syntax", { true, [this] (Tree*, Tree*) -> Result { return cons(patterns, cons(rules, nil)); }});
+    addPrimitive("set_syntax", { true, [this] (Tree*, Tree* e) -> Result {
+      const auto& [p, t] = expect<Cons>(e);
+      const auto& [r, _] = expect<Cons>(t);
+      setSyntax(p, r);
+      return unit;
+    }});
     addPrimitive("get_global_env", { true, [this] (Tree*, Tree*) -> Result { return globalEnv; }});
     addPrimitive("set_global_env", { true, [this] (Tree*, Tree* e) -> Result { globalEnv = expect<Cons>(e).head; return unit; }});
 
@@ -698,22 +693,30 @@ namespace Eval {
             }
             if (get<Symbol>(head).val == "string'") {
               string s = expect<String>(expect<Cons>(tail).head).val;
-              s = s.substr(1, s.size() - 2);
+              s = Tree::unescapeString(s.substr(1, s.size() - 2));
               return pool.emplaceBack(String{ s });
             }
             if (get<Symbol>(head).val == "nil'") {
               return nil;
             }
             if (get<Symbol>(head).val == "cons'") {
-              const auto& [lhs, v] = expect<Cons>(tail);
+              const auto& [lhs, u] = expect<Cons>(tail);
+              const auto& [rhs, _] = expect<Cons>(u);
+              e = pool.emplaceBack(lhs, rhs);
+              return e; // TEMP CODE
+              // continue;
+            }
+            if (get<Symbol>(head).val == "period'") {
+              const auto& [lhs, u] = expect<Cons>(tail);
+              const auto& [mid, v] = expect<Cons>(u);
               const auto& [rhs, _] = expect<Cons>(v);
               e = pool.emplaceBack(lhs, rhs);
               return e; // TEMP CODE
               // continue;
             }
             if (get<Symbol>(head).val == "tree'") {
-              const auto& [left, v] = expect<Cons>(tail);
-              const auto& [mid,  _] = expect<Cons>(v);
+              const auto& [left, u] = expect<Cons>(tail);
+              const auto& [mid,  _] = expect<Cons>(u);
               e = mid;
               return e; // TEMP CODE
               // continue;

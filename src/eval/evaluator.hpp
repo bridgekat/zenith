@@ -89,12 +89,10 @@ namespace Eval {
       return id;
     }
 
-    void setRules(Tree* e);
-    void setPatterns(Tree* e);
     Parsing::NFALexer::NFA treePattern(Tree* e);
     std::vector<Parsing::NFALexer::NFA> listPatterns(Tree* e);
     std::vector<std::pair<Parsing::Symbol, Parsing::Prec>> listSyncats(Tree* e);
-    void updateParsing();
+    void setSyntax(Tree* p, Tree* r);
     Tree* makeList(const std::initializer_list<Tree*>& es);
 
     size_t addMacro(const std::string& name, const Closure& cl) {

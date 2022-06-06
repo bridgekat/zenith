@@ -22,10 +22,7 @@ namespace Parsing {
     while (!eof()) {
       auto opt = run();
       if (opt) {
-        if (!skipped.empty()) {
-          // errors.emplace_back(pos - skipped.size(), pos, skipped);
-          errors.push_back(ErrorInfo{ pos - skipped.size(), pos, skipped });
-        }
+        if (!skipped.empty()) errors.push_back(ErrorInfo{ pos - skipped.size(), pos, skipped });
         auto [len, id] = opt.value();
         Token res{ id, pos, pos + len, str.substr(pos, len) };
         pos += len;
@@ -37,10 +34,7 @@ namespace Parsing {
       pos += len;
     }
     // Mid: eof()
-    if (!skipped.empty()) {
-      // errors.emplace_back(pos - skipped.size(), pos, skipped);
-      errors.push_back(ErrorInfo{ pos - skipped.size(), pos, skipped });
-    }
+    if (!skipped.empty()) errors.push_back(ErrorInfo{ pos - skipped.size(), pos, skipped });
     return nullopt;
   }
 

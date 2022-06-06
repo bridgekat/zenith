@@ -71,7 +71,7 @@ add_executable (testcore
 target_default_compile_options  (testcore)
 target_include_directories      (testcore PRIVATE src)
 if (ipo_supprted)
-  set_target_oproperties        (testcore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+  set_target_properties         (testcore PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()
 
 add_executable (testeval
@@ -88,7 +88,7 @@ add_executable (testeval
 target_default_compile_options  (testeval)
 target_include_directories      (testeval PRIVATE src)
 if (ipo_supprted)
-  set_target_oproperties        (testeval PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+  set_target_properties         (testeval PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()
 
 # See: https://json.nlohmann.me/integration/cmake/#fetchcontent
@@ -121,6 +121,16 @@ target_include_directories      (testserver PRIVATE src)
 target_link_libraries           (testserver PRIVATE nlohmann_json::nlohmann_json Threads::Threads)
 #target_precompile_headers       (testserver PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann/json.hpp)
 if (ipo_supprted)
-  set_target_oproperties        (testserver PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+  set_target_properties         (testserver PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif ()
+
+enable_testing ()
+add_executable (testtest
+  test/testtest.cpp)
+target_default_compile_options  (testtest)
+target_include_directories      (testtest PRIVATE src)
+if (ipo_supprted)
+  set_target_properties         (testtest PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif ()
+add_test (testtest testtest)
 

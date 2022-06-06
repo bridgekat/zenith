@@ -1,4 +1,5 @@
 # Disable autocrlf
 * text=false
 
-# *.mu linguist-language=Text
+# GitHub highlighting override
+*.mu linguist-language=Scheme

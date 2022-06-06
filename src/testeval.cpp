@@ -33,11 +33,11 @@ int main() {
         in = in.substr(5);
         evaluator.reset();
       } else */ if (in.starts_with('{')) { // Multi-line input
-        in = in.substr(1);
+        in = in.substr(1) + "\n";
         string curr;
         std::getline(cin, curr);
         while (curr != ":}") {
-          in += curr;
+          in += curr + "\n";
           std::getline(cin, curr);
         }
       } else if (in.starts_with("load")) { // Load file
