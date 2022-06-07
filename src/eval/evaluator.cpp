@@ -230,13 +230,13 @@ namespace Eval {
     const auto btrue  = pool.emplaceBack(Bool{ true });
     const auto bfalse = pool.emplaceBack(Bool{ false });
 
-    // ==============
-    // Default syntax
-    // ==============
+    // =========================
+    // Default syntax and macros
+    // =========================
 
-    #define syncat(s) list(sym(s), nat(0))
+    #define syncat(s)               list(sym(s), nat(0))
     #define pattern(name, lhs, pat) list(sym(name), lhs, pat)
-    #define rule(name, lhs, rhs) list(sym(name), lhs, rhs)
+    #define rule(name, lhs, rhs)    list(sym(name), lhs, rhs)
     #define empty       list(sym("empty"))
     #define any         list(sym("any"))
     #define utf8seg     list(sym("utf8seg"))
@@ -290,6 +290,23 @@ namespace Eval {
     );
 
     setSyntax(defaultPatterns, defaultRules);
+    addMacro("symbol'",  Closure{ globalEnv, list(sym("s")), list(list(sym("string_symbol"), sym("s"))) });
+    addMacro("nat64'",   Closure{ globalEnv, list(sym("n")), list(list(sym("string_nat64"), sym("n"))) });
+    addMacro("string'",  Closure{ globalEnv, list(sym("s")), list(
+      list(sym("string_unescape"),
+           list(sym("string_substr"),
+                sym("s"),
+                nat(1),
+                list(sym("sub"),
+                     list(sym("string_length"), sym("s")),
+                     nat(2))))) });
+    addMacro("nil'",     Closure{ globalEnv, list(), list(list(sym("nil"))) });
+    addMacro("cons'",    Closure{ globalEnv, list(sym("l"), sym("r")), list(list(sym("cons"), sym("l"), sym("r"))) });
+    addMacro("id'",      Closure{ globalEnv, list(sym("l")), list(sym("l")) });
+    addMacro("period'",  Closure{ globalEnv, list(sym("l"), sym("_"), sym("r")), list(list(sym("cons"), sym("l"), sym("r"))) });
+    addMacro("quote'",   Closure{ globalEnv, list(sym("_"), sym("l")), list(list(sym("list"), list(sym("string_symbol"), str("quote")), sym("l"))) });
+    addMacro("unquote'", Closure{ globalEnv, list(sym("_"), sym("l")), list(list(sym("list"), list(sym("string_symbol"), str("unquote")), sym("l"))) });    
+    addMacro("tree'",    Closure{ globalEnv, list(sym("_"), sym("l"), sym("_")), list(sym("l")) });
 
     #undef syncat
     #undef pattern
@@ -450,37 +467,87 @@ namespace Eval {
     addPrimitive("get_global_env", { true, [this] (Tree*, Tree*) -> Result { return globalEnv; }});
     addPrimitive("set_global_env", { true, [this] (Tree*, Tree* e) -> Result { globalEnv = expect<Cons>(e).head; return unit; }});
 
-    // [?]
-    #define unary(name, op) \
+    // [√] In principle these can be implemented using patterns and `quote`s,
+    // but making them into primitives will make things run faster.
+    addPrimitive("nil", { true, [this] (Tree*, Tree*) -> Result { return nil; }});
+    addPrimitive("cons", { true, [this] (Tree*, Tree* e) -> Result {
+      const auto& [lhs, t] = expect<Cons>(e);
+      const auto& [rhs, _] = expect<Cons>(t);
+      return cons(lhs, rhs);
+    }});
+    addPrimitive("list", { true, [this] (Tree*, Tree* e) -> Result { return e; }});
+    addPrimitive("id", { true, [this] (Tree*, Tree* e) -> Result { return expect<Cons>(e).head; }});
+
+    // [√] String functions
+    addPrimitive("string_symbol", { true, [this] (Tree*, Tree* e) -> Result { return sym(expect<String>(expect<Cons>(e).head).val); }});
+    addPrimitive("string_nat64", { true, [this] (Tree*, Tree* e) -> Result { return nat(std::stoull(expect<String>(expect<Cons>(e).head).val)); }});
+    addPrimitive("string_escape", { true, [this] (Tree*, Tree* e) -> Result { return str(Tree::escapeString(expect<String>(expect<Cons>(e).head).val)); }});
+    addPrimitive("string_unescape", { true, [this] (Tree*, Tree* e) -> Result { return str(Tree::unescapeString(expect<String>(expect<Cons>(e).head).val)); }});
+    addPrimitive("string_length", { true, [this] (Tree*, Tree* e) -> Result { return nat(expect<String>(expect<Cons>(e).head).val.size()); }});
+    addPrimitive("string_char", { true, [this] (Tree*, Tree* e) -> Result {
+      const auto& [lhs, t] = expect<Cons>(e);
+      const auto& [rhs, _] = expect<Cons>(t);
+      const auto& sv = expect<String>(lhs).val;
+      size_t iv = expect<Nat64>(rhs).val;
+      if (iv >= sv.size()) throw PartialEvalError("Index " + std::to_string(iv) + " out of range", rhs);
+      return nat(static_cast<unsigned char>(sv[iv]));
+    }});
+    addPrimitive("char_string", { true, [this] (Tree*, Tree* e) -> Result {
+      const auto& [chr, _] = expect<Cons>(e);
+      uint64_t cv = expect<Nat64>(chr).val;
+      if (cv >= 256) throw PartialEvalError("Character code " + std::to_string(cv) +  " out of range", chr);
+      return str(string(1, static_cast<unsigned char>(cv)));
+    }});
+    addPrimitive("string_concat", { true, [this] (Tree*, Tree* e) -> Result {
+      const auto& [lhs, t] = expect<Cons>(e);
+      const auto& [rhs, _] = expect<Cons>(t);
+      return str(expect<String>(lhs).val + expect<String>(rhs).val);
+    }});
+    addPrimitive("string_substr", { true, [this] (Tree*, Tree* e) -> Result {
+      const auto& [s,   t] = expect<Cons>(e);
+      const auto& [pos, u] = expect<Cons>(t);
+      const auto& [len, _] = expect<Cons>(u);
+      const auto& sv = expect<String>(s).val;
+      size_t posv = expect<Nat64>(pos).val;
+      if (posv > sv.size()) posv = sv.size();
+      return str(sv.substr(posv, expect<Nat64>(len).val));
+    }});
+
+    // [√]
+    #define unary(T, name, op) \
       addPrimitive(name, { true, [this] (Tree*, Tree* e) -> Result { \
         const auto& [lhs, _] = expect<Cons>(e); \
-        return pool.emplaceBack(Nat64{ op(expect<Nat64>(lhs).val) }); \
+        return pool.emplaceBack(T{ op(expect<T>(lhs).val) }); \
       }})
-
-    #define binary(name, op) \
+    #define binary(T, name, op) \
       addPrimitive(name, { true, [this] (Tree*, Tree* e) -> Result { \
         const auto& [lhs, t] = expect<Cons>(e); \
         const auto& [rhs, _] = expect<Cons>(t); \
-        return pool.emplaceBack(Nat64{ expect<Nat64>(lhs).val op expect<Nat64>(rhs).val }); \
+        return pool.emplaceBack(T{ expect<T>(lhs).val op expect<T>(rhs).val }); \
       }})
-
-    #define binpred(name, op) \
+    #define binpred(T, name, op) \
       addPrimitive(name, { true, [btrue, bfalse] (Tree*, Tree* e) -> Result { \
         const auto& [lhs, t] = expect<Cons>(e); \
         const auto& [rhs, _] = expect<Cons>(t); \
-        return (expect<Nat64>(lhs).val op expect<Nat64>(rhs).val)? btrue : bfalse; \
+        return (expect<T>(lhs).val op expect<T>(rhs).val)? btrue : bfalse; \
       }})
 
-    unary("minus", -);
-    binary("add", +);
-    binary("sub", -);
-    binary("mul", *);
-    binary("div", /);
-    binpred("le", <=);
-    binpred("lt", <);
-    binpred("ge", >=);
-    binpred("gt", >);
-    binpred("eq", ==);
+    unary(Nat64, "minus", -);
+    binary(Nat64, "add", +);
+    binary(Nat64, "sub", -);
+    binary(Nat64, "mul", *);
+    binary(Nat64, "div", /);
+    binpred(Nat64, "le", <=);
+    binpred(Nat64, "lt", <);
+    binpred(Nat64, "ge", >=);
+    binpred(Nat64, "gt", >);
+    binpred(Nat64, "eq", ==);
+    binpred(Nat64, "neq", !=);
+    unary(Bool, "not", !);
+    binary(Bool, "and", &&);
+    binary(Bool, "or", ||);
+    binary(Bool, "implies", <=);
+    binary(Bool, "iff", ==);
 
     #undef unary
     #undef binary
@@ -664,104 +731,33 @@ namespace Eval {
   #undef nat
   #undef unit
 
+  // TODO: custom expansion order
   Tree* Evaluator::expand(Tree* e) {
-    while (true) {
-      // Expand current `e`
-
-      if (holds<Cons>(e)) {
-        // Non-empty lists: expand all macros, from inside out
-        try {
-          e = expandList(e);
-          const auto& [head, tail] = get<Cons>(e);
-
-          if (holds<Symbol>(head)) {
-            // TEMP CODE
-            if (get<Symbol>(head).val == "symbol'") {
-              string s = expect<String>(expect<Cons>(tail).head).val;
-              e = pool.emplaceBack(Symbol{ s });
-              return e; // TEMP CODE
-              // continue;
-            }
-            if (get<Symbol>(head).val == "nat64'") {
-              string s = expect<String>(expect<Cons>(tail).head).val;
-              return pool.emplaceBack(Nat64{ std::stoull(s) });
-            }
-            if (get<Symbol>(head).val == "string'") {
-              string s = expect<String>(expect<Cons>(tail).head).val;
-              s = Tree::unescapeString(s.substr(1, s.size() - 2));
-              return pool.emplaceBack(String{ s });
-            }
-            if (get<Symbol>(head).val == "nil'") {
-              return nil;
-            }
-            if (get<Symbol>(head).val == "cons'") {
-              const auto& [lhs, u] = expect<Cons>(tail);
-              const auto& [rhs, _] = expect<Cons>(u);
-              e = pool.emplaceBack(lhs, rhs);
-              return e; // TEMP CODE
-              // continue;
-            }
-            if (get<Symbol>(head).val == "period'") {
-              const auto& [lhs, u] = expect<Cons>(tail);
-              const auto& [mid, v] = expect<Cons>(u);
-              const auto& [rhs, _] = expect<Cons>(v);
-              e = pool.emplaceBack(lhs, rhs);
-              return e; // TEMP CODE
-              // continue;
-            }
-            if (get<Symbol>(head).val == "quote'") {
-              const auto& [lhs, u] = expect<Cons>(tail);
-              const auto& [rhs, _] = expect<Cons>(u);
-              e = pool.emplaceBack(pool.emplaceBack(Symbol{ "quote" }), pool.emplaceBack(rhs, nil));
-              return e; // TEMP CODE
-              // continue;
-            }
-            if (get<Symbol>(head).val == "unquote'") {
-              const auto& [lhs, u] = expect<Cons>(tail);
-              const auto& [rhs, _] = expect<Cons>(u);
-              e = pool.emplaceBack(pool.emplaceBack(Symbol{ "unquote" }), pool.emplaceBack(rhs, nil));
-              return e; // TEMP CODE
-              // continue;
-            }
-            if (get<Symbol>(head).val == "tree'") {
-              const auto& [left, u] = expect<Cons>(tail);
-              const auto& [mid,  _] = expect<Cons>(u);
-              e = mid;
-              return e; // TEMP CODE
-              // continue;
-            }
-            if (get<Symbol>(head).val == "id'") {
-              e = expect<Cons>(tail).head;
-              return e; // TEMP CODE
-              // continue;
-            }
-            // END TEMP CODE
-
-            const auto it = nameMacros.find(get<Symbol>(head).val);
-            if (it != nameMacros.end()) {
-              const auto& cl = macros[it->second];
-              auto env = cl.env;
-              bool matched = match(tail, cl.formal, env);
-              if (!matched) throw EvalError("pattern matching failed: " + cl.formal->toString() + " ?= " + tail->toString(), tail, e);
-              e = eval(env, beginList(env, cl.es));
-              // Make sure the new tree is also fully expanded
-              return e; // TEMP CODE
-              // continue;
-            }
+    if (holds<Cons>(e)) {
+      // Non-empty lists: expand all macros, from inside out
+      try {
+        e = expandList(e);
+        const auto& [head, tail] = get<Cons>(e);
+        if (holds<Symbol>(head)) {
+          const auto it = nameMacros.find(get<Symbol>(head).val);
+          if (it != nameMacros.end()) {
+            const auto& cl = macros[it->second];
+            auto env = cl.env;
+            bool matched = match(tail, cl.formal, env);
+            if (!matched) throw EvalError("pattern matching failed: " + cl.formal->toString() + " ?= " + tail->toString(), tail, e);
+            return eval(env, beginList(env, cl.es));
           }
-
-          // Expansion complete
-          return e;
-
-        } catch (PartialEvalError& ex) {
-          // "Decorate" partial exceptions with more context, and rethrow a (complete) exception
-          throw EvalError(ex.what(), ex.at, e);
         }
-
-      } else {
-        // Everything else: expands to itself
         return e;
+
+      } catch (PartialEvalError& ex) {
+        // "Decorate" partial exceptions with more context, and rethrow a (complete) exception
+        throw EvalError(ex.what(), ex.at, e);
       }
+
+    } else {
+      // Everything else: expands to itself
+      return e;
     }
   }
 

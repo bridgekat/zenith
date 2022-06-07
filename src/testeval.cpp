@@ -44,6 +44,8 @@ int main() {
         in = in.substr(4);
         while (in.starts_with(' ')) in = in.substr(1);
         in = readFile(std::ifstream(in));
+      } else if (in.starts_with("quit")) {
+        break;
       }
     }
     evaluator.setString(in);

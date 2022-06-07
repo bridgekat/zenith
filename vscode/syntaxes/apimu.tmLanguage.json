@@ -3,33 +3,9 @@
   "name": "ApiMu",
   "patterns": [
     {
-      "name": "keyword.control.apimu",
-      "match": "\\b(any|anypred|anyfunc|assume|def|idef|undef|任取|任取谓词|任取函数|假设|定义|选取|删除定义)\\b"
-    },
-    {
-      "name": "keyword.control.apimu",
-      "match": "=>|:=|::|\\.\\.\\."
-    },
-    {
-      "name": "keyword.other.apimu",
-      "match": "\\b(name|proof|prec|right_assoc|left_assoc|记为|证明|优先级|左结合|右结合)\\b"
-    },
-    {
-      "name": "constant.numeric.apimu",
-      "match": "\\b(and\\.i|and\\.l|and\\.r|or\\.l|or\\.r|or\\.e|implies\\.i|implies\\.e|not\\.i|not\\.e|iff\\.i|iff\\.e|iff\\.l|iff\\.r|equals\\.i|equals\\.e|forall\\.i|forall\\.e|exists\\.i|exists\\.e|unique\\.i|unique\\.l|unique\\.r|forallpred\\.i|forallpred\\.e|forallfunc\\.i|forallfunc\\.e|true\\.i|false\\.e|raa|arbitrary)\\b"
-    },
-    {
       "name": "constant.numeric.apimu",
       "begin": "\\b[0-9]",
       "end": "\\b"
-    },
-    {
-      "name": "entity.name.type.apimu",
-      "match": "\\b(and|or|implies|not|iff|equals|true|false|forall|exists|unique|forallpred|forallfunc|lambda|且|或|意味着|并非|当且仅当|等于|真|假|对所有|存在着|唯一存在着|对所有谓词|对所有函数)\\b"
-    },
-    {
-      "name": "entity.name.type.apimu",
-      "match": "∧|∨|→|¬|↔|∃!|∀#|∀\\$|∀|∃|⊤|⊥|=|≠|∈|∉|⊆|->|<->|↑|\\b(in)\\b|\\|"
     },
     {
       "name": "variable.parameter.apimu",
@@ -54,10 +30,6 @@
       "name": "comment.block.apimu",
       "begin": "/\\*",
       "end": "\\*/"
-    },
-    {
-      "name": "keyword.control.directive.apimu",
-      "match": "(#ls|#list|#def|#define|#undef)\\b"
     }
   ],
   "scopeName": "source.apimu"
