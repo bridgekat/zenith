@@ -1,5 +1,7 @@
 # ApiMu/ZFC
 
+![CMake build](https://github.com/bridgekat/apimu/actions/workflows/cmake-build.yml/badge.svg)
+
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
 Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too difficult to learn... (Spent two months trying to make clear everything about its type theory, and then for example [it took me 40 lines to formalize a 5-line proof](https://github.com/bridgekat/lean-notes/blob/e8a9df5fff3feea2c5cc2d0112c101dd8d68f80c/src/2_analysis/1_the_real_and_complex_number_systems.lean#L448), even if I made use of automation tactics like `linarith`... And it seems hard to write new tactics...)

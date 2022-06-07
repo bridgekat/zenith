@@ -1,6 +1,6 @@
 #include <core.hpp>
 
 int main() {
-  unreachable;
+  // unreachable;
   return 0;
 }

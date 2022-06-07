@@ -1,4 +1,4 @@
-name: CMake
+name: build
 
 on:
   push:
@@ -63,3 +63,11 @@ jobs:
       env:
         CC:   gcc-11
         CXX:  g++-11
+    
+    - uses: actions/upload-artifact@v3
+      with:
+        name: artifacts
+        path: |
+          ${{github.workspace}}/build/testcore
+          ${{github.workspace}}/build/testeval
+          ${{github.workspace}}/build/testserver
