@@ -48,7 +48,7 @@ int main() {
     }
     evaluator.setString(in);
     while (true) {
-      const auto res = evaluator.evalNextStatement();
+      bool more = evaluator.parseNextStatement();
       const auto& err = evaluator.popParsingErrors();
       if (!err.empty()) {
         const auto& ex = err[0];
@@ -61,8 +61,26 @@ int main() {
         cout << endl;
         break;
       }
-      if (!res) break;
-      cout << res->toString() << endl;
+      if (!more) break;
+      try {
+        const auto& res = evaluator.evalParsedStatement();
+        cout << res->toString() << endl;
+      } catch (Eval::EvalError& ex) {
+        const auto& [found, prefix] = ex.e->toStringUntil(ex.at);
+        cout << endl;
+        if (found) {
+          cout << "× Error evaluating, " << ex.what() << endl;
+          cout << "| " << endl;
+          cout << "| " << ex.e->toString() << endl;
+          cout << "| " << std::string(prefix.size(), ' ')
+                       << std::string(ex.at->toString().size(), '~') << endl;
+        } else {
+          cout << "× Error evaluating, " << ex.what() << endl;
+          cout << "  At: " << ex.at->toString() << endl;
+          cout << "  In: " << ex.e->toString() << endl;
+        }
+        cout << endl;
+      }
     }
   }
 

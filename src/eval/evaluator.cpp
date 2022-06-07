@@ -13,9 +13,12 @@ namespace Eval {
   using Parsing::Token, Parsing::NFALexer, Parsing::EarleyParser;
 
 
-  Tree* Evaluator::evalNextStatement() {
-    if (!parser.nextSentence()) return nullptr;
+  bool Evaluator::parseNextStatement() {
+    return parser.nextSentence();
     // cout << parser.showStates(syncatNames) << endl;
+  }
+
+  Tree* Evaluator::evalParsedStatement() {
     auto e = resolve(); // cout << e->toString() << endl;
     e = expand(e); cout << e->toString() << endl;
     e = eval(globalEnv, e);
@@ -29,22 +32,10 @@ namespace Eval {
       res.emplace_back("Parsing error, unexpected characters: " + e.lexeme, e.startPos, e.endPos);
     }
     for (const auto& e: parser.popErrors()) {
-      string s = "Parsing error, expected one of:\n";
-      bool first = true;
-      for (Parsing::Symbol sym: e.expected) {
-        string name = syncatNames[sym];
-        if (name.empty()) name = "(" + std::to_string(sym) + ")";
-        s += (first? "" : ", ") + name;
-        first = false;
-      }
-      s += "\n";
-      if (e.got) {
-        string name = syncatNames[*e.got];
-        if (name.empty()) name = "(" + std::to_string(*e.got) + ")";
-        s += "got token " + name;
-      } else {
-        s += "but reached the end of file";
-      }
+      string s = "Parsing error, expected one of: ";
+      for (Parsing::Symbol sym: e.expected) s += "[" + syncatNames[sym] + "], ";
+      if (e.got) s += "got token [" + syncatNames[*e.got] + "]";
+      else s += "but reached the end of file";
       res.emplace_back(s, e.startPos, e.endPos);
     }
     return res;
@@ -283,15 +274,19 @@ namespace Eval {
                chars("\""))),
       pattern("_", syncat("left_paren"), word("(")),
       pattern("_", syncat("right_paren"), word(")")),
-      pattern("_", syncat("period"), word("."))
+      pattern("_", syncat("period"), word(".")),
+      pattern("_", syncat("quote"), word("`")),
+      pattern("_", syncat("comma"), word(","))
     );
 
     Tree* defaultRules = list(
-      rule("nil'",    syncat("list"), list()),
-      rule("cons'",   syncat("list"), list(syncat("tree"), syncat("list"))),
-      rule("period'", syncat("list"), list(syncat("tree"), syncat("period"), syncat("tree"))),
-      rule("tree'",   syncat("tree"), list(syncat("left_paren"), syncat("list"), syncat("right_paren"))),
-      rule("id'",     syncat("_"),    list(syncat("tree")))
+      rule("nil'",     syncat("list"), list()),
+      rule("cons'",    syncat("list"), list(syncat("tree"), syncat("list"))),
+      rule("period'",  syncat("list"), list(syncat("tree"), syncat("period"), syncat("tree"))),
+      rule("quote'",   syncat("tree"), list(syncat("quote"), syncat("tree"))),
+      rule("unquote'", syncat("tree"), list(syncat("comma"), syncat("tree"))),
+      rule("tree'",    syncat("tree"), list(syncat("left_paren"), syncat("list"), syncat("right_paren"))),
+      rule("id'",      syncat("_"),    list(syncat("tree")))
     );
 
     setSyntax(defaultPatterns, defaultRules);
@@ -711,6 +706,20 @@ namespace Eval {
               const auto& [mid, v] = expect<Cons>(u);
               const auto& [rhs, _] = expect<Cons>(v);
               e = pool.emplaceBack(lhs, rhs);
+              return e; // TEMP CODE
+              // continue;
+            }
+            if (get<Symbol>(head).val == "quote'") {
+              const auto& [lhs, u] = expect<Cons>(tail);
+              const auto& [rhs, _] = expect<Cons>(u);
+              e = pool.emplaceBack(pool.emplaceBack(Symbol{ "quote" }), pool.emplaceBack(rhs, nil));
+              return e; // TEMP CODE
+              // continue;
+            }
+            if (get<Symbol>(head).val == "unquote'") {
+              const auto& [lhs, u] = expect<Cons>(tail);
+              const auto& [rhs, _] = expect<Cons>(u);
+              e = pool.emplaceBack(pool.emplaceBack(Symbol{ "unquote" }), pool.emplaceBack(rhs, nil));
               return e; // TEMP CODE
               // continue;
             }

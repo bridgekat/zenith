@@ -46,9 +46,12 @@ namespace Eval {
     // Set the string of statements to be evaluated.
     void setString(const std::string& s) { lexer.setString(s); }
 
-    // Evaluates next statement, returns result, or `nullptr` on reaching EOF.
+    // Parses next statement (results will be stored).
+    bool parseNextStatement();
+
+    // Evaluates parsed statement and returns result.
     // This will store intermediate and final results on `this.pool`.
-    Tree* evalNextStatement();
+    Tree* evalParsedStatement();
 
     // Returns and clears error log
     std::vector<ParsingError> popParsingErrors();

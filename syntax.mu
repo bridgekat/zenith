@@ -1,6 +1,6 @@
 // Enhanced syntax!
 
-(define patterns (quote (
+(define patterns `(
 
   (_ (_ 0) (star (char " \f\n\r\t\v")))
   (_ (_ 0) (concat (word "//") (star (except "\n\r"))))
@@ -31,7 +31,6 @@
 
   (_ (op_left_paren 0) (word "("))
   (_ (op_right_paren 0) (word ")"))
-  (_ (op_period 0) (word "."))
   (_ (op_left_bracket 0) (word "["))
   (_ (op_right_bracket 0) (word "]"))
 
@@ -42,6 +41,8 @@
 
   (_ (op_equals 0) (word "="))
   (_ (op_rarrow 0) (word "=>"))
+  (_ (op_period 0) (word "."))
+  (_ (op_quote 0) (word "`"))
   (_ (op_comma 0) (word ","))
   (_ (op_colon 0) (word ":"))
   (_ (op_semicolon 0) (word ";"))
@@ -56,9 +57,9 @@
   (_ (kw_match 0) (word "match"))
   (_ (kw_with 0) (word "with"))
 
-)))
+))
 
-(define rules (quote (
+(define rules `(
 
   (id' (tree 0) ((symbol 0)))
   (id' (tree 0) ((nat64 0)))
@@ -69,15 +70,10 @@
   (nil' (list 0) ())
   (cons' (list 0) ((tree 0) (list 0)))
   (period' (list 0) ((tree 0) (op_period 0) (tree 0)))
+  (quote' (tree 0) ((op_quote 0) (tree 0)))
+  (unquote' (tree 0) ((op_comma 0) (tree 0)))
   (tree' (tree 0) ((op_left_paren 0) (list 0) (op_right_paren 0)))
   (id' (_ 0) ((tree 0)))
-
-/*
-  (nil' (tree 100) ())
-  (cons' (tree 75) ((tree 100) (tree 75)))
-  (tree' (tree 100) ((op_left_paren 0) (tree 0) (op_right_paren 0)))
-  (id' (_ 0) ((tree 100)))
-*/
 
   (equals' (expr 5) ((expr 6) (op_equals 0) (expr 6)))
   (add' (expr 10) ((expr 10) (op_plus 0) (expr 11)))
@@ -103,20 +99,20 @@
   (id' (expr 100) ((tree 0)))
   (tree' (tree 0) ((op_left_bracket 0) (expr 0) (op_right_bracket 0)))
 
-)))
+))
 
-(define_macro equals' (lambda (l _ r) (quote (eq (unquote l) (unquote r)))))
-(define_macro add' (lambda (l _ r) (quote (add (unquote l) (unquote r)))))
-(define_macro sub' (lambda (l _ r) (quote (sub (unquote l) (unquote r)))))
-(define_macro mul' (lambda (l _ r) (quote (mul (unquote l) (unquote r)))))
-(define_macro div' (lambda (l _ r) (quote (div (unquote l) (unquote r)))))
-(define_macro minus' (lambda (_ x) (quote (minus (unquote x)))))
+(define_macro equals' (lambda (l _ r) `(eq ,l ,r)))
+(define_macro add' (lambda (l _ r) `(add ,l ,r)))
+(define_macro sub' (lambda (l _ r) `(sub ,l ,r)))
+(define_macro mul' (lambda (l _ r) `(mul ,l ,r)))
+(define_macro div' (lambda (l _ r) `(div ,l ,r)))
+(define_macro minus' (lambda (_ x) `(minus ,x)))
 
-(define_macro binding' (lambda (sym _ val _) (quote ((unquote sym) (unquote val)))))
-(define_macro let' (lambda (_ bindings _ body) (quote (letrec (unquote bindings) (unquote body)))))
-(define_macro fun' (lambda (_ arg _ body) (quote (lambda (unquote arg) (unquote body)))))
-(define_macro if' (lambda (_ c _ t _ f) (quote (cond (unquote c) (unquote t) (unquote f)))))
-(define_macro clause' (lambda (pat _ val _) (quote ((unquote pat) (unquote val)))))
-(define_macro match' (lambda (_ e _ clauses) (quote (match (unquote e) (unquote clauses)))))
+(define_macro binding' (lambda (sym _ val _) `(,sym ,val)))
+(define_macro let' (lambda (_ bindings _ body) `(letrec ,bindings ,body)))
+(define_macro fun' (lambda (_ arg _ body) `(lambda ,arg ,body)))
+(define_macro if' (lambda (_ c _ t _ f) `(cond ,c ,t ,f)))
+(define_macro clause' (lambda (pat _ val _) `(,pat ,val)))
+(define_macro match' (lambda (_ e _ clauses) `(match ,e ,clauses)))
 
 (set_syntax patterns rules)

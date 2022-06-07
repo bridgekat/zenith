@@ -1,6 +1,6 @@
 // Default syntax
 
-(define patterns (quote (
+(define patterns `(
 
   (_ (_ 0) (star (char " \f\n\r\t\v")))
   (_ (_ 0) (concat (word "//") (star (except "\n\r"))))
@@ -32,17 +32,21 @@
   (_ (left_paren 0) (word "("))
   (_ (right_paren 0) (word ")"))
   (_ (period 0) (word "."))
+  (_ (quote 0) (word "`"))
+  (_ (comma 0) (word ","))
 
-)))
+))
 
-(define rules (quote (
+(define rules `(
 
   (nil' (list 0) ())
   (cons' (list 0) ((tree 0) (list 0)))
   (period' (list 0) ((tree 0) (period 0) (tree 0)))
+  (quote' (tree 0) ((quote 0) (tree 0)))
+  (unquote' (tree 0) ((comma 0) (tree 0)))
   (tree' (tree 0) ((left_paren 0) (list 0) (right_paren 0)))
   (id' (_ 0) ((tree 0)))
 
-)))
+))
 
 (set_syntax patterns rules)

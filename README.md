@@ -1,6 +1,6 @@
 # ApiMu/ZFC
 
-![CMake build](https://github.com/bridgekat/apimu/actions/workflows/cmake-build.yml/badge.svg)
+[![CMake build](https://github.com/bridgekat/apimu/actions/workflows/cmake-build.yml/badge.svg)](https://github.com/bridgekat/apimu/actions/workflows/cmake-build.yml)
 
 I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
