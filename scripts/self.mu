@@ -1,4 +1,6 @@
-// Default syntax
+// ====================================
+// Default syntax for the base language
+// ====================================
 
 (define patterns `(
 

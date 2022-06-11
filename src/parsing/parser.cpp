@@ -54,21 +54,13 @@ namespace Parsing {
 
   string EarleyParser::showState(const LinkedState& ls, const vector<string>& names) const {
     const auto& [s, links] = ls;
-    string res = std::to_string(s.startPos) + ", [" + names.at(rules[s.rule].lhs.first) + "] ::= ";
+    string res = std::to_string(s.startPos) + ", <" + names.at(rules[s.rule].lhs.first) + "> ::= ";
     for (size_t i = 0; i < rules[s.rule].rhs.size(); i++) {
       if (i == s.progress) res += "|";
-      res += "[" + names.at(rules[s.rule].rhs[i].first) + "]";
+      res += "<" + names.at(rules[s.rule].rhs[i].first) + ">";
     }
     if (s.progress == rules[s.rule].rhs.size()) res += "|";
     res += "\n";
-    /*
-    res += "Links:";
-    for (const auto& [next, child]: links) {
-      res += " [>(" + std::to_string(next.pos) + ", " + std::to_string(next.i) + ")";
-      res += " v(" + std::to_string(child.pos) + ", " + std::to_string(child.i) + ")]";
-    }
-    res += "\n";
-    */
     return res;
   }
 
@@ -79,7 +71,7 @@ namespace Parsing {
       res += "States at position " + std::to_string(pos) + ":\n";
       for (const LinkedState& ls: dpa[pos]) res += showState(ls, names);
       res += "\n";
-      if (pos < sentence.size()) res += "Next token: [" + names.at(patterns.at(sentence[pos].pattern).first) + "]\n";
+      if (pos < sentence.size()) res += "Next token: <" + names.at(patterns.at(sentence[pos].pattern).first) + ">\n";
     }
     return res;
   }
@@ -241,7 +233,7 @@ namespace Parsing {
         }
       }
 
-      // If error then restore and stop
+      // If no more possibilities then restore and stop
       if (dpa[pos + 1].empty()) {
         lexer.setPosition(restore);
         sentence.pop_back(); dpa.pop_back();

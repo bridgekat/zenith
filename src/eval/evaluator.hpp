@@ -119,7 +119,7 @@ namespace Eval {
     Tree* lookup(Tree* env, const std::string& sym);
 
     std::vector<Tree*> resolve(Parsing::EarleyParser::Location loc, const std::vector<Tree*>& right, size_t maxDepth);
-    Tree* resolve(size_t maxDepth = 64);
+    Tree* resolve(size_t maxDepth = 4096);
     Tree* expand(Tree* e);
     Tree* expandList(Tree* e);
     Tree* eval(Tree* env, Tree* e);

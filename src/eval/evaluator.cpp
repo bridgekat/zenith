@@ -33,8 +33,8 @@ namespace Eval {
     }
     for (const auto& e: parser.popErrors()) {
       string s = "Parsing error, expected one of: ";
-      for (Parsing::Symbol sym: e.expected) s += "[" + syncatNames[sym] + "], ";
-      if (e.got) s += "got token [" + syncatNames[*e.got] + "]";
+      for (Parsing::Symbol sym: e.expected) s += "<" + syncatNames[sym] + ">, ";
+      if (e.got) s += "got token <" + syncatNames[*e.got] + ">";
       else s += "but reached the end of file";
       res.emplace_back(s, e.startPos, e.endPos);
     }
@@ -200,13 +200,14 @@ namespace Eval {
     }
   }
 
-  #define cons      pool.emplaceBack
-  #define nil       nil
-  #define sym(s)    pool.emplaceBack(Symbol{ s })
-  #define str(s)    pool.emplaceBack(String{ s })
-  #define nat(n)    pool.emplaceBack(Nat64{ n })
-  #define unit      unit
-  #define list(...) makeList({ __VA_ARGS__ })
+  #define cons        pool.emplaceBack
+  #define nil         nil
+  #define sym(s)      pool.emplaceBack(Symbol{ s })
+  #define str(s)      pool.emplaceBack(String{ s })
+  #define nat(n)      pool.emplaceBack(Nat64{ n })
+  #define boolean(b)  pool.emplaceBack(Bool{ b })
+  #define unit        unit
+  #define list(...)   makeList({ __VA_ARGS__ })
 
   Tree* Evaluator::makeList(const std::initializer_list<Tree*>& es) {
     Tree* res = nil;
@@ -475,12 +476,12 @@ namespace Eval {
       const auto& [rhs, _] = expect<Cons>(t);
       return cons(lhs, rhs);
     }});
-    addPrimitive("list", { true, [this] (Tree*, Tree* e) -> Result { return e; }});
-    addPrimitive("id", { true, [this] (Tree*, Tree* e) -> Result { return expect<Cons>(e).head; }});
+    addPrimitive("list", { true, [] (Tree*, Tree* e) -> Result { return e; }});
+    addPrimitive("id", { true, [] (Tree*, Tree* e) -> Result { return expect<Cons>(e).head; }});
 
     // [√] String functions
     addPrimitive("string_symbol", { true, [this] (Tree*, Tree* e) -> Result { return sym(expect<String>(expect<Cons>(e).head).val); }});
-    addPrimitive("string_nat64", { true, [this] (Tree*, Tree* e) -> Result { return nat(std::stoull(expect<String>(expect<Cons>(e).head).val)); }});
+    addPrimitive("string_nat64", { true, [this] (Tree*, Tree* e) -> Result { return nat(std::stoull(expect<String>(expect<Cons>(e).head).val, nullptr, 0)); }});
     addPrimitive("string_escape", { true, [this] (Tree*, Tree* e) -> Result { return str(Tree::escapeString(expect<String>(expect<Cons>(e).head).val)); }});
     addPrimitive("string_unescape", { true, [this] (Tree*, Tree* e) -> Result { return str(Tree::unescapeString(expect<String>(expect<Cons>(e).head).val)); }});
     addPrimitive("string_length", { true, [this] (Tree*, Tree* e) -> Result { return nat(expect<String>(expect<Cons>(e).head).val.size()); }});
@@ -511,6 +512,11 @@ namespace Eval {
       size_t posv = expect<Nat64>(pos).val;
       if (posv > sv.size()) posv = sv.size();
       return str(sv.substr(posv, expect<Nat64>(len).val));
+    }});
+    addPrimitive("string_eq", { true, [this] (Tree*, Tree* e) -> Result {
+      const auto& [lhs, t] = expect<Cons>(e);
+      const auto& [rhs, _] = expect<Cons>(t);
+      return boolean(expect<String>(lhs).val == expect<String>(rhs).val);
     }});
 
     // [√]
@@ -555,14 +561,14 @@ namespace Eval {
 
     // [√] For debugging?
     addPrimitive("print", { true, [this] (Tree*, Tree* e) -> Result {
-      return pool.emplaceBack(String{ e->toString() });
+      return pool.emplaceBack(String{ expect<Cons>(e).head->toString() });
     }});
 
     // [?] TODO: output to ostream
     addPrimitive("display", { true, [this] (Tree*, Tree* e) -> Result {
       const auto& [head, tail] = expect<Cons>(e);
-      String res = expect<String>(head);
-      return pool.emplaceBack(res);
+      std::cout << expect<String>(head).val << std::endl;
+      return unit;
     }});
 
     // =========================
@@ -729,6 +735,7 @@ namespace Eval {
   #undef sym
   #undef str
   #undef nat
+  #undef boolean
   #undef unit
 
   // TODO: custom expansion order

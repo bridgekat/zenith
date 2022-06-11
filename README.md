@@ -35,7 +35,6 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
     - [x] Primitive forms and procedures
     - [x] Macros
     - [ ] Formula and context representation
-    - [ ] **Compiler! (as part of the WACC project)**
     - [ ] Calling external C++ and Python code for tactics (if I could make this far...)
   - [ ] Partial checking
   - [ ] Interactive proof-searching

@@ -20,13 +20,16 @@ string readFile(std::ifstream&& in) {
   return sstr.str();
 }
 
-int main() {
+int main(int argc, char** argv) {
   Evaluator evaluator;
+  string in;
+  for (int i = 1; i < argc; i++) in += readFile(std::ifstream(argv[i])) + "\n";
 
   while (true) {
-    string in;
-    cout << ">> ";
-    std::getline(cin, in);
+    if (in.empty()) {
+      cout << ">> ";
+      std::getline(cin, in);
+    }
     if (in.starts_with(':')) {
       in = in.substr(1);
       /* if (in.starts_with("reset")) { // Reset state
@@ -84,6 +87,7 @@ int main() {
         cout << endl;
       }
     }
+    in.clear();
   }
 
   return 0;
