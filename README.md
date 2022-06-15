@@ -6,11 +6,70 @@ I am too poor at mathematics so I have to make a "cheating engine" for myself!
 
 Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too difficult to learn... (Spent two months trying to make clear everything about its type theory, and then for example [it took me 40 lines to formalize a 5-line proof](https://github.com/bridgekat/lean-notes/blob/e8a9df5fff3feea2c5cc2d0112c101dd8d68f80c/src/2_analysis/1_the_real_and_complex_number_systems.lean#L448), even if I made use of automation tactics like `linarith`... And it seems hard to write new tactics...)
 
-[Metamath One](https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md) looks nice! I did not realize this earlier...
+> [Metamath One](https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md) looks nice! I did not realize this earlier...
+>
+> (I am not aiming to make any serious ITP software! This is just a "toy" system for inexperienced users (and AI) to interact with, so I will just try to make the UI as intuitive as possible while keeping the background theory simple. It seems like first-order logic with equality (with natural deduction) + meta-variables (for axiom schemata) + extension by definitions are already enough for this...)
+>
+> (Update: just found out that using dependent type theory as a meta-logic actually *simplifies* code 😂. But I'm not going to add anything beyond basic Π-types and β-reduction for now. No intensional equality, no inductive types, the thing is there just to express first-order logic and second-order schema rules in a more manageable way...)
 
-(I am not aiming to make any serious ITP software! This is just a "toy" system for inexperienced users (and AI) to interact with, so I will just try to make the UI as intuitive as possible while keeping the background theory simple. It seems like first-order logic with equality (with natural deduction) + meta-variables (for axiom schemata) + extension by definitions are already enough for this...)
 
-(Update: just found out that using dependent type theory as a meta-logic actually *simplifies* code 😂. But I'm not going to add anything beyond basic Π-types and β-reduction for now. No intensional equality, no inductive types, the thing is there just to express first-order logic and second-order schema rules in a more manageable way...)
+## Building (experimental)
+
+Make sure a C++20 compiler (I'm using GCC 11.2) and CMake 3.12+ is available on your computer. In the root directory, run:
+
+```sh
+mkdir build
+cd build
+cmake ..
+make # or others
+```
+
+If everything is fine, you can then find three executables (`testcore`, `testeval` and `testtest`) in the `build` directory.
+
+The `testeval` is a REPL for a Scheme-like scripting language with reconfigurable syntax. The ability of changing syntax dynamically and freely comes from the [Earley method](https://en.wikipedia.org/wiki/Earley_parser) (see `src/parsing/parser.cpp`). It is currently very broken (e.g. simply gives up on handling ambiguous expressions without giving a proper error message) but still barely functional:
+
+- Type `:quit` to exit
+- Use `:{` to begin multi-line input, and end with a `:}` (must be in a separate line)
+- Type `:load <filename>` to read and interpret a file statement-by-statement (equivalent to simply copy-pasting the whole file as multi-line input). You can find some examples in the `scripts` folder. 
+  - `self.mu` contains equivalent definitions of the default syntax. Loading it will change the current syntax into default syntax, given that your current syntax correctly interprets its content (like the default syntax does. For example, this is the case when your current syntax is a superset of the default syntax).
+  - `prelude.mu` contains definitions for the extended syntax, along with a few utility functions. Loading it will allow you to write Haskell-looking, or more precisely, Lean-4-looking code in square brackets (which can be freely mixed with original, Lisp-looking code in parentheses).
+- Type `(add 2 2)` to add up two numbers. (I will write a documentation for the language later...)
+
+You may also try executing `testcore`, which runs some tests for the experimental tableau prover. Currently it is rather inefficient, and does not support equational or higher-order reasoning. Nevertheless, it already proves some first-order propositions that Lean's `finish` tactic, or even myself, cannot quickly prove (though I know that both are already considered weak and outdated, and winning them does not indicate anything special...)
+
+The `testtest` does nothing.
+
+*The `testserver` part is being rewritten... It won't compile for now.*
+
+> The relevant one is `testserver`, which is a rudimentary LSP server that is supposed to parse `.mu` files.
+>
+> 1. Open the `vscode` directory in VSCode.
+> 2. Press `Ctrl+Shift+B` and then `F5` (or probably directly pressing `F5` is enough) to start the Extension Development Host.
+> 3. Open Settings (`Ctrl+,`) and search for "apimu". Edit the "Executable Path" to point to `testserver`.
+> 4. Then open some `.mu` file (not those ones in the `notes` directory, they are too complex to be handled by `testserver`) and press `Ctrl+Shift+P`, then search for the "ApiMu: Restart" command.
+>
+> After executing the command, you may start typing some random characters like
+>
+> ```c++
+> #define x "=" y := equals x y name equals_notation;
+>
+> anypred in/2 {
+>
+>   #define x "∈" y := in x y
+>   name in_notation;
+>
+>   #define x "and" y "have" "the" "same" "elements" := forall a, a ∈ x <-> a ∈ y
+>   name same_notation;
+>
+>   // Axiom...
+>   assume (forall x, y, x and y have the same elements -> x = y)
+>   name   set_ext {
+>     // ...
+>   }
+> }
+> ```
+>
+> If everything is fine, some blue squiggles would appear under `forall x, y, x and y have the same elements -> x = y` (update: there are no longer squiggles now, but mouse hovering should give some pop-ups). Note that proofs are not supported yet (update: proof checking is now supported, see [`notes/set_manual.mu`](notes/set_manual.mu)).
 
 
 ## To do list
@@ -56,52 +115,6 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 - [ ] Advanced elaborator features
   - [ ] Inductive definitions (≈ building a model of CIC in ZFC???)
   - [ ] Transferring results through isomorphism (if I could make this far...)
-
-
-## Building (experimental)
-
-> **Rewriting is in progress; the content below is temporarily invalid.**
-
-Make sure a C++20 compiler (I'm using GCC 11.2) and CMake 3.12+ is available on your computer. In the root directory, run:
-
-```sh
-mkdir build
-cd build
-cmake ..
-make # or others
-```
-
-If everything is fine, you can then find three executables (`testcore`, `testparsing` and `testserver`) in the `build` directory. The relevant one is `testserver`, which is a rudimentary LSP server that is supposed to parse `.mu` files.
-
-1. Open the `vscode` directory in VSCode.
-2. Press `Ctrl+Shift+B` and then `F5` (or probably directly pressing `F5` is enough) to start the Extension Development Host.
-3. Open Settings (`Ctrl+,`) and search for "apimu". Edit the "Executable Path" to point to `testserver`.
-4. Then open some `.mu` file (not those ones in the `notes` directory, they are too complex to be handled by `testserver`) and press `Ctrl+Shift+P`, then search for the "ApiMu: Restart" command.
-
-After executing the command, you may start typing some random characters like
-
-```c++
-#define x "=" y := equals x y name equals_notation;
-
-anypred in/2 {
-
-  #define x "∈" y := in x y
-  name in_notation;
-
-  #define x "and" y "have" "the" "same" "elements" := forall a, a ∈ x <-> a ∈ y
-  name same_notation;
-
-  // Axiom...
-  assume (forall x, y, x and y have the same elements -> x = y)
-  name   set_ext {
-    // ...
-  }
-}
-```
-
-If everything is fine, some blue squiggles would appear under `forall x, y, x and y have the same elements -> x = y` (update: there are no longer squiggles now, but mouse hovering should give some pop-ups). Note that proofs are not supported yet (update: proof checking is now supported, see [`notes/set_manual.mu`](notes/set_manual.mu)).
-
-You may also try executing `testcore`. It contains some tests for the experimental tableau prover (currently it is rather inefficient, and does not support equational reasoning. Nevertheless, it already proves some first-order propositions that Lean's `finish` tactic cannot prove...)
 
 
 ## Some random thoughts

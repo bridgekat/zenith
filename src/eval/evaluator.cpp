@@ -1,6 +1,7 @@
 #include "evaluator.hpp"
 
 #include <iostream>
+#include <fstream>
 using std::cin, std::cout, std::endl;
 
 namespace Eval {
@@ -539,21 +540,14 @@ namespace Eval {
       }})
 
     unary(Nat64, "minus", -);
-    binary(Nat64, "add", +);
-    binary(Nat64, "sub", -);
-    binary(Nat64, "mul", *);
-    binary(Nat64, "div", /);
-    binpred(Nat64, "le", <=);
-    binpred(Nat64, "lt", <);
-    binpred(Nat64, "ge", >=);
-    binpred(Nat64, "gt", >);
-    binpred(Nat64, "eq", ==);
-    binpred(Nat64, "neq", !=);
+    binary(Nat64, "add", +); binary(Nat64, "sub", -); binary(Nat64, "mul", *);
+    binary(Nat64, "div", /); binary(Nat64, "mod", %);
+    binpred(Nat64, "le", <=); binpred(Nat64, "lt", <);
+    binpred(Nat64, "ge", >=); binpred(Nat64, "gt", >);
+    binpred(Nat64, "eq", ==); binpred(Nat64, "neq", !=);
     unary(Bool, "not", !);
-    binary(Bool, "and", &&);
-    binary(Bool, "or", ||);
-    binary(Bool, "implies", <=);
-    binary(Bool, "iff", ==);
+    binary(Bool, "and", &&); binary(Bool, "or", ||);
+    binary(Bool, "implies", <=); binary(Bool, "iff", ==);
 
     #undef unary
     #undef binary
@@ -568,6 +562,14 @@ namespace Eval {
     addPrimitive("display", { true, [this] (Tree*, Tree* e) -> Result {
       const auto& [head, tail] = expect<Cons>(e);
       std::cout << expect<String>(head).val << std::endl;
+      return unit;
+    }});
+    addPrimitive("debug_save_file", { true, [this] (Tree*, Tree* e) -> Result {
+      const auto& [lhs, t] = expect<Cons>(e);
+      const auto& [rhs, _] = expect<Cons>(t);
+      std::ofstream out(expect<String>(lhs).val);
+      if (!out.is_open()) throw PartialEvalError("Could not open file", lhs);
+      out << expect<String>(rhs).val << std::endl;
       return unit;
     }});
 
