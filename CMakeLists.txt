@@ -45,7 +45,8 @@ macro (target_default_compile_options TARGET)
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_CONCEPT_CHECKS>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
-    set_target_properties   (${TARGET} PROPERTIES LINK_FLAGS -Wl,-z,stack-size=10000000)
+    # set_target_properties   (${TARGET} PROPERTIES LINK_FLAGS -Wl,-z,stack-size=10000000) # For LD
+    # set_target_properties   (${TARGET} PROPERTIES LINK_FLAGS -Wl,--stack=10000000) # For LLD
   endif ()
   if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-Wall>")
@@ -54,7 +55,8 @@ macro (target_default_compile_options TARGET)
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_CONCEPT_CHECKS>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
     target_compile_options  (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
-    set_target_properties   (${TARGET} PROPERTIES LINK_FLAGS -Wl,-z,stack-size=10000000)
+    # set_target_properties   (${TARGET} PROPERTIES LINK_FLAGS -Wl,-z,stack-size=10000000) # For LD
+    # set_target_properties   (${TARGET} PROPERTIES LINK_FLAGS -Wl,--stack=10000000) # For LLD
   endif ()
   if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     target_compile_options  (${TARGET} PRIVATE "/MP")
@@ -88,6 +90,7 @@ add_executable (testeval
   src/parsing/parser.cpp
   src/eval/tree.cpp
   src/eval/evaluator.cpp
+  src/eval/exteval.cpp
   src/testeval.cpp)
 target_default_compile_options  (testeval)
 target_include_directories      (testeval PRIVATE src)

@@ -9,7 +9,6 @@
 #include <utility>
 #include <functional>
 #include <initializer_list>
-#include <core.hpp>
 #include <parsing/lexer.hpp>
 #include <parsing/parser.hpp>
 #include "tree.hpp"
@@ -33,15 +32,45 @@ namespace Eval {
     EvalError& operator=(const EvalError&) = default;
   };
 
+  // Throw this to let the most recent call of `Evaluator::eval()` to provide context.
+  struct PartialEvalError: public EvalError {
+    PartialEvalError(const std::string& s, const Tree* at): EvalError(s, at, at) {}
+  };
+
+  // Convenient pattern-matching functions (throw customized exceptions on failure)
+  template <typename T>
+  inline T& expect(Tree*) { unreachable; }
+  #define defineExpect(T, msg) \
+    template <> \
+    inline T& expect<T>(Tree* e) { \
+      try { return std::get<T>(e->v); } \
+      catch (std::bad_variant_access&) { throw PartialEvalError((msg ", got ") + e->toString(), e); } \
+    }
+  defineExpect(Nil,     "expected end-of-list")
+  defineExpect(Cons,    "expected non-empty list")
+  defineExpect(Symbol,  "expected symbol")
+  defineExpect(Nat64,   "expected number")
+  defineExpect(String,  "expected string")
+  defineExpect(Bool,    "expected boolean")
+  defineExpect(Closure, "expected function")
+  defineExpect(Native,  "expected native type")
+  #undef defineExpect
+
+  template <typename T>
+  inline T expectNative(Tree* e) {
+    try { return std::any_cast<T>(expect<Native>(e).val); }
+    catch (std::bad_any_cast& ex) { throw PartialEvalError(std::string("native type mismatch: ") + ex.what(), e); }
+  }
+
   // The main interpreter (evaluator) class.
   // Turns strings into parse `Tree`s, then expand macros, then evaluate and gives a resulting `Tree`.
-  // Also maintains all states that can be "side-effected" by evaluation.
+  // Also stores all states that can be "side-effected" by evaluation.
   class Evaluator {
   public:
     Evaluator();
     Evaluator(const Evaluator&) = delete;
     Evaluator& operator=(const Evaluator&) = delete;
-    ~Evaluator() = default;
+    virtual ~Evaluator() = default;
 
     // Set the string of statements to be evaluated.
     void setString(const std::string& s) { lexer.setString(s); }
@@ -64,15 +93,15 @@ namespace Eval {
       Result(Tree* env, Tree* e): env(env), e(e) {};
     };
     using PrimitiveFunc = std::pair<bool, std::function<Result(Tree*, Tree*)>>;
-    static constexpr Parsing::Symbol IgnoredSyncat = 0;
-    static constexpr Parsing::Symbol StartSyncat = 1;
+    static constexpr Parsing::Symbol IgnoredSymbol = 0;
+    static constexpr Parsing::Symbol StartSymbol = 1;
 
     Core::Allocator<Tree> pool;
     Eval::Tree* nil, * unit;
 
     Eval::Tree* patterns, * rules;
-    std::vector<std::string> syncatNames;
-    std::unordered_map<std::string, Parsing::Symbol> nameSyncats;
+    std::vector<std::string> symbolNames;
+    std::unordered_map<std::string, Parsing::Symbol> nameSymbols;
     std::vector<std::string> patternNames, ruleNames;
     Parsing::NFALexer lexer;
     Parsing::EarleyParser parser;
@@ -83,18 +112,18 @@ namespace Eval {
     std::vector<PrimitiveFunc> prims;
     std::unordered_map<std::string, size_t> namePrims;
 
-    size_t getSyncat(const std::string& name) {
-      const auto it = nameSyncats.find(name);
-      if (it != nameSyncats.end()) return it->second;
-      size_t id = syncatNames.size();
-      syncatNames.push_back(name);
-      nameSyncats[name] = id;
+    size_t getSymbol(const std::string& name) {
+      const auto it = nameSymbols.find(name);
+      if (it != nameSymbols.end()) return it->second;
+      size_t id = symbolNames.size();
+      symbolNames.push_back(name);
+      nameSymbols[name] = id;
       return id;
     }
 
     Parsing::NFALexer::NFA treePattern(Tree* e);
     std::vector<Parsing::NFALexer::NFA> listPatterns(Tree* e);
-    std::vector<std::pair<Parsing::Symbol, Parsing::Prec>> listSyncats(Tree* e);
+    std::vector<std::pair<Parsing::Symbol, Parsing::Prec>> listSymbols(Tree* e);
     void setSyntax(Tree* p, Tree* r);
     Tree* makeList(const std::initializer_list<Tree*>& es);
 

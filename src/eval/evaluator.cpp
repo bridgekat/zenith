@@ -1,8 +1,7 @@
 #include "evaluator.hpp"
-
+// TEMP CODE?
 #include <iostream>
 #include <fstream>
-using std::cin, std::cout, std::endl;
 
 namespace Eval {
 
@@ -10,18 +9,18 @@ namespace Eval {
   using std::vector;
   using std::pair;
   using std::optional;
-  using Core::Expr, Core::Allocator;
+  using Core::Allocator;
   using Parsing::Token, Parsing::NFALexer, Parsing::EarleyParser;
 
 
   bool Evaluator::parseNextStatement() {
     return parser.nextSentence();
-    // cout << parser.showStates(syncatNames) << endl;
+    // std::cout << parser.showStates(symbolNames) << std::endl;
   }
 
   Tree* Evaluator::evalParsedStatement() {
-    auto e = resolve(); // cout << e->toString() << endl;
-    e = expand(e); cout << e->toString() << endl;
+    auto e = resolve(); // std::cout << e->toString() << std::endl;
+    e = expand(e); std::cout << e->toString() << std::endl;
     e = eval(globalEnv, e);
     return e;
   }
@@ -34,19 +33,13 @@ namespace Eval {
     }
     for (const auto& e: parser.popErrors()) {
       string s = "Parsing error, expected one of: ";
-      for (Parsing::Symbol sym: e.expected) s += "<" + syncatNames[sym] + ">, ";
-      if (e.got) s += "got token <" + syncatNames[*e.got] + ">";
+      for (Parsing::Symbol sym: e.expected) s += "<" + symbolNames[sym] + ">, ";
+      if (e.got) s += "got token <" + symbolNames[*e.got] + ">";
       else s += "but reached the end of file";
       res.emplace_back(s, e.startPos, e.endPos);
     }
     return res;
   }
-
-  // Throw this when you don't know about the parent expression,
-  // or when you want the parent call to `eval()` to provide context.
-  struct PartialEvalError: public EvalError {
-    PartialEvalError(const std::string& s, const Tree* at): EvalError(s, at, at) {}
-  };
 
   // A shortcut for `std::holds_alternative<T>(e->v)`
   template <typename T>
@@ -55,31 +48,6 @@ namespace Eval {
   // A shortcut for `std::get<T>(e->v)` (terminates on failure)
   template <typename T>
   T& get(Tree* e) noexcept { return std::get<T>(e->v); }
-
-  // Convenient pattern-matching functions (throw customized exceptions on failure)
-  template <typename T>
-  T& expect(Tree*) { unreachable; }
-  #define declareExpect(T, msg) \
-    template <> \
-    T& expect<T>(Tree* e) { \
-      try { return std::get<T>(e->v); } \
-      catch (std::bad_variant_access&) { throw PartialEvalError((msg ", got ") + e->toString(), e); } \
-    }
-  declareExpect(Nil,     "expected end-of-list")
-  declareExpect(Cons,    "expected non-empty list")
-  declareExpect(Symbol,  "expected symbol")
-  declareExpect(Nat64,   "expected number")
-  declareExpect(String,  "expected string")
-  declareExpect(Bool,    "expected boolean")
-  declareExpect(Closure, "expected function")
-  declareExpect(Native,  "expected native type")
-  #undef declareExpect
-
-  template <typename T>
-  T expectNative(Tree* e) {
-    try { return std::any_cast<T>(expect<Native>(e).val); }
-    catch (std::bad_any_cast& ex) { throw PartialEvalError(string("native type mismatch: ") + ex.what(), e); }
-  }
 
   // Match an Tree against another Tree (pattern)
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#syntax-forms
@@ -144,20 +112,20 @@ namespace Eval {
     return res;
   }
 
-  vector<pair<Parsing::Symbol, Parsing::Prec>> Evaluator::listSyncats(Tree* e) {
+  vector<pair<Parsing::Symbol, Parsing::Prec>> Evaluator::listSymbols(Tree* e) {
     vector<pair<Parsing::Symbol, Parsing::Prec>> res;
     for (auto it = e; holds<Cons>(it); it = get<Cons>(it).tail) {
       const auto& [sym, t] = expect<Cons>(get<Cons>(it).head);
       const auto& [pre, _] = expect<Cons>(t);
-      res.emplace_back(getSyncat(expect<Symbol>(sym).val), expect<Nat64>(pre).val);
+      res.emplace_back(getSymbol(expect<Symbol>(sym).val), expect<Nat64>(pre).val);
     }
     return res;
   }
 
   // TODO: handle exceptions, refactor
   void Evaluator::setSyntax(Tree* p, Tree* r) {
-    syncatNames.clear();
-    nameSyncats.clear();
+    symbolNames.clear();
+    nameSymbols.clear();
     patternNames.clear();
     ruleNames.clear();
     lexer.clearPatterns();
@@ -167,9 +135,9 @@ namespace Eval {
     patterns = p;
     rules = r;
 
-    // Add ignored and starting syncats
-    syncatNames.push_back("_"); parser.setIgnoredSymbol(IgnoredSyncat);
-    syncatNames.push_back("_"); parser.setStartSymbol(StartSyncat);
+    // Add ignored and starting symbols
+    symbolNames.push_back("_"); parser.setIgnoredSymbol(IgnoredSymbol);
+    symbolNames.push_back("_"); parser.setStartSymbol(StartSymbol);
 
     // Add patterns
     for (auto it = patterns; holds<Cons>(it); it = get<Cons>(it).tail) {
@@ -179,7 +147,7 @@ namespace Eval {
       const auto& [sym, v]  = expect<Cons>(lhs);
       const auto& [pre, _2] = expect<Cons>(v);
       string sname = expect<Symbol>(sym).val;
-      size_t sid = (sname == "_")? IgnoredSyncat : getSyncat(sname);
+      size_t sid = (sname == "_")? IgnoredSymbol : getSymbol(sname);
       size_t pid = patternNames.size();
       patternNames.push_back(expect<Symbol>(name).val);
       if (lexer.addPattern(treePattern(rhs)) != pid) unreachable;
@@ -194,10 +162,10 @@ namespace Eval {
       const auto& [sym, v]  = expect<Cons>(lhs);
       const auto& [pre, _2] = expect<Cons>(v);
       string sname = expect<Symbol>(sym).val;
-      size_t sid = (sname == "_")? StartSyncat : getSyncat(sname);
+      size_t sid = (sname == "_")? StartSymbol : getSymbol(sname);
       size_t rid = ruleNames.size();
       ruleNames.push_back(expect<Symbol>(name).val);
-      if (parser.addRule(sid, expect<Nat64>(pre).val, listSyncats(rhs)) != rid) unreachable;
+      if (parser.addRule(sid, expect<Nat64>(pre).val, listSymbols(rhs)) != rid) unreachable;
     }
   }
 
@@ -221,10 +189,9 @@ namespace Eval {
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#Prim-functions
   Evaluator::Evaluator():
       pool(), nil(pool.emplaceBack(Nil{})), unit(pool.emplaceBack(Unit{})),
-      patterns(nil), rules(nil), syncatNames(), nameSyncats(),
+      patterns(nil), rules(nil), symbolNames(), nameSymbols(),
       patternNames(), ruleNames(), lexer(), parser(lexer),
       globalEnv(nil), macros(), nameMacros(), prims(), namePrims() {
-    // BEGIN FLATBREAD CODE (开始摊大饼)
 
     // Commonly used constants
     // const auto nzero  = pool.emplaceBack(Nat64{ 0 });
@@ -236,7 +203,7 @@ namespace Eval {
     // Default syntax and macros
     // =========================
 
-    #define syncat(s)               list(sym(s), nat(0))
+    #define symbol(s)               list(sym(s), nat(0))
     #define pattern(name, lhs, pat) list(sym(name), lhs, pat)
     #define rule(name, lhs, rhs)    list(sym(name), lhs, rhs)
     #define empty       list(sym("empty"))
@@ -253,9 +220,9 @@ namespace Eval {
     #define plus(pat)   list(sym("plus"), pat)
 
     Tree* defaultPatterns = list(
-      pattern("_", syncat("_"), star(chars(" \f\n\r\t\v"))),                // Blank
-      pattern("_", syncat("_"), concat(word("//"), star(except("\n\r")))),  // Line comment
-      pattern("_", syncat("_"),                                             // Block comment
+      pattern("_", symbol("_"), star(chars(" \f\n\r\t\v"))),                // Blank
+      pattern("_", symbol("_"), concat(word("//"), star(except("\n\r")))),  // Line comment
+      pattern("_", symbol("_"),                                             // Block comment
         concat(word("/*"),
                star(concat(star(except("*")),
                            plus(chars("*")),
@@ -263,32 +230,32 @@ namespace Eval {
                star(except("*")),
                plus(chars("*")),
                chars("/"))),
-      pattern("symbol'", syncat("tree"),
+      pattern("symbol'", symbol("tree"),
         concat(alt(range('a', 'z'), range('A', 'Z'), chars("_'"), utf8seg),
                star(alt(range('a', 'z'), range('A', 'Z'), range('0', '9'), chars("_'"), utf8seg)))),
-      pattern("nat64'", syncat("tree"),
+      pattern("nat64'", symbol("tree"),
         alt(plus(range('0', '9')),
             concat(chars("0"), chars("xX"), plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F')))))),
-      pattern("string'", syncat("tree"),
+      pattern("string'", symbol("tree"),
         concat(chars("\""),
                star(alt(except("\\\""),
                         concat(chars("\\"), chars("\\\"abfnrtv")))),
                chars("\""))),
-      pattern("_", syncat("left_paren"), word("(")),
-      pattern("_", syncat("right_paren"), word(")")),
-      pattern("_", syncat("period"), word(".")),
-      pattern("_", syncat("quote"), word("`")),
-      pattern("_", syncat("comma"), word(","))
+      pattern("_", symbol("left_paren"), word("(")),
+      pattern("_", symbol("right_paren"), word(")")),
+      pattern("_", symbol("period"), word(".")),
+      pattern("_", symbol("quote"), word("`")),
+      pattern("_", symbol("comma"), word(","))
     );
 
     Tree* defaultRules = list(
-      rule("nil'",     syncat("list"), list()),
-      rule("cons'",    syncat("list"), list(syncat("tree"), syncat("list"))),
-      rule("period'",  syncat("list"), list(syncat("tree"), syncat("period"), syncat("tree"))),
-      rule("quote'",   syncat("tree"), list(syncat("quote"), syncat("tree"))),
-      rule("unquote'", syncat("tree"), list(syncat("comma"), syncat("tree"))),
-      rule("tree'",    syncat("tree"), list(syncat("left_paren"), syncat("list"), syncat("right_paren"))),
-      rule("id'",      syncat("_"),    list(syncat("tree")))
+      rule("nil'",     symbol("list"), list()),
+      rule("cons'",    symbol("list"), list(symbol("tree"), symbol("list"))),
+      rule("period'",  symbol("list"), list(symbol("tree"), symbol("period"), symbol("tree"))),
+      rule("quote'",   symbol("tree"), list(symbol("quote"), symbol("tree"))),
+      rule("unquote'", symbol("tree"), list(symbol("comma"), symbol("tree"))),
+      rule("tree'",    symbol("tree"), list(symbol("left_paren"), symbol("list"), symbol("right_paren"))),
+      rule("id'",      symbol("_"),    list(symbol("tree")))
     );
 
     setSyntax(defaultPatterns, defaultRules);
@@ -573,85 +540,6 @@ namespace Eval {
       return unit;
     }});
 
-    // =========================
-    // ApiMu-specific procedures
-    // =========================
-
-    /*
-    #define cons   pool.emplaceBack
-    #define nil    nil
-    #define sym(s) pool.emplaceBack(Symbol{ s })
-    #define str(s) pool.emplaceBack(String{ s })
-    #define num(n) pool.emplaceBack(Number{ n })
-    #define obj(o) pool.emplaceBack(Native{ o })
-
-    // [!] Conversions between lists and native objects (`Expr`, `Context`)
-    namePrims["list->Expr"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      return obj(TreeExpr(expect<Cons>(e).head, epool));
-    });
-    namePrims["Expr->list"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      return ExprTree(expectNative<const Expr*>(expect<Cons>(e).head), pool);
-    });
-    // ...
-
-    // [?] TEMP CODE
-    namePrims["ContextSize"] = addPrim(true, [this] (Tree*, Tree*) -> Result {
-      return num(static_cast<Number>(globalCtx.size()));
-    });
-    namePrims["ContextGet"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      auto i = expect<Number>(expect<Cons>(e).head);
-      if (i >= 0) {
-        size_t index = static_cast<size_t>(i);
-        if (index < globalCtx.size()) return cons(str(globalCtx.identifier(index)), cons(obj(globalCtx[index]), nil));
-      }
-      return unit;
-    });
-    namePrims["ContextPush"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      const auto& [lhs, t] = expect<Cons>(expect<Cons>(e).head);
-      const auto& [rhs, _] = expect<Cons>(t);
-      string s = expect<String>(lhs);
-      const Expr* expr = expectNative<const Expr*>(rhs);
-      try { globalCtx.pushAssumption(s, expr); return unit; }
-      catch (std::runtime_error& ex) { return str(ex.what()); }
-    });
-    namePrims["ContextPop"] = addPrim(true, [this] (Tree*, Tree*) -> Result {
-      try { globalCtx.pop(); return unit; }
-      catch (std::runtime_error& ex) { return str(ex.what()); }
-    });
-    namePrims["Expr.Print"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      return str(expectNative<const Expr*>(expect<Cons>(e).head)->toString(globalCtx));
-    });
-    namePrims["Expr.PrintFOL"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      return str(Core::FOLForm::fromExpr(expectNative<const Expr*>(expect<Cons>(e).head)).toString(globalCtx));
-    });
-    namePrims["Expr.CheckType"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      try { return obj(expectNative<const Expr*>(expect<Cons>(e).head)->checkType(globalCtx, epool)); }
-      catch (std::runtime_error& ex) { return str(ex.what()); }
-    });
-
-    // [?] TEMP CODE
-    namePrims["Expr.MakeBound"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      const auto& [h, t] = expect<Cons>(e);
-      const auto& [h1, t1] = expect<Cons>(t);
-      const auto id = static_cast<uint64_t>(expect<Number>(h1));
-      const auto res = TreeExpr(h, epool)->makeBound(id, epool);
-      return ExprTree(res, pool);
-    });
-    namePrims["Expr.MakeReplace"] = addPrim(true, [this] (Tree*, Tree* e) -> Result {
-      const auto& [h, t] = expect<Cons>(e);
-      const auto& [h1, t1] = expect<Cons>(t);
-      const auto res = TreeExpr(h, epool)->makeReplace(TreeExpr(h1, epool), epool);
-      return ExprTree(res, pool);
-    });
-
-    #undef cons
-    #undef nil
-    #undef sym
-    #undef str
-    #undef num
-    */
-
-    // END OF FLATBREAD CODE (摊大饼结束)
   }
 
   // Evaluator entries are stored as lists of two elements.
@@ -713,7 +601,7 @@ namespace Eval {
     for (size_t i = 0; i < forest[pos].size(); i++) {
       const auto& [state, links] = forest[pos][i];
       const auto& [lhs, rhs] = parser.getRule(state.rule);
-      if (state.startPos == 0 && lhs.first == StartSyncat && state.progress == rhs.size()) {
+      if (state.startPos == 0 && lhs.first == StartSymbol && state.progress == rhs.size()) {
         vector<Tree*> final = resolve({ pos, i }, { nil }, maxDepth);
         for (Tree* f: final) all.push_back(f);
       }
@@ -725,7 +613,7 @@ namespace Eval {
     }
     if (all.size() > 1) {
       // Ambiguous
-      for (const auto& parse: all) cout << parse->toString() << endl;
+      for (const auto& parse: all) std::cout << parse->toString() << std::endl;
       notimplemented;
     }
     // Mid: all.size() == 1
@@ -877,87 +765,5 @@ namespace Eval {
     }
     return e;
   }
-
-  /*
-  Tree* ExprTree(const Expr* e, Allocator<Tree>& pool) {
-    using enum Expr::Tag;
-    using enum Expr::SortTag;
-    using enum Expr::VarTag;
-    #define cons   pool.emplaceBack
-    #define nil    pool.emplaceBack(Nil{})
-    #define sym(s) pool.emplaceBack(Symbol{ s })
-    #define str(s) pool.emplaceBack(String{ s })
-    #define num(n) pool.emplaceBack(Number{ n })
-    switch (e->tag) {
-      case Sort:
-        switch (e->sort.tag) {
-          case SProp: return cons(sym("Sort"), cons(sym("Prop"), nil));
-          case SType: return cons(sym("Sort"), cons(sym("Type"), nil));
-          case SKind: return cons(sym("Sort"), cons(sym("Kind"), nil));
-        }
-        break;
-      case Var:
-        switch (e->var.tag) {
-          case VBound: return cons(sym("Var"), cons(sym("Bound"), cons(num(static_cast<Number>(e->var.id)), nil)));
-          case VFree:  return cons(sym("Var"), cons(sym("Free"),  cons(num(static_cast<Number>(e->var.id)), nil)));
-          case VMeta:  return cons(sym("Var"), cons(sym("Meta"),  cons(num(static_cast<Number>(e->var.id)), nil)));
-        }
-        break;
-      case App: return cons(sym("App"),                     cons(ExprTree(e->app.l, pool), cons(ExprTree(e->app.r, pool), nil)));
-      case Lam: return cons(sym("Lam"), cons(str(e->lam.s), cons(ExprTree(e->lam.t, pool), cons(ExprTree(e->lam.r, pool), nil))));
-      case Pi:  return cons(sym("Pi"),  cons(str(e->pi.s),  cons(ExprTree(e->pi.t,  pool), cons(ExprTree(e->pi.r,  pool), nil))));
-    } exhaustive;
-    #undef cons
-    #undef nil
-    #undef sym
-    #undef str
-    #undef num
-  }
-
-  const Expr* TreeExpr(Tree* e, Allocator<Expr>& pool) {
-    using enum Expr::Tag;
-    #define expr pool.emplaceBack
-    const auto& [h, t] = expect<Cons>(e);
-    string sym = expect<Symbol>(h).s;
-    if (sym == "Sort") {
-      const auto& [h1, t1] = expect<Cons>(t);
-      expect<Nil>(t1);
-      string tag = expect<Symbol>(h1).s;
-      if      (tag == "Prop") return expr(Expr::SProp);
-      else if (tag == "Type") return expr(Expr::SType);
-      else if (tag == "Kind") return expr(Expr::SKind);
-      else throw PartialEvalError(R"(tag must be "Prop", "Type" or "Kind")", h1);
-    } else if (sym == "Var") {
-      const auto& [h1, t1] = expect<Cons>(t);
-      const auto& [h2, t2] = expect<Cons>(t1);
-      expect<Nil>(t2);
-      string tag = expect<Symbol>(h1).s;
-      Number id = expect<Number>(h2);
-      if (id < 0) throw PartialEvalError(R"(variable id must be nonnegative)", h2);
-      if      (tag == "Bound") return expr(Expr::VBound, static_cast<uint64_t>(id));
-      else if (tag == "Free")  return expr(Expr::VFree,  static_cast<uint64_t>(id));
-      else if (tag == "Meta")  return expr(Expr::VMeta,  static_cast<uint64_t>(id));
-      else throw PartialEvalError(R"(tag must be "Bound", "Free" or "Meta")", h1);
-    } else if (sym == "App") {
-      const auto& [h1, t1] = expect<Cons>(t);
-      const auto& [h2, t2] = expect<Cons>(t1);
-      expect<Nil>(t2);
-      return expr(TreeExpr(h1, pool), TreeExpr(h2, pool));
-    } else if (sym == "Lam") {
-      const auto& [h1, t1] = expect<Cons>(t);
-      const auto& [h2, t2] = expect<Cons>(t1);
-      const auto& [h3, t3] = expect<Cons>(t2);
-      expect<Nil>(t3);
-      return expr(Expr::LLam, expect<String>(h1), TreeExpr(h2, pool), TreeExpr(h3, pool));
-    } else if (sym == "Pi") {
-      const auto& [h1, t1] = expect<Cons>(t);
-      const auto& [h2, t2] = expect<Cons>(t1);
-      const auto& [h3, t3] = expect<Cons>(t2);
-      expect<Nil>(t3);
-      return expr(Expr::PPi, expect<String>(h1), TreeExpr(h2, pool), TreeExpr(h3, pool));
-    } else throw PartialEvalError(R"(symbol must be "Sort", "Var", "App", "Lam" or "Pi")", h);
-    #undef expr
-  }
-  */
 
 }

@@ -5,13 +5,13 @@
 #include <sstream>
 #include "core.hpp"
 #include "eval/tree.hpp"
-#include "eval/evaluator.hpp"
+#include "eval/exteval.hpp"
 
 using std::string;
 using std::vector;
 using std::cin, std::cout, std::endl;
 using Core::Allocator;
-using Eval::Evaluator, Eval::EvalError;
+using Eval::ExtendedEvaluator, Eval::EvalError;
 
 // See: https://stackoverflow.com/questions/116038/how-do-i-read-an-entire-file-into-a-stdstring-in-c
 string readFile(std::ifstream&& in) {
@@ -21,7 +21,7 @@ string readFile(std::ifstream&& in) {
 }
 
 int main(int argc, char** argv) {
-  Evaluator evaluator;
+  ExtendedEvaluator evaluator;
   string in;
   for (int i = 1; i < argc; i++) in += readFile(std::ifstream(argv[i])) + "\n";
 

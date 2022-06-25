@@ -34,7 +34,7 @@ namespace Elab {
             else throw InvalidExpr("free variable not in context", ctx, e);
           case VMeta:
             // #####
-            // Make a new metavariable `?t` as type, add has-type constraint `e: t`, return `?t`
+            // Make a new metavariable `?t` as type, add has-type constraint `e stk: t`, return `?t`
         } exhaustive;
       }
       case App: { // Π-elimination
