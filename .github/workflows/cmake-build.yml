@@ -26,13 +26,12 @@ jobs:
             cmake_args: >
               -DAPIMU_ENABLE_MOST_WARNINGS=ON
               -DAPIMU_ENABLE_GLIBCXX_DEBUG_CHECKS=ON
-              -DAPIMU_LLD_EXTEND_STACK=ON
+              -DAPIMU_MACOS_LD_EXTEND_STACK=ON
           - os: windows-latest
             cc: cl.exe
             cxx: cl.exe
             cmake_args: >
               -DAPIMU_ENABLE_MOST_WARNINGS=ON
-              -DAPIMU_ENABLE_GLIBCXX_DEBUG_CHECKS=ON
               -DAPIMU_LINK_EXTEND_STACK=ON
 
     runs-on: ${{ matrix.os }}
@@ -81,11 +80,11 @@ jobs:
     # Upload artifacts
     - uses: actions/upload-artifact@v3
       with:
-        name: artifacts
+        name: artifacts-${{ matrix.os }}
         path: |
-          ${{github.workspace}}/build/testcore
-          ${{github.workspace}}/build/testcore.exe
-          ${{github.workspace}}/build/testeval
-          ${{github.workspace}}/build/testeval.exe
-          ${{github.workspace}}/build/testserver
-          ${{github.workspace}}/build/testserver.exe
+          ${{ github.workspace }}/build/testcore
+          ${{ github.workspace }}/build/${{ env.BUILD_TYPE }}/testcore.exe
+          ${{ github.workspace }}/build/testeval
+          ${{ github.workspace }}/build/${{ env.BUILD_TYPE }}/testeval.exe
+          ${{ github.workspace }}/build/testserver
+          ${{ github.workspace }}/build/${{ env.BUILD_TYPE }}/testserver.exe
