@@ -14,7 +14,7 @@ namespace Eval {
     ~ExtendedEvaluator() override = default;
   
   private:
-    Core::Context ctx;
+    Core::FOLContext ctx;
     Core::Allocator<Core::Expr> epool;
 
     Tree* exprTree(const Core::Expr* e);

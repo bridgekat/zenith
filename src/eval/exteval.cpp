@@ -40,13 +40,13 @@ namespace Eval {
     addPrimitive("context_get", { true, [this] (Tree*, Tree* e) -> Result {
       uint64_t i = expect<Nat64>(expect<Cons>(e).head).val;
       size_t index = static_cast<size_t>(i);
-      if (index < ctx.size()) return cons(str(ctx.identifier(index)), cons(obj(ctx[index]), nil));
+      if (index < ctx.size()) return cons(sym(ctx.identifier(index)), cons(obj(ctx[index]), nil));
       return unit;
     }});
     addPrimitive("context_push", { true, [this] (Tree*, Tree* e) -> Result {
       const auto& [lhs, t] = expect<Cons>(expect<Cons>(e).head);
       const auto& [rhs, _] = expect<Cons>(t);
-      string s = expect<String>(lhs).val;
+      string s = expect<Symbol>(lhs).val;
       const Expr* expr = expectNative<const Expr*>(rhs);
       try { ctx.pushAssumption(s, expr); return unit; }
       catch (std::runtime_error& ex) { return str(ex.what()); }
@@ -97,14 +97,14 @@ namespace Eval {
         break;
       case Var:
         switch (e->var.tag) {
-          case VBound: return cons(sym("Var"), cons(sym("Bound"), cons(nat(static_cast<Nat64>(e->var.id)), nil)));
-          case VFree:  return cons(sym("Var"), cons(sym("Free"),  cons(nat(static_cast<Nat64>(e->var.id)), nil)));
-          case VMeta:  return cons(sym("Var"), cons(sym("Meta"),  cons(nat(static_cast<Nat64>(e->var.id)), nil)));
+          case VBound: return cons(sym("Var"), cons(sym("Bound"), cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
+          case VFree:  return cons(sym("Var"), cons(sym("Free"),  cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
+          case VMeta:  return cons(sym("Var"), cons(sym("Meta"),  cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
         }
         break;
       case App: return cons(sym("App"),                     cons(exprTree(e->app.l), cons(exprTree(e->app.r), nil)));
-      case Lam: return cons(sym("Lam"), cons(str(e->lam.s), cons(exprTree(e->lam.t), cons(exprTree(e->lam.r), nil))));
-      case Pi:  return cons(sym("Pi"),  cons(str(e->pi.s),  cons(exprTree(e->pi.t),  cons(exprTree(e->pi.r),  nil))));
+      case Lam: return cons(sym("Lam"), cons(sym(e->lam.s), cons(exprTree(e->lam.t), cons(exprTree(e->lam.r), nil))));
+      case Pi:  return cons(sym("Pi"),  cons(sym(e->pi.s),  cons(exprTree(e->pi.t),  cons(exprTree(e->pi.r),  nil))));
     } exhaustive;
   }
 
@@ -141,13 +141,13 @@ namespace Eval {
       const auto& [h2, v] = expect<Cons>(u);
       const auto& [h3, _] = expect<Cons>(v);
       expect<Nil>(_);
-      return expr(Expr::LLam, expect<String>(h1).val, treeExpr(h2), treeExpr(h3));
+      return expr(Expr::LLam, expect<Symbol>(h1).val, treeExpr(h2), treeExpr(h3));
     } else if (sym == "Pi") {
       const auto& [h1, u] = expect<Cons>(t);
       const auto& [h2, v] = expect<Cons>(u);
       const auto& [h3, _] = expect<Cons>(v);
       expect<Nil>(_);
-      return expr(Expr::PPi, expect<String>(h1).val, treeExpr(h2), treeExpr(h3));
+      return expr(Expr::PPi, expect<Symbol>(h1).val, treeExpr(h2), treeExpr(h3));
     } else throw PartialEvalError(R"(symbol must be "Sort", "Var", "App", "Lam" or "Pi")", h);
     #undef expr
   }
