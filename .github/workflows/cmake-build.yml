@@ -6,27 +6,42 @@ on:
   pull_request:
     branches: [ "main" ]
 
-env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  BUILD_TYPE: RelWithDebInfo
-
 jobs:
   build:
-    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
-    # You can convert this to a matrix build if you need cross-platform coverage.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-    runs-on: ubuntu-latest
+    # See: https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            cc: gcc-11
+            cxx: g++-11
+          - os: macos-latest
+            cc: gcc-11
+            cxx: g++-11
+          - os: windows-latest
+            cc: cl.exe
+            cxx: cl.exe
+
+    runs-on: ${{ matrix.os }}
+    env:
+      BUILD_TYPE: RelWithDebInfo
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
 
     steps:
     - uses: actions/checkout@v3
 
-    - name: Set up GCC
+    # See: https://github.com/actions/virtual-environments
+    # See: https://github.com/egor-tensin/setup-gcc
+    - if: ${{ matrix.os == 'ubuntu-latest' }}
+      name: Set up GCC
       uses: egor-tensin/setup-gcc@v1
       with:
         version: 11
 
+    # See https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
     - name: CMake FetchContent Cache
-      # See https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
       uses: actions/cache@v3.0.3
       with:
         path: ${{github.workspace}}/build/_deps
@@ -35,39 +50,43 @@ jobs:
           ${{ runner.os }}-build-${{ env.cache-name }}-
           ${{ runner.os }}-build-
           ${{ runner.os }}-
-        # upload-chunk-size: # optional
 
-    - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-      shell: bash
-      env:
-        CC:   gcc-11
-        CXX:  g++-11
+    # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+    # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+    - if: ${{ matrix.os != 'windows-latest' }}
+      name: CMake Configure
+      run: >
+        cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        -DAPIMU_ENABLE_MOST_WARNINGS=ON
+        -DAPIMU_ENABLE_GLIBCXX_DEBUG_CHECKS=ON
+        -DAPIMU_LD_EXTEND_STACK=ON
 
-    - name: Build
-      # Build your program with the given configuration
+    - if: ${{ matrix.os == 'windows-latest' }}
+      name: CMake Configure (Windows)
+      run: >
+        cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        -DAPIMU_ENABLE_MOST_WARNINGS=ON
+        -DAPIMU_ENABLE_GLIBCXX_DEBUG_CHECKS=ON
+        -DAPIMU_LINK_EXTEND_STACK=ON
+
+    # Build your program with the given configuration
+    - name: CMake Build
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-      shell: bash
-      env:
-        CC:   gcc-11
-        CXX:  g++-11
 
-    - name: Test
+    # Execute tests defined by the CMake configuration.
+    # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+    - name: CMake Test
       working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{env.BUILD_TYPE}}
-      shell: bash
-      env:
-        CC:   gcc-11
-        CXX:  g++-11
-    
+
+    # Upload artifacts
     - uses: actions/upload-artifact@v3
       with:
         name: artifacts
         path: |
           ${{github.workspace}}/build/testcore
+          ${{github.workspace}}/build/testcore.exe
           ${{github.workspace}}/build/testeval
+          ${{github.workspace}}/build/testeval.exe
           ${{github.workspace}}/build/testserver
+          ${{github.workspace}}/build/testserver.exe

@@ -85,12 +85,15 @@ letrec resolve_names' = fun (x stk) => [
 (define_macro app'        [fun (l r) => `(App ,l ,r)])
 (define_macro lam'        [fun (_ name _ t _ r) => `(Lam ,name ,t ,r)])
 (define_macro pi'         [fun (_ name _ t _ _ r) => `(Pi ,name ,t ,r)])
-(define_macro logic_expr' [fun (_ x _) => (resolve_names x)])
+(define_macro logic_expr' [fun (_ x _) => (resolve_names x)]) // TEMP CODE
 
 // ===============================
 // Notations for first-order logic
 // ===============================
 
+(add_pattern [_ <op_tilde>        ::= (word "~")])
+(add_pattern [_ <op_wedge>        ::= (word "/\\")])
+(add_pattern [_ <op_vee>          ::= (word "\\/")])
 (add_pattern [_ <op_colon_equals> ::= (word ":=")])
 (add_pattern [_ <op_double_colon> ::= (word "::")])
 
@@ -103,24 +106,30 @@ letrec resolve_names' = fun (x stk) => [
 (add_pattern [_ <kw_exists>  ::= (word "exists")])
 (add_pattern [_ <kw_unique>  ::= (word "unique")])
 
-(add_rule [_ <symbol_not>     ::= <kw_not>])
-(add_rule [_ <symbol_and>     ::= <kw_and>])
-(add_rule [_ <symbol_or>      ::= <kw_or>])
-(add_rule [_ <symbol_implies> ::= <kw_implies>])
-(add_rule [_ <symbol_iff>     ::= <kw_iff>])
-(add_rule [_ <symbol_forall>  ::= <kw_forall>])
-(add_rule [_ <symbol_exists>  ::= <kw_exists>])
-(add_rule [_ <symbol_unique>  ::= <kw_unique>])
+(add_rule [_ <sym_not>     ::= <op_tilde>])
+(add_rule [_ <sym_not>     ::= <op_bang>])
+(add_rule [_ <sym_not>     ::= <kw_not>])
+(add_rule [_ <sym_and>     ::= <op_wedge>])
+(add_rule [_ <sym_and>     ::= <kw_and>])
+(add_rule [_ <sym_or>      ::= <op_vee>])
+(add_rule [_ <sym_or>      ::= <kw_or>])
+(add_rule [_ <sym_implies> ::= <op_right_arrow>])
+(add_rule [_ <sym_implies> ::= <kw_implies>])
+(add_rule [_ <sym_iff>     ::= <op_left_right_arrow>])
+(add_rule [_ <sym_iff>     ::= <kw_iff>])
+(add_rule [_ <sym_forall>  ::= <kw_forall>])
+(add_rule [_ <sym_exists>  ::= <kw_exists>])
+(add_rule [_ <sym_unique>  ::= <kw_unique>])
 
 (add_rule [equals'  <logic_expr 90> ::= <logic_expr 91> <op_equals> <logic_expr 91>])
-(add_rule [not'     <logic_expr 90> ::= <symbol_not> <logic_expr 90>])
-(add_rule [and'     <logic_expr 89> ::= <logic_expr 89> <symbol_and>     <logic_expr 90>])
-(add_rule [or'      <logic_expr 88> ::= <logic_expr 88> <symbol_or>      <logic_expr 89>])
-(add_rule [implies' <logic_expr 87> ::= <logic_expr 88> <symbol_implies> <logic_expr 87>])
-(add_rule [iff'     <logic_expr 86> ::= <logic_expr 87> <symbol_iff>     <logic_expr 87>])
-(add_rule [forall'  <logic_expr 50> ::= <symbol_forall> <symbol> <op_comma> <logic_expr 0>])
-(add_rule [exists'  <logic_expr 50> ::= <symbol_exists> <symbol> <op_comma> <logic_expr 0>])
-(add_rule [unique'  <logic_expr 50> ::= <symbol_unique> <symbol> <op_comma> <logic_expr 0>])
+(add_rule [not'     <logic_expr 90> ::= <sym_not> <logic_expr 90>])
+(add_rule [and'     <logic_expr 89> ::= <logic_expr 89> <sym_and>     <logic_expr 90>])
+(add_rule [or'      <logic_expr 88> ::= <logic_expr 88> <sym_or>      <logic_expr 89>])
+(add_rule [implies' <logic_expr 87> ::= <logic_expr 88> <sym_implies> <logic_expr 87>])
+(add_rule [iff'     <logic_expr 86> ::= <logic_expr 87> <sym_iff>     <logic_expr 87>])
+(add_rule [forall'  <logic_expr 50> ::= <sym_forall> <symbol> <op_comma> <logic_expr 0>])
+(add_rule [exists'  <logic_expr 50> ::= <sym_exists> <symbol> <op_comma> <logic_expr 0>])
+(add_rule [unique'  <logic_expr 50> ::= <sym_unique> <symbol> <op_comma> <logic_expr 0>])
 
 (define_macro equals'  [fun (x _ y)   => `(App (App (Var Free 2) ,x) ,y)])
 (define_macro not'     [fun (_ x)     => `(App (Var Free 5) ,x)])
