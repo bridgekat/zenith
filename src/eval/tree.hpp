@@ -3,20 +3,23 @@
 #ifndef TREE_HPP_
 #define TREE_HPP_
 
+#include <any>
+#include <compare>
 #include <cstdint>
 #include <string>
-#include <variant>
 #include <utility>
-#include <compare>
-#include <any>
+#include <variant>
 #include <core/base.hpp>
-
 
 namespace Eval {
 
   // See: https://en.cppreference.com/w/cpp/utility/variant/visit
-  template <typename... Ts> struct Matcher: Ts... { using Ts::operator()...; };
-  template <typename... Ts> Matcher(Ts...) -> Matcher<Ts...>;
+  template <typename... Ts>
+  struct Matcher: Ts... {
+    using Ts::operator()...;
+  };
+  template <typename... Ts>
+  Matcher(Ts...) -> Matcher<Ts...>;
 
   // A generic representation for different tree structures.
   // Intended for use as an exchange / transformation format.
@@ -31,7 +34,7 @@ namespace Eval {
   };
   template <typename T>
   struct BasicCons {
-    T* head, * tail;
+    T *head, *tail;
     bool operator==(const BasicCons& r) const noexcept { return *head == *r.head && *tail == *r.tail; };
   };
   template <typename T, typename... Ts>
@@ -40,6 +43,7 @@ namespace Eval {
     bool operator==(const BasicTree&) const noexcept = default;
   };
 
+  // clang-format off
   // Concrete atom types for Tree
   class Tree;
   struct Symbol  { std::string val;           bool operator==(const Symbol&)   const noexcept = default; };
@@ -50,29 +54,33 @@ namespace Eval {
   struct Unit    {                            bool operator==(const Unit&)     const noexcept = default; };
   struct Closure { Tree* env, * formal, * es; bool operator==(const Closure&)  const noexcept = default; };
   struct Native  { std::any val;              bool operator==(const Native& r) const noexcept { return this == &r; } };
+  // clang-format on
 
-  // Main Tree type
   class Tree;
   using Nil = BasicNil<Tree>;
   using Cons = BasicCons<Tree>;
   using VarType = BasicTree<Tree, Symbol, Prim, Nat64, String, Bool, Unit, Closure, Native>;
 
+  // Main Tree type
   // Pre (for all methods): there is no "cycle" throughout the tree / DAG
   // Pre & invariant (for all methods): all pointers (in the "active variant") are valid
   class Tree: public VarType {
   public:
     // Convenient constructors
-    Tree(Tree* l, Tree* r): VarType{ Cons{ l, r } } {}
-    Tree(Nil const& x): VarType{ x } {}
-    Tree(Cons const& x): VarType{ x } {}
-    Tree(Symbol const& x): VarType{ x } {}
-    Tree(Prim const& x): VarType{ x } {}
-    Tree(Nat64 const& x): VarType{ x } {}
-    Tree(String const& x): VarType{ x } {}
-    Tree(Bool const& x): VarType{ x } {}
-    Tree(Unit const& x): VarType{ x } {}
-    Tree(Closure const& x): VarType{ x } {}
-    Tree(Native const& x): VarType{ x } {}
+    Tree(Tree* l, Tree* r):
+      VarType{
+        Cons{l, r}
+    } {}
+    Tree(Nil const& x): VarType{x} {}
+    Tree(Cons const& x): VarType{x} {}
+    Tree(Symbol const& x): VarType{x} {}
+    Tree(Prim const& x): VarType{x} {}
+    Tree(Nat64 const& x): VarType{x} {}
+    Tree(String const& x): VarType{x} {}
+    Tree(Bool const& x): VarType{x} {}
+    Tree(Unit const& x): VarType{x} {}
+    Tree(Closure const& x): VarType{x} {}
+    Tree(Native const& x): VarType{x} {}
     bool operator==(const Tree&) const noexcept = default;
 
     Tree* clone(Core::Allocator<Tree>& pool, Tree* nil, Tree* unit) const;

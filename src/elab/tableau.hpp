@@ -5,12 +5,11 @@
 #ifndef TABLEAU_HPP_
 #define TABLEAU_HPP_
 
-#include <vector>
-#include <utility>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 #include <core.hpp>
 #include "procs.hpp"
-
 
 namespace Elab {
 
@@ -19,7 +18,6 @@ namespace Elab {
   using std::pair, std::make_pair;
   using std::unordered_set;
   using namespace Core;
-
 
   // "Expression with hash" (a wrapper for `const Expr*` that overloads the `==` operator)
   struct ExprHash {
@@ -61,10 +59,10 @@ namespace Elab {
   public:
     // Antecedents in `cedents[...][L]` and `hashset[L]`
     // Succedents in `cedents[...][R]` and `hashset[R]`
-    // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ" (existential).
-    // (TODO: "ε" (equational) and "φ" (second-order universal))
-    enum Position: unsigned int { L, R };
-    enum Type: unsigned int { Iota, Alpha, Beta, Gamma, GammaRe, Delta, N };
+    // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ"
+    // (existential). (TODO: "ε" (equational) and "φ" (second-order universal))
+    enum Position : unsigned int { L, R };
+    enum Type : unsigned int { Iota, Alpha, Beta, Gamma, GammaRe, Delta, N };
 
     struct Branch {
       vector<const Expr*> cedents[N][2];
@@ -73,15 +71,14 @@ namespace Elab {
       vector<bool> betaUsed[2];
       size_t depth, numUniversal;
 
-      size_t numCedents; // DEBUG CODE
-      vector<size_t> timestamps[N][2]; // DEBUG CODE
+      size_t numCedents;                  // DEBUG CODE
+      vector<size_t> timestamps[N][2];    // DEBUG CODE
       vector<size_t> numUniversals[N][2]; // DEBUG CODE
 
       bool operator==(const Branch& r) const noexcept = default;
     };
 
-    Tableau(const Context& ctx) noexcept:
-      pools(), ctx(ctx), branch{}, cont(), numSkolem{}, maxDepth{}, maxTabDepth{} {}
+    Tableau(const Context& ctx) noexcept: pools(), ctx(ctx), branch{}, cont(), numSkolem{}, maxDepth{}, maxTabDepth{} {}
 
     void addAntecedent(const Expr* e) {
       auto it = branch.hashset[L].insert(ExprHash(e));
@@ -150,7 +147,7 @@ namespace Elab {
 
     friend class WithCedent;
 
-    static Position invert(Position pos) noexcept { return (pos == L)? R : L; };
+    static Position invert(Position pos) noexcept { return (pos == L) ? R : L; };
     static Type classify(Position antesucc, const Expr* e) noexcept;
     void applySubs(const Procs::Subs& subs, bool assertNoChange);
     bool dfs(size_t depth);

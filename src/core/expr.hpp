@@ -8,50 +8,53 @@
 #include "base.hpp"
 #include "context.hpp"
 
-
 namespace Core {
 
-  // Expression node, and related syntactic operations
+  // Expression node, and related syntactic operations.
+  // Immutable.
   // Pre (for all methods): there is no "cycle" throughout the tree / DAG
   // Pre & invariant (for all methods): all pointers (in the "active variant") are valid
   // Will just stick to this old-fashioned tagged union approach until C++ admits a better way to represent sum types
   //   (`std::variant` + `std::visit` are said to have severe performance issue...)
   class Expr {
   public:
+    // clang-format off
     enum class Tag: uint32_t { Sort, Var, App, Lam, Pi }; using enum Tag;
     enum class SortTag: uint32_t { SProp, SType, SKind }; using enum SortTag;
     enum class VarTag: uint32_t { VBound, VFree, VMeta }; using enum VarTag;
     enum class LamTag: uint32_t { LLam }; using enum LamTag;
     enum class PiTag: uint32_t { PPi }; using enum PiTag;
 
-    // This class is immutable now (to allow subexpression sharing)
     const Tag tag;
     union {
       struct { const SortTag tag; } sort;
       struct { const VarTag tag; const uint64_t id; } var;
-      struct { const Expr* l, * r; } app;
-      struct { const std::string s; const Expr* t, * r; } lam;
-      struct { const std::string s; const Expr* t, * r; } pi;
+      struct { const Expr *l, *r; } app;
+      struct { const std::string s; const Expr *t, *r; } lam;
+      struct { const std::string s; const Expr *t, *r; } pi;
     };
+    // clang-format on
 
     // The constructors below guarantee that all pointers in the "active variant" are valid, if parameters are valid
-    Expr(SortTag sorttag): tag(Sort), sort{ sorttag } {}
-    Expr(VarTag vartag, uint64_t id): tag(Var), var{ vartag, id } {}
-    Expr(const Expr* l, const Expr* r): tag(App), app{ l, r } {}
-    Expr(LamTag, std::string s, const Expr* t, const Expr* r): tag(Lam), lam{ std::move(s), t, r } {}
-    Expr(PiTag, std::string s, const Expr* t, const Expr* r): tag(Pi), pi{ std::move(s), t, r } {}
+    Expr(SortTag sorttag): tag(Sort), sort{sorttag} {}
+    Expr(VarTag vartag, uint64_t id): tag(Var), var{vartag, id} {}
+    Expr(const Expr* l, const Expr* r): tag(App), app{l, r} {}
+    Expr(LamTag, std::string s, const Expr* t, const Expr* r): tag(Lam), lam{std::move(s), t, r} {}
+    Expr(PiTag, std::string s, const Expr* t, const Expr* r): tag(Pi), pi{std::move(s), t, r} {}
 
     // Immutability + non-trivial members in union = impossible to make a copy constructor...
-    // We use pointers to `Expr`s constructed in `Allocator`s anyway, so this is not a big problem
     Expr(const Expr&) = delete;
 
-    // Destructor needed for std::string in union
+    // Destructor needed for the `std::string` in union
     ~Expr() {
       switch (tag) {
-        case Sort: case Var: case App: return;
+        case Sort: return;
+        case Var: return;
+        case App: return;
         case Lam: lam.s.~basic_string(); return;
         case Pi: pi.s.~basic_string(); return;
-      } exhaustive;
+      }
+      unreachable;
     }
 
     // Deep copy whole expression to `pool`
@@ -79,8 +82,8 @@ namespace Core {
     // Controls the Π-formation rule
     constexpr static SortTag imax(SortTag s, SortTag t) {
       if (s == Expr::SProp || t == Expr::SProp) return Expr::SProp;
-      // (`s` and `t` are `Expr::SType` or `Expr::SKind`)
-      return (s == Expr::SKind || t == Expr::SKind)? Expr::SKind : Expr::SType;
+      // Mid: `s` and `t` are `Expr::SType` or `Expr::SKind`
+      return (s == Expr::SKind || t == Expr::SKind) ? Expr::SKind : Expr::SType;
     }
 
     // Check if the subtree is a well-formed term (1), type (2), proof (3) or formula (4).
@@ -90,13 +93,16 @@ namespace Core {
     // (4) Returns `Prop` itself.
     // (Returned pointer lifetime is bound by `this`, `ctx` and `pool`!)
     // Throws exception on failure
-    // `stk` and `names` will be unchanged
-    const Expr* checkType(const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk, std::vector<std::string>& names) const;
     const Expr* checkType(const Context& ctx, Allocator<Expr>& pool) const {
       std::vector<const Expr*> stk;
       std::vector<std::string> names;
       return checkType(ctx, pool, stk, names);
     }
+
+    // `stk` and `names` will be unchanged
+    const Expr* checkType(
+      const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk, std::vector<std::string>& names
+    ) const;
 
     // Modification (lifetime of the resulting expression is bounded by `this` and `pool`)
     // n = (number of binders on top of current node)
@@ -111,57 +117,61 @@ namespace Core {
         case App: {
           const auto l = app.l->updateVars(f, pool, n);
           const auto r = app.r->updateVars(f, pool, n);
-          return (l == app.l && r == app.r)? this : make(pool, l, r);
+          return (l == app.l && r == app.r) ? this : make(pool, l, r);
         }
         case Lam: {
           const auto t = lam.t->updateVars(f, pool, n);
           const auto r = lam.r->updateVars(f, pool, n + 1);
-          return (t == lam.t && r == lam.r)? this : make(pool, LLam, lam.s, t, r);
+          return (t == lam.t && r == lam.r) ? this : make(pool, LLam, lam.s, t, r);
         }
         case Pi: {
           const auto t = pi.t->updateVars(f, pool, n);
           const auto r = pi.r->updateVars(f, pool, n + 1);
-          return (t == pi.t && r == pi.r)? this : make(pool, PPi, pi.s, t, r);
+          return (t == pi.t && r == pi.r) ? this : make(pool, PPi, pi.s, t, r);
         }
-      } exhaustive;
+      }
+      unreachable;
     }
 
-    // Make a free variable into an overflow variable (lifetime of the resulting expression is bounded by `this` and `pool`)
+    // Make a free variable into an overflow variable.
+    // Lifetime of the resulting expression is bounded by `this` and `pool`.
     const Expr* makeBound(uint64_t id, Allocator<Expr>& pool) const {
       const Expr* v = nullptr;
-      return updateVars([id, &v, &pool] (uint64_t n, const Expr* x) {
-        return (x->var.tag == VFree && x->var.id == id)? (v? v : v = make(pool, VBound, n)) : x;
-      }, pool);
+      return updateVars(
+        [id, &v, &pool](uint64_t n, const Expr* x) {
+          return (x->var.tag == VFree && x->var.id == id) ? (v ? v : v = make(pool, VBound, n)) : x;
+        },
+        pool
+      );
     }
 
-    // Replace one overflow variable by an expression (lifetime of the resulting expression is bounded by `this`, `t` and `pool`)
+    // Replace one overflow variable by an expression.
+    // Lifetime of the resulting expression is bounded by `this`, `t` and `pool`.
     const Expr* makeReplace(const Expr* t, Allocator<Expr>& pool) const {
-      return updateVars([t] (uint64_t n, const Expr* x) {
-        return (x->var.tag == VBound && x->var.id == n)? t : x;
-      }, pool);
+      return updateVars(
+        [t](uint64_t n, const Expr* x) { return (x->var.tag == VBound && x->var.id == n) ? t : x; },
+        pool
+      );
     }
 
-    // Performs applicative-order beta-reduction (lifetime of the resulting expression is bounded by `this` and `pool`).
+    // Performs applicative-order beta-reduction.
     // If the original expression is well-typed, the resulting expression will have the same type.
     // Note that this function is only a syntactic operation, and does not check well-formedness.
     // It does not terminate on inputs like (\x => x x x) (\x => x x x).
     // If expression is well-typed, worst case time complexity is O(size * 2^size).
+    // Lifetime of the resulting expression is bounded by `this` and `pool`.
     const Expr* reduce(Allocator<Expr>& pool) const;
 
-    // Returns the number of symbols of the expression
-    // O(size)
+    // Returns the number of symbols of the expression.
     size_t size() const noexcept;
 
-    // Check if given variable is in the subtree
-    // O(size)
+    // Check if given variable is in the subtree.
     bool occurs(VarTag vartag, uint64_t id) const noexcept;
 
-    // Returns the maximum undetermined variable ID + 1
-    // O(size)
+    // Returns the maximum undetermined variable ID + 1.
     size_t numMeta() const noexcept;
 
-    // Check if the expression does not contain undetermined variables
-    // O(size)
+    // Check if the expression does not contain undetermined variables.
     bool isGround() const noexcept { return numMeta() == 0; }
 
     // Convenient constructor
@@ -179,7 +189,6 @@ namespace Core {
   }
 
   // An exception class representing checking failure
-  // TODO: delay message generation?
   struct InvalidExpr: public std::runtime_error {
     const Expr* e;
     explicit InvalidExpr(const std::string& s, const Context& ctx, const Expr* e):

@@ -1,6 +1,5 @@
 #include "elab.hpp"
 
-
 namespace Elab {
 
   using std::vector;
@@ -14,6 +13,7 @@ namespace Elab {
   using enum Expr::LamTag;
   using enum Expr::PiTag;
 
+  // clang-format off
   /*
   pair<const Expr*, const Expr*> inferHoles(const Expr* e, const Context& ctx, Allocator<Expr>& pool, vector<const Expr*>& stk, vector<string>& names) {
     switch (e->tag) {
@@ -22,7 +22,7 @@ namespace Elab {
           case SProp: return { e, pool.emplaceBack(SType) };
           case SType: return { e, pool.emplaceBack(SKind) };
           case SKind: throw InvalidExpr("\"Kind\" does not have a type", ctx, e);
-        } exhaustive;
+        } unreachable;
       }
       case Var: {
         switch (e->var.tag) {
@@ -35,7 +35,7 @@ namespace Elab {
           case VMeta:
             // #####
             // Make a new metavariable `?t` as type, add has-type constraint `e stk: t`, return `?t`
-        } exhaustive;
+        } unreachable;
       }
       case App: { // Π-elimination
         const auto tl = inferHoles(e->app.l, ctx, pool, stk, names);
@@ -64,7 +64,7 @@ namespace Elab {
         stk.pop_back();
         return pool.emplaceBack(Expr::imax(st, sr));
       }
-    } exhaustive;
+    } unreachable;
   }
   */
 

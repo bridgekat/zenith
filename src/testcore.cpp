@@ -1,10 +1,10 @@
-#include <iostream>
-#include <iomanip>
-#include <string>
 #include <initializer_list>
+#include <iomanip>
+#include <iostream>
+#include <string>
 #include "core.hpp"
-#include "elab/tableau.hpp"
 #include "elab/procs.hpp"
+#include "elab/tableau.hpp"
 
 using std::string;
 using std::cin, std::cout, std::endl;
@@ -14,7 +14,6 @@ using enum Expr::SortTag;
 using enum Expr::VarTag;
 using enum FOLContext::Constant;
 
-
 // TODO: read text & binary files
 
 int main() {
@@ -22,25 +21,25 @@ int main() {
   cout << sizeof(string) << endl;
   cout << sizeof(Expr) << endl;
 
-  #define N(...) Expr::make(pool, __VA_ARGS__)
+#define N(...) Expr::make(pool, __VA_ARGS__)
 
-  #define fv(id)          N(VFree,  id)
-  #define bv(id)          N(VBound, id)
-  #define uv(id)          N(VMeta,  id)
-  #define prop            N(SProp)
-  #define type            N(SType)
-  #define setvar          fv(SetVar)
-  #define app(l, r)       N(l, r)
-  #define lam(s, t, r)    N(Expr::LLam, s, t, r)
-  #define pi(s, t, r)     N(Expr::PPi, s, t, r)
+#define fv(id)       N(VFree, id)
+#define bv(id)       N(VBound, id)
+#define uv(id)       N(VMeta, id)
+#define prop         N(SProp)
+#define type         N(SType)
+#define setvar       fv(SetVar)
+#define app(l, r)    N(l, r)
+#define lam(s, t, r) N(Expr::LLam, s, t, r)
+#define pi(s, t, r)  N(Expr::PPi, s, t, r)
 
-  #define tt              fv(True)
-  #define ff              fv(False)
-  #define un(var, a)      app(fv(var), a)
-  #define bin(a, var, b)  app(app(fv(var), a), b)
-  #define forall(s, a)    app(fv(Forall), lam(s, setvar, a))
-  #define exists(s, a)    app(fv(Exists), lam(s, setvar, a))
-  #define unique(s, a)    app(fv(Unique), lam(s, setvar, a))
+#define tt             fv(True)
+#define ff             fv(False)
+#define un(var, a)     app(fv(var), a)
+#define bin(a, var, b) app(app(fv(var), a), b)
+#define forall(s, a)   app(fv(Forall), lam(s, setvar, a))
+#define exists(s, a)   app(fv(Exists), lam(s, setvar, a))
+#define unique(s, a)   app(fv(Unique), lam(s, setvar, a))
 
   {
     FOLContext ctx;
@@ -49,14 +48,22 @@ int main() {
     auto in = ctx.pushAssumption("in", pi("x", setvar, pi("y", setvar, prop)));
 
     // The axiom schema of separation...
-    const auto x =
-      lam("phi", pi("", setvar, pi("", setvar, prop)),
-        forall("x", exists("y", forall("a", bin(bin(bv(0), in, bv(1)), Iff, bin(bin(bv(0), in, bv(2)), And, app(app(bv(3), bv(2)), bv(0))))))));
+    const auto x = lam(
+      "phi", pi("", setvar, pi("", setvar, prop)),
+      forall(
+        "x",
+        exists(
+          "y",
+          forall("a", bin(bin(bv(0), in, bv(1)), Iff, bin(bin(bv(0), in, bv(2)), And, app(app(bv(3), bv(2)), bv(0)))))
+        )
+      )
+    );
 
     cout << x->toString(ctx) << endl;
     cout << x->checkType(ctx, pool)->toString(ctx) << endl;
 
-    auto subset = ctx.pushAssumption("subset", pi("P", pi("x", setvar, pi("a", setvar, prop)), pi("x", setvar, setvar)));
+    auto subset =
+      ctx.pushAssumption("subset", pi("P", pi("x", setvar, pi("a", setvar, prop)), pi("x", setvar, setvar)));
     auto issc = ctx.pushAssumption("is_subclass", pi("P", pi("x", setvar, prop), pi("Q", pi("x", setvar, prop), prop)));
 
     const auto y = lam("x", setvar, bin(lam("y", setvar, lam("z", setvar, tt)), subset, bv(0)));
@@ -90,7 +97,7 @@ int main() {
     Allocator<Proof> ps;
     Allocator<Decl> ds;
 
-    #define block std::initializer_list<Decl*>
+#  define block std::initializer_list<Decl*>
 
     uint64_t eq = ctx.equals;
     uint64_t i = ctx.size();
@@ -239,7 +246,7 @@ int main() {
     auto snf = Procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
     cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
-    Elab::Procs::foreachValuation({ p, q, r, s }, [&e, &snf] (const vector<bool>& fvmap) {
+    Elab::Procs::foreachValuation({p, q, r, s}, [&e, &snf](const vector<bool>& fvmap) {
       cout << Elab::Procs::propValue(e, fvmap);
       cout << !Elab::Procs::propValue(snf, fvmap);
     });
@@ -295,18 +302,32 @@ int main() {
     Allocator<Expr> pool;
     FOLContext ctx;
 
-    uint64_t lt  = ctx.pushAssumption("<", pi("x", setvar, pi("y", setvar, prop)));
+    uint64_t lt = ctx.pushAssumption("<", pi("x", setvar, pi("y", setvar, prop)));
     uint64_t mul = ctx.pushAssumption("*", pi("x", setvar, pi("y", setvar, setvar)));
-    uint64_t x   = ctx.pushAssumption("x", setvar);
-    uint64_t P   = ctx.pushAssumption("P", pi("x", setvar, prop));
-    uint64_t Q   = ctx.pushAssumption("Q", pi("x", setvar, prop));
+    uint64_t x = ctx.pushAssumption("x", setvar);
+    uint64_t P = ctx.pushAssumption("P", pi("x", setvar, prop));
+    uint64_t Q = ctx.pushAssumption("Q", pi("x", setvar, prop));
 
-    auto e = exists("y", bin(bin(fv(x), lt, bv(0)), Implies, forall("u", exists("v", bin(bin(fv(x), mul, bv(1)), lt, bin(bv(2), mul, bv(0)))))));
+    auto e = exists(
+      "y", bin(
+             bin(fv(x), lt, bv(0)), Implies,
+             forall("u", exists("v", bin(bin(fv(x), mul, bv(1)), lt, bin(bv(2), mul, bv(0)))))
+           )
+    );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
     cout << FOLForm::fromExpr(Procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
 
-    e = forall("x", bin(app(fv(P), bv(0)), Implies, exists("y", exists("z", bin(app(fv(Q), bv(1)), Or, un(Not, exists("z", bin(app(fv(P), bv(0)), And, app(fv(Q), bv(0))))))))));
+    e = forall(
+      "x",
+      bin(
+        app(fv(P), bv(0)), Implies,
+        exists(
+          "y",
+          exists("z", bin(app(fv(Q), bv(1)), Or, un(Not, exists("z", bin(app(fv(P), bv(0)), And, app(fv(Q), bv(0)))))))
+        )
+      )
+    );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
     cout << FOLForm::fromExpr(Procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
@@ -330,7 +351,7 @@ int main() {
     uint64_t u = ctx.pushAssumption("u", setvar);
     uint64_t v = ctx.pushAssumption("v", setvar);
 
-    enum Meta: uint64_t { X, Y, Z, U, V };
+    enum Meta : uint64_t { X, Y, Z, U, V };
 
     auto lhs = bin(app(app(fv(f), uv(X)), app(app(fv(g), uv(X)), uv(Y))), Equals, app(app(fv(h), uv(Z)), uv(Y)));
     auto rhs = bin(uv(Z), Equals, app(app(fv(h), app(app(fv(f), uv(U)), uv(V))), app(app(fv(f), fv(a)), fv(b))));
@@ -340,12 +361,12 @@ int main() {
     cout << "First-order unification:" << endl;
     cout << lhs1->toString(ctx) << endl;
     cout << rhs1->toString(ctx) << endl;
-    cout << unify({{ lhs1, rhs1 }}, pool).has_value() << endl;
+    cout << unify({std::make_pair(lhs1, rhs1)}, pool).has_value() << endl;
     cout << endl;
 
     cout << lhs->toString(ctx) << endl;
     cout << rhs->toString(ctx) << endl;
-    Subs subs = unify({{ lhs, rhs }}, pool).value();
+    Subs subs = unify({std::make_pair(lhs, rhs)}, pool).value();
     cout << showSubs(subs, ctx);
     cout << applySubs(lhs, subs, pool)->toString(ctx) << endl;
     cout << applySubs(rhs, subs, pool)->toString(ctx) << endl;
@@ -370,7 +391,7 @@ int main() {
     // Extra tests
     lhs = app(app(fv(f), uv(X)), uv(Y));
     rhs = app(app(fv(f), uv(Y)), uv(X));
-    subs = unify({{ lhs, rhs }}, pool).value();
+    subs = unify({std::make_pair(lhs, rhs)}, pool).value();
     cout << showSubs(subs, ctx);
     cout << applySubs(lhs, subs, pool)->toString(ctx) << endl;
     cout << applySubs(rhs, subs, pool)->toString(ctx) << endl;
@@ -425,8 +446,19 @@ int main() {
     tableau.clear();
 
     cout << "(Provable)" << endl;
-    e = bin(exists("y", exists("z", forall("x", bin(bin(app(fv(F), bv(0)), Implies, app(fv(G), bv(2))), And, bin(app(fv(G), bv(1)), Implies, app(fv(F), bv(0))))))),
-      Implies, forall("x", exists("y", bin(app(fv(F), bv(1)), Iff, app(fv(G), bv(0))))));
+    e = bin(
+      exists(
+        "y", exists(
+               "z", forall(
+                      "x", bin(
+                             bin(app(fv(F), bv(0)), Implies, app(fv(G), bv(2))), And,
+                             bin(app(fv(G), bv(1)), Implies, app(fv(F), bv(0)))
+                           )
+                    )
+             )
+      ),
+      Implies, forall("x", exists("y", bin(app(fv(F), bv(1)), Iff, app(fv(G), bv(0)))))
+    );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
     snf = Procs::skolemize(un(Not, e), ctx, pool);
@@ -440,9 +472,27 @@ int main() {
     tableau.clear();
 
     cout << "(Provable)" << endl;
-    auto exclusiveness = forall("x", forall("y", bin(app(app(fv(L), bv(1)), bv(0)), Implies, forall("z", bin(un(Not, bin(bv(0), Equals, bv(1))), Implies, un(Not, app(app(fv(L), bv(2)), bv(0))))))));
-    auto preference = forall("x", forall("y", forall("z", bin(app(app(app(fv(B), bv(2)), bv(1)), bv(0)), Implies, bin(app(app(fv(L), bv(2)), bv(0)), Implies, app(app(fv(L), bv(2)), bv(1)))))));
-    auto shadowing = exists("y", bin(un(Not, bin(bv(0), Equals, fv(Q))), And, forall("x", app(app(app(fv(B), bv(0)), bv(1)), fv(Q)))));
+    auto exclusiveness = forall(
+      "x",
+      forall(
+        "y", bin(
+               app(app(fv(L), bv(1)), bv(0)), Implies,
+               forall("z", bin(un(Not, bin(bv(0), Equals, bv(1))), Implies, un(Not, app(app(fv(L), bv(2)), bv(0)))))
+             )
+      )
+    );
+    auto preference = forall(
+      "x", forall(
+             "y", forall(
+                    "z", bin(
+                           app(app(app(fv(B), bv(2)), bv(1)), bv(0)), Implies,
+                           bin(app(app(fv(L), bv(2)), bv(0)), Implies, app(app(fv(L), bv(2)), bv(1)))
+                         )
+                  )
+           )
+    );
+    auto shadowing =
+      exists("y", bin(un(Not, bin(bv(0), Equals, fv(Q))), And, forall("x", app(app(app(fv(B), bv(0)), bv(1)), fv(Q)))));
     auto goal = un(Not, exists("x", app(app(fv(L), bv(0)), fv(Q))));
     tableau.addAntecedent(exclusiveness);
     tableau.addAntecedent(preference);
@@ -501,24 +551,54 @@ int main() {
 
     cout << "(Provable!)" << endl;
     auto e = bin(
-      forall("x", bin(
-        bin(app(fv(P), fv(a)), And, bin(app(fv(P), bv(0)), Implies, exists("y", bin(app(fv(P), bv(0)), And, app(app(fv(rel), bv(1)), bv(0)))))),
-        Implies,
-        exists("z", exists("w", bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))))
-      )),
-      Iff,
-      forall("x", bin(
+      forall(
+        "x",
         bin(
-          bin(un(Not, app(fv(P), fv(a))), Or, app(fv(P), bv(0))),
-          Or,
-          exists("z", exists("w", bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))))),
-        And,
-        bin(
-          bin(un(Not, app(fv(P), fv(a))), Or, un(Not, exists("y", bin(app(fv(P), bv(0)), And, app(app(fv(rel), bv(1)), bv(0)))))),
-          Or,
-          exists("z", exists("w", bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))))
+          bin(
+            app(fv(P), fv(a)), And,
+            bin(app(fv(P), bv(0)), Implies, exists("y", bin(app(fv(P), bv(0)), And, app(app(fv(rel), bv(1)), bv(0)))))
+          ),
+          Implies,
+          exists(
+            "z",
+            exists(
+              "w",
+              bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))
+            )
+          )
         )
-      ))
+      ),
+      Iff,
+      forall(
+        "x",
+        bin(
+          bin(
+            bin(un(Not, app(fv(P), fv(a))), Or, app(fv(P), bv(0))), Or,
+            exists(
+              "z",
+              exists(
+                "w",
+                bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))
+              )
+            )
+          ),
+          And,
+          bin(
+            bin(
+              un(Not, app(fv(P), fv(a))), Or,
+              un(Not, exists("y", bin(app(fv(P), bv(0)), And, app(app(fv(rel), bv(1)), bv(0)))))
+            ),
+            Or,
+            exists(
+              "z",
+              exists(
+                "w",
+                bin(bin(app(fv(P), bv(1)), And, app(app(fv(rel), bv(2)), bv(0))), And, app(app(fv(rel), bv(0)), bv(1)))
+              )
+            )
+          )
+        )
+      )
     );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
@@ -534,12 +614,31 @@ int main() {
 
     cout << "(Provable!)" << endl;
     e1 = forall("x", app(app(fv(le), bv(0)), bv(0)));
-    e2 = forall("x", forall("y", forall("z", bin(bin(app(app(fv(le), bv(2)), bv(1)), And, app(app(fv(le), bv(1)), bv(0))), Implies, app(app(fv(le), bv(2)), bv(0))))));
-    e3 = forall("x", forall("y", bin(app(app(fv(le), app(fv(f), bv(1))), bv(0)), Iff, app(app(fv(le), bv(1)), app(fv(g), bv(0))))));
+    e2 = forall(
+      "x", forall(
+             "y", forall(
+                    "z", bin(
+                           bin(app(app(fv(le), bv(2)), bv(1)), And, app(app(fv(le), bv(1)), bv(0))), Implies,
+                           app(app(fv(le), bv(2)), bv(0))
+                         )
+                  )
+           )
+    );
+    e3 = forall(
+      "x", forall("y", bin(app(app(fv(le), app(fv(f), bv(1))), bv(0)), Iff, app(app(fv(le), bv(1)), app(fv(g), bv(0)))))
+    );
     goal = bin(
-      forall("x", forall("y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(f), bv(1))), app(fv(f), bv(0)))))),
+      forall(
+        "x", forall(
+               "y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(f), bv(1))), app(fv(f), bv(0))))
+             )
+      ),
       And,
-      forall("x", forall("y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(g), bv(1))), app(fv(g), bv(0))))))
+      forall(
+        "x", forall(
+               "y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(g), bv(1))), app(fv(g), bv(0))))
+             )
+      )
     );
     tableau.addAntecedent(e1);
     tableau.addAntecedent(e2);

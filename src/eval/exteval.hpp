@@ -12,7 +12,7 @@ namespace Eval {
   public:
     ExtendedEvaluator();
     ~ExtendedEvaluator() override = default;
-  
+
   private:
     Core::FOLContext ctx;
     Core::Allocator<Core::Expr> epool;

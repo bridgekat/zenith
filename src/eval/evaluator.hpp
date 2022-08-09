@@ -3,16 +3,15 @@
 #ifndef EVALUATOR_HPP_
 #define EVALUATOR_HPP_
 
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <utility>
 #include <functional>
 #include <initializer_list>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 #include <parsing/lexer.hpp>
 #include <parsing/parser.hpp>
 #include "tree.hpp"
-
 
 namespace Eval {
 
@@ -25,9 +24,8 @@ namespace Eval {
 
   // Evaluation error exception
   struct EvalError: public std::runtime_error {
-    const Tree* at, * e;
-    EvalError(const std::string& s, const Tree* at, const Tree* e):
-      std::runtime_error(s), at(at), e(e) {}
+    const Tree *at, *e;
+    EvalError(const std::string& s, const Tree* at, const Tree* e): std::runtime_error(s), at(at), e(e) {}
     EvalError(const EvalError&) = default;
     EvalError& operator=(const EvalError&) = default;
   };
@@ -39,27 +37,32 @@ namespace Eval {
 
   // Convenient pattern-matching functions (throw customized exceptions on failure)
   template <typename T>
-  inline T& expect(Tree*) { unreachable; }
-  #define defineExpect(T, msg) \
-    template <> \
-    inline T& expect<T>(Tree* e) { \
-      try { return std::get<T>(e->v); } \
-      catch (std::bad_variant_access&) { throw PartialEvalError((msg ", got ") + e->toString(), e); } \
-    }
-  defineExpect(Nil,     "expected end-of-list")
-  defineExpect(Cons,    "expected non-empty list")
-  defineExpect(Symbol,  "expected symbol")
-  defineExpect(Nat64,   "expected number")
-  defineExpect(String,  "expected string")
-  defineExpect(Bool,    "expected boolean")
+  inline T& expect(Tree*) {
+    unreachable;
+  }
+
+#define defineExpect(T, msg)                                                                          \
+  template <>                                                                                         \
+  inline T& expect<T>(Tree * e) {                                                                     \
+    try {                                                                                             \
+      return std::get<T>(e->v);                                                                       \
+    } catch (std::bad_variant_access&) { throw PartialEvalError((msg ", got ") + e->toString(), e); } \
+  }
+  defineExpect(Nil, "expected end-of-list")
+  defineExpect(Cons, "expected non-empty list")
+  defineExpect(Symbol, "expected symbol")
+  defineExpect(Nat64, "expected number")
+  defineExpect(String, "expected string")
+  defineExpect(Bool, "expected boolean")
   defineExpect(Closure, "expected function")
-  defineExpect(Native,  "expected native type")
-  #undef defineExpect
+  defineExpect(Native, "expected native type")
+#undef defineExpect
 
   template <typename T>
   inline T expectNative(Tree* e) {
-    try { return std::any_cast<T>(expect<Native>(e).val); }
-    catch (std::bad_any_cast& ex) { throw PartialEvalError(std::string("native type mismatch: ") + ex.what(), e); }
+    try {
+      return std::any_cast<T>(expect<Native>(e).val);
+    } catch (std::bad_any_cast& ex) { throw PartialEvalError(std::string("native type mismatch: ") + ex.what(), e); }
   }
 
   // The main interpreter (evaluator) class.
@@ -88,18 +91,18 @@ namespace Eval {
   protected:
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
     struct Result {
-      Tree* env, * e;
-      Result(Tree* e): env(nullptr), e(e) {};
-      Result(Tree* env, Tree* e): env(env), e(e) {};
+      Tree *env, *e;
+      Result(Tree* e): env(nullptr), e(e){};
+      Result(Tree* env, Tree* e): env(env), e(e){};
     };
     using PrimitiveFunc = std::pair<bool, std::function<Result(Tree*, Tree*)>>;
     static constexpr Parsing::Symbol IgnoredSymbol = 0;
     static constexpr Parsing::Symbol StartSymbol = 1;
 
     Core::Allocator<Tree> pool;
-    Eval::Tree* nil, * unit;
+    Eval::Tree *nil, *unit;
 
-    Eval::Tree* patterns, * rules;
+    Eval::Tree *patterns, *rules;
     std::vector<std::string> symbolNames;
     std::unordered_map<std::string, Parsing::Symbol> nameSymbols;
     std::vector<std::string> patternNames, ruleNames;

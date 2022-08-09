@@ -4,12 +4,12 @@
 #define FOL_HPP_
 
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 #include "../context.hpp"
 #include "../expr.hpp"
 
-
+// clang-format off
 namespace Core {
 
   // Specialized context for first-order logic, with pre-defined constants
@@ -22,13 +22,12 @@ namespace Core {
     FOLContext();
   };
 
+  // Immutable.
   class FOLForm {
   public:
-    // "Other" means either atomic or not first-order
     enum class Tag: uint32_t { Other, Equals, True, False, Not, And, Or, Implies, Iff, Forall, Exists, Unique };
     using enum Tag;
 
-    // Immutable
     const Tag tag;
     union {
       struct { const Expr* e; } unary;       // Not, Other
@@ -38,16 +37,16 @@ namespace Core {
     // I have to move this outside the union, or it will be impossible to make a copy constructor...
     const std::string s{};
 
-    FOLForm(Tag tag): tag(tag), unary{ nullptr } {
+    FOLForm(Tag tag): tag(tag), unary{nullptr} {
       switch (tag) { case True: case False: return; default: unreachable; }
     }
-    FOLForm(Tag tag, const Expr* e): tag(tag), unary{ e } {
+    FOLForm(Tag tag, const Expr* e): tag(tag), unary{e} {
       switch (tag) { case Not: case Other: return; default: unreachable; }
     }
-    FOLForm(Tag tag, const Expr* l, const Expr* r): tag(tag), binary{ l, r } {
+    FOLForm(Tag tag, const Expr* l, const Expr* r): tag(tag), binary{l, r} {
       switch (tag) { case Equals: case And: case Or: case Implies: case Iff: return; default: unreachable; }
     }
-    FOLForm(Tag tag, std::string s, const Expr* r): tag(tag), binder{ r }, s(std::move(s)) {
+    FOLForm(Tag tag, std::string s, const Expr* r): tag(tag), binder{r}, s(std::move(s)) {
       switch (tag) { case Forall: case Exists: case Unique: return; default: unreachable; }
     }
     FOLForm(const FOLForm&) = default;

@@ -1,7 +1,6 @@
 #include "languageserver.hpp"
-#include <locale>
 #include <codecvt>
-
+#include <locale>
 
 namespace Server {
 
@@ -9,12 +8,12 @@ namespace Server {
 
   Document::Position Document::toUTF8(const Position& utf16) const {
     std::u16string s = cvt.from_bytes(lines.at(utf16.first));
-    return { utf16.first, cvt.to_bytes(s.substr(0, utf16.second)).size() };
+    return {utf16.first, cvt.to_bytes(s.substr(0, utf16.second)).size()};
   }
 
   Document::Position Document::toUTF16(const Position& utf8) const {
     std::string s = lines.at(utf8.first);
-    return { utf8.first, cvt.from_bytes(s.substr(0, utf8.second)).size() };
+    return {utf8.first, cvt.from_bytes(s.substr(0, utf8.second)).size()};
   }
 
   void Document::process() {

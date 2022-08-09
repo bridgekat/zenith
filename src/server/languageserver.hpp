@@ -5,7 +5,6 @@
 
 #include "jsonrpc2.hpp"
 
-
 namespace Server {
 
   // Naive implementation, highly inefficient, but should be enough for current purpose...
@@ -22,7 +21,10 @@ namespace Server {
 
     string eolIndicator() const { return eol == "\r\n" ? "\\r\\n" : eol == "\r" ? "\\r" : "\\n"; }
     const string& getContent() const { return content; }
-    void setContent(const string& s) { content = s; process(); }
+    void setContent(const string& s) {
+      content = s;
+      process();
+    }
     void modify(size_t start, size_t end, const string& s) {
       content = content.substr(0, start) + s + content.substr(end);
       process();

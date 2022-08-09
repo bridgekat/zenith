@@ -21,7 +21,7 @@ Make sure a C++20 compiler (I'm using GCC 11.2) and CMake 3.12+ is available on 
 mkdir build
 cd build
 cmake ..
-make # or others
+cmake --build .
 ```
 
 If everything is fine, you can then find three executables (`testcore`, `testeval` and `testtest`) in the `build` directory.

@@ -5,11 +5,6 @@
 
 #include "procs.hpp"
 
-
-namespace Elab {
-
-
-
-}
+namespace Elab {}
 
 #endif // ELAB_HPP_

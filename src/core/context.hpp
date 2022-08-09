@@ -3,12 +3,11 @@
 #ifndef CONTEXT_HPP_
 #define CONTEXT_HPP_
 
-#include <vector>
+#include <optional>
 #include <string>
 #include <utility>
-#include <optional>
+#include <vector>
 #include "base.hpp"
-
 
 namespace Core {
 
@@ -38,10 +37,11 @@ namespace Core {
     // Look up by literal name (slow, not commonly used)
     std::optional<size_t> lookup(const std::string& s) const {
       // Unsigned count down: https://nachtimwald.com/2019/06/02/unsigned-count-down/
-      for (size_t i = entries.size(); i --> 0;) if (entries[i].first == s) return i;
+      for (size_t i = entries.size(); i-- > 0;)
+        if (entries[i].first == s) return i;
       return std::nullopt;
     }
-  
+
   protected:
     // Allocators
     std::vector<Allocator<Expr>> pools;

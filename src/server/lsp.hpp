@@ -4,11 +4,10 @@
 #define LSP_HPP_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
 #include <nlohmann/json_fwd.hpp>
-
 
 namespace Server::LSP {
 
@@ -16,23 +15,22 @@ namespace Server::LSP {
   using std::vector;
   using std::optional;
 
+#define structconv(T)                        \
+  struct T;                                  \
+  void to_json(nlohmann::json&, const T&);   \
+  void from_json(const nlohmann::json&, T&); \
+  struct T
 
-  #define structconv(T) \
-    struct T; \
-    void to_json(nlohmann::json&, const T&); \
-    void from_json(const nlohmann::json&, T&); \
-    struct T
+#define enumconv(T)                          \
+  enum class T : uint32_t;                   \
+  void to_json(nlohmann::json&, const T&);   \
+  void from_json(const nlohmann::json&, T&); \
+  enum class T : uint32_t
 
-  #define enumconv(T) \
-    enum class T: uint32_t; \
-    void to_json(nlohmann::json&, const T&); \
-    void from_json(const nlohmann::json&, T&); \
-    enum class T: uint32_t
-
-  enum class DiagnosticSeverity: uint32_t { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFORMATION = 3, HINT = 4 };
-  enum class DiagnosticTag: uint32_t { UNKNOWN = 0, UNNECESSARY = 1, DEPRECATED = 2 };
-  enum class MessageType: uint32_t { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFO = 3, LOG = 4 };
-  enumconv(MarkupKind) { PLAINTEXT = 0, MARKDOWN = 1 };
+  enum class DiagnosticSeverity : uint32_t { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFORMATION = 3, HINT = 4 };
+  enum class DiagnosticTag : uint32_t { UNKNOWN = 0, UNNECESSARY = 1, DEPRECATED = 2 };
+  enum class MessageType : uint32_t { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFO = 3, LOG = 4 };
+  enumconv(MarkupKind){PLAINTEXT = 0, MARKDOWN = 1};
 
   using DocumentUri = string;
   using URI = string;
@@ -54,22 +52,16 @@ namespace Server::LSP {
     optional<string> text{};
   };
 
-  structconv(TextDocumentIdentifier) {
-    DocumentUri uri{};
-  };
+  structconv(TextDocumentIdentifier) { DocumentUri uri{}; };
 
-  structconv(VersionedTextDocumentIdentifier): public TextDocumentIdentifier {
-    int32_t version{};
-  };
+  structconv(VersionedTextDocumentIdentifier): public TextDocumentIdentifier { int32_t version{}; };
 
   structconv(TextDocumentContentChangeEvent) {
     optional<Range> range{};
     string text{};
   };
 
-  structconv(CodeDescription) {
-    URI href{};
-  };
+  structconv(CodeDescription) { URI href{}; };
 
   structconv(Location) {
     DocumentUri uri{};
@@ -102,7 +94,7 @@ namespace Server::LSP {
     string value{};
   };
 
-  #undef structconv
+#undef structconv
 
 }
 

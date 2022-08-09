@@ -3,14 +3,14 @@
 // ========================
 
 letrec context_names' = fun (n) =>
-  if n == (context_size) then `()
-  else [match (context_get n) with (name _) => (cons name (context_names' [n + 1]))]
-in (define context_names [fun () => (context_names' 0)])
+  if n == 0 then `()
+  else [match (context_get [n - 1]) with (name _) => (cons name (context_names' [n - 1]))]
+in (define context_names [fun () => (context_names' (context_size))])
 
 letrec context_fprint' = fun (n) =>
   if n == (context_size) then `()
   else [begin
-    [match (context_get n) with (name e) => (display [name .++ ": " .++ (expr_fprint e)])];
+    [match (context_get n) with (name e) => (display [(print name) .++ ": " .++ (expr_fprint e)])];
     (context_fprint' [n + 1])
   ]
 in (define context_fprint [fun () => (context_fprint' 0)])
@@ -66,7 +66,7 @@ letrec resolve_names' = fun (x stk) => [
     () => [
       match (lookup s (context_names)) with
       () => `(Var Unknown) // Unknown variable!
-      id => `(Var Free ,id)
+      id => `(Var Free ,[(context_size) - 1 - id])
     ]
     id => `(Var Bound ,id)
   ]
@@ -149,3 +149,8 @@ e
 (display (expr_print (expr_check e)))
 (expr_tree (expr_check e))
 */
+
+// And left
+(context_push `(ax_1 ,(tree_expr `{ (P: Prop) -> (Q: Prop) -> P /\ Q -> P })))
+(display (expr_fprint (expr_check (tree_expr `{ ax_1 (forall x, x = x) (forall y, y = y) }))))
+
