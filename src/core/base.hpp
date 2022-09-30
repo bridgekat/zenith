@@ -11,13 +11,13 @@
 #define unreachable                                                                                       \
   {                                                                                                       \
     std::cerr << R"("Unreachable" code was reached: )" << __FILE__ << ":" << __LINE__ << ", at function " \
-              << static_cast<const char*>(__func__) << std::endl;                                         \
+              << static_cast<char const*>(__func__) << std::endl;                                         \
     std::terminate();                                                                                     \
   }
 #define notimplemented                                                                                       \
   {                                                                                                          \
     std::cerr << R"("Not implemented" code was called: )" << __FILE__ << ":" << __LINE__ << ", at function " \
-              << static_cast<const char*>(__func__) << std::endl;                                            \
+              << static_cast<char const*>(__func__) << std::endl;                                            \
     std::terminate();                                                                                        \
   }
 
@@ -28,15 +28,15 @@ namespace Core {
   template <typename T>
   class Allocator {
   public:
-    constexpr static std::size_t DefaultBlockSize = 1024;
+    static constexpr std::size_t DefaultBlockSize = 1024;
 
     Allocator(std::size_t blockSize = DefaultBlockSize): blockSize(blockSize), alloc(), blocks(), next(0) {}
 
-    Allocator(const Allocator&) = delete;
+    Allocator(Allocator const&) = delete;
     Allocator(Allocator&& r) noexcept:
       blockSize(r.blockSize), alloc(std::move(r.alloc)), blocks(std::move(r.blocks)), next(std::exchange(r.next, 0)) {}
 
-    Allocator& operator=(const Allocator&) = delete;
+    Allocator& operator=(Allocator const&) = delete;
     Allocator& operator=(Allocator&& r) noexcept {
       if (this != &r) {
         deallocateBlocks();
@@ -67,7 +67,7 @@ namespace Core {
       return res;
     }
 
-    T* pushBack(const T& obj) { return emplaceBack(obj); }
+    T* pushBack(T const& obj) { return emplaceBack(obj); }
 
     std::size_t size() const noexcept {
       if (next == 0) return blockSize * blocks.size();

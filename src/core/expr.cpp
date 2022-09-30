@@ -6,7 +6,7 @@ namespace Core {
   using std::string;
   using std::vector;
 
-  const Expr* Expr::clone(Allocator<Expr>& pool) const {
+  Expr const* Expr::clone(Allocator<Expr>& pool) const {
     switch (tag) {
       case Sort: return make(pool, sort.tag);
       case Var: return make(pool, var.tag, var.id);
@@ -17,7 +17,7 @@ namespace Core {
     unreachable;
   }
 
-  bool Expr::operator==(const Expr& rhs) const noexcept {
+  bool Expr::operator==(Expr const& rhs) const noexcept {
     if (this == &rhs) return true;
     if (tag != rhs.tag) return false;
     // Mid: tag == rhs.tag
@@ -33,7 +33,7 @@ namespace Core {
 
   // Using: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
   template <class T>
-  inline void hash_combine(size_t& seed, const T& v) noexcept {
+  inline void hash_combine(size_t& seed, T const& v) noexcept {
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   }
@@ -76,16 +76,26 @@ namespace Core {
   }
 
   // Undefined variables should be OK, as long as pointers are valid.
-  string Expr::toString(const Context& ctx, vector<string>& stk) const {
+  string Expr::toString(Context const& ctx, vector<string>& stk) const {
     switch (tag) {
-      case Sort: return sort.tag == SProp ? "Prop" : sort.tag == SType ? "Type" : sort.tag == SKind ? "Kind" : "??";
+      case Sort:
+        switch (sort.tag) {
+          case SProp: return "Prop";
+          case SType: return "Type";
+          case SKind: return "Kind";
+        }
+        unreachable;
       case Var:
-        return var.tag == VBound
-               ? (var.id < stk.size() ? stk[stk.size() - 1 - var.id] : "?b" + std::to_string(var.id - stk.size()))
-             : var.tag == VFree
-               ? (var.id < ctx.size() ? ctx.identifier(var.id) : "?f" + std::to_string(var.id - ctx.size()))
-             : var.tag == VMeta ? "?m" + std::to_string(var.id)
-                                : "??";
+        switch (var.tag) {
+          case VBound:
+            if (var.id < stk.size()) return stk[stk.size() - 1 - var.id];
+            return "?b" + std::to_string(var.id - stk.size());
+          case VFree:
+            if (var.id < ctx.size()) return ctx.identifier(var.id);
+            return "?f" + std::to_string(var.id - ctx.size());
+          case VMeta: return "?m" + std::to_string(var.id);
+        }
+        unreachable;
       case App: {
         bool fl = (app.l->tag != Sort && app.l->tag != Var && app.l->tag != App);
         bool fr = (app.r->tag != Sort && app.r->tag != Var);
@@ -117,8 +127,8 @@ namespace Core {
   // (2) Returns `Type` itself;
   // (3) Returns a well-formed, beta-reduced expression of type `Prop`, representing the proposition it proves;
   // (4) Returns `Prop` itself.
-  const Expr* Expr::checkType(
-    const Context& ctx, Allocator<Expr>& pool, vector<const Expr*>& stk, vector<string>& names
+  Expr const* Expr::checkType(
+    Context const& ctx, Allocator<Expr>& pool, vector<Expr const*>& stk, vector<string>& names
   ) const {
     switch (tag) {
       case Sort:
@@ -140,36 +150,35 @@ namespace Core {
         }
         unreachable;
       case App: { // Π-elimination
-        const auto tl = app.l->checkType(ctx, pool, stk, names);
-        const auto tr = app.r->checkType(ctx, pool, stk, names);
+        auto const tl = app.l->checkType(ctx, pool, stk, names);
+        auto const tr = app.r->checkType(ctx, pool, stk, names);
         if (tl->tag != Pi)
           throw InvalidExpr("expected function, term has type " + tl->toString(ctx, names), ctx, app.l);
         if (*tl->pi.t != *tr)
           throw InvalidExpr(
             "argument type mismatch, expected " + tl->pi.t->toString(ctx, names) + ", got " + tr->toString(ctx, names),
-            ctx,
-            app.r
+            ctx, app.r
           );
         return tl->pi.r->makeReplace(app.r, pool)->reduce(pool);
       }
       case Lam: { // Π-introduction
-        const auto tt = lam.t->checkType(ctx, pool, stk, names);
+        auto const tt = lam.t->checkType(ctx, pool, stk, names);
         if (tt->tag != Sort)
           throw InvalidExpr("expected proposition or type, got " + tt->toString(ctx, names), ctx, lam.t);
         names.push_back(lam.s);
         stk.push_back(lam.t);
-        const auto tr = lam.r->checkType(ctx, pool, stk, names);
+        auto const tr = lam.r->checkType(ctx, pool, stk, names);
         names.pop_back();
         stk.pop_back();
         return make(pool, PPi, lam.s, lam.t->reduce(pool), tr);
       }
       case Pi: { // Π-formation
-        const auto tt = pi.t->checkType(ctx, pool, stk, names);
+        auto const tt = pi.t->checkType(ctx, pool, stk, names);
         if (tt->tag != Sort)
           throw InvalidExpr("expected proposition or type, got " + tt->toString(ctx, names), ctx, pi.t);
         names.push_back(pi.s);
         stk.push_back(pi.t);
-        const auto tr = pi.r->checkType(ctx, pool, stk, names);
+        auto const tr = pi.r->checkType(ctx, pool, stk, names);
         if (tr->tag != Sort)
           throw InvalidExpr("expected proposition or type, got " + tr->toString(ctx, names), ctx, pi.r);
         names.pop_back();
@@ -180,25 +189,25 @@ namespace Core {
     unreachable;
   }
 
-  const Expr* Expr::reduce(Allocator<Expr>& pool) const {
+  Expr const* Expr::reduce(Allocator<Expr>& pool) const {
     switch (tag) {
       case Sort: return this;
       case Var: return this;
       case App: {
         // Applicative order: reduce subexpressions first
-        const auto l = app.l->reduce(pool);
-        const auto r = app.r->reduce(pool);
+        auto const l = app.l->reduce(pool);
+        auto const r = app.r->reduce(pool);
         if (l->tag == Lam) return l->lam.r->makeReplace(r, pool)->reduce(pool);
         return (l == app.l && r == app.r) ? this : make(pool, l, r);
       }
       case Lam: {
-        const auto t = lam.t->reduce(pool);
-        const auto r = lam.r->reduce(pool);
+        auto const t = lam.t->reduce(pool);
+        auto const r = lam.r->reduce(pool);
         return (t == lam.t && r == lam.r) ? this : make(pool, LLam, lam.s, t, r);
       }
       case Pi: {
-        const auto t = pi.t->reduce(pool);
-        const auto r = pi.r->reduce(pool);
+        auto const t = pi.t->reduce(pool);
+        auto const r = pi.r->reduce(pool);
         return (t == pi.t && r == pi.r) ? this : make(pool, PPi, pi.s, t, r);
       }
     }

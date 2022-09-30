@@ -27,7 +27,7 @@ namespace Eval {
     // [!] Conversions between lists and native objects (`Expr`)
     addPrimitive("tree_expr", {true, [this](Tree*, Tree* e) -> Result { return obj(treeExpr(expect<Cons>(e).head)); }});
     addPrimitive("expr_tree", {true, [this](Tree*, Tree* e) -> Result {
-                                 return exprTree(expectNative<const Expr*>(expect<Cons>(e).head));
+                                 return exprTree(expectNative<Expr const*>(expect<Cons>(e).head));
                                }});
 
     // [?] TEMP CODE
@@ -35,17 +35,17 @@ namespace Eval {
                                     return nat(static_cast<uint64_t>(ctx.size()));
                                   }});
     addPrimitive("context_get", {true, [this](Tree*, Tree* e) -> Result {
-                                   uint64_t i = expect<Nat64>(expect<Cons>(e).head).val;
-                                   size_t index = static_cast<size_t>(i);
+                                   auto const i = expect<Nat64>(expect<Cons>(e).head).val;
+                                   auto const index = static_cast<size_t>(i);
                                    if (index < ctx.size())
                                      return cons(sym(ctx.identifier(index)), cons(obj(ctx[index]), nil));
                                    return unit;
                                  }});
     addPrimitive("context_push", {true, [this](Tree*, Tree* e) -> Result {
-                                    const auto& [lhs, t] = expect<Cons>(expect<Cons>(e).head);
-                                    const auto& [rhs, _] = expect<Cons>(t);
-                                    string s = expect<Symbol>(lhs).val;
-                                    const Expr* expr = expectNative<const Expr*>(rhs);
+                                    auto const& [lhs, t] = expect<Cons>(expect<Cons>(e).head);
+                                    auto const& [rhs, _] = expect<Cons>(t);
+                                    auto const s = expect<Symbol>(lhs).val;
+                                    auto const expr = expectNative<Expr const*>(rhs);
                                     try {
                                       ctx.pushAssumption(s, expr);
                                       return unit;
@@ -58,35 +58,35 @@ namespace Eval {
                                    } catch (std::runtime_error& ex) { return str(ex.what()); }
                                  }});
     addPrimitive("expr_print", {true, [this](Tree*, Tree* e) -> Result {
-                                  return str(expectNative<const Expr*>(expect<Cons>(e).head)->toString(ctx));
+                                  return str(expectNative<Expr const*>(expect<Cons>(e).head)->toString(ctx));
                                 }});
     addPrimitive("expr_fprint", {true, [this](Tree*, Tree* e) -> Result {
-                                   return str(Core::FOLForm::fromExpr(expectNative<const Expr*>(expect<Cons>(e).head))
+                                   return str(Core::FOLForm::fromExpr(expectNative<Expr const*>(expect<Cons>(e).head))
                                                 .toString(ctx));
                                  }});
     addPrimitive("expr_check", {true, [this](Tree*, Tree* e) -> Result {
                                   try {
-                                    return obj(expectNative<const Expr*>(expect<Cons>(e).head)->checkType(ctx, epool));
+                                    return obj(expectNative<Expr const*>(expect<Cons>(e).head)->checkType(ctx, epool));
                                   } catch (std::runtime_error& ex) { return str(ex.what()); }
                                 }});
 
     // [?] TEMP CODE
     addPrimitive("expr_make_bound", {true, [this](Tree*, Tree* e) -> Result {
-                                       const auto& [h, t] = expect<Cons>(e);
-                                       const auto& [h1, u] = expect<Cons>(t);
-                                       uint64_t id = expect<Nat64>(h1).val;
-                                       const auto res = treeExpr(h)->makeBound(id, epool);
+                                       auto const& [h, t] = expect<Cons>(e);
+                                       auto const& [h1, u] = expect<Cons>(t);
+                                       auto const id = expect<Nat64>(h1).val;
+                                       auto const res = treeExpr(h)->makeBound(id, epool);
                                        return exprTree(res);
                                      }});
     addPrimitive("expr_make_replace", {true, [this](Tree*, Tree* e) -> Result {
-                                         const auto& [h, t] = expect<Cons>(e);
-                                         const auto& [h1, u] = expect<Cons>(t);
-                                         const auto res = treeExpr(h)->makeReplace(treeExpr(h1), epool);
+                                         auto const& [h, t] = expect<Cons>(e);
+                                         auto const& [h1, u] = expect<Cons>(t);
+                                         auto const res = treeExpr(h)->makeReplace(treeExpr(h1), epool);
                                          return exprTree(res);
                                        }});
   }
 
-  Tree* ExtendedEvaluator::exprTree(const Expr* e) {
+  Tree* ExtendedEvaluator::exprTree(Expr const* e) {
     using enum Expr::Tag;
     using enum Expr::SortTag;
     using enum Expr::VarTag;
@@ -112,13 +112,13 @@ namespace Eval {
     unreachable;
   }
 
-  const Expr* ExtendedEvaluator::treeExpr(Tree* e) {
+  Expr const* ExtendedEvaluator::treeExpr(Tree* e) {
     using enum Expr::Tag;
 #define expr epool.emplaceBack
-    const auto& [h, t] = expect<Cons>(e);
+    auto const& [h, t] = expect<Cons>(e);
     string sym = expect<Symbol>(h).val;
     if (sym == "Sort") {
-      const auto& [h1, _] = expect<Cons>(t);
+      auto const& [h1, _] = expect<Cons>(t);
       expect<Nil>(_);
       string tag = expect<Symbol>(h1).val;
       if (tag == "Prop") return expr(Expr::SProp);
@@ -126,8 +126,8 @@ namespace Eval {
       else if (tag == "Kind") return expr(Expr::SKind);
       else throw PartialEvalError(R"(tag must be "Prop", "Type" or "Kind")", h1);
     } else if (sym == "Var") {
-      const auto& [h1, u] = expect<Cons>(t);
-      const auto& [h2, _] = expect<Cons>(u);
+      auto const& [h1, u] = expect<Cons>(t);
+      auto const& [h2, _] = expect<Cons>(u);
       expect<Nil>(_);
       string tag = expect<Symbol>(h1).val;
       uint64_t id = expect<Nat64>(h2).val;
@@ -136,20 +136,20 @@ namespace Eval {
       else if (tag == "Meta") return expr(Expr::VMeta, static_cast<uint64_t>(id));
       else throw PartialEvalError(R"(tag must be "Bound", "Free" or "Meta")", h1);
     } else if (sym == "App") {
-      const auto& [h1, u] = expect<Cons>(t);
-      const auto& [h2, _] = expect<Cons>(u);
+      auto const& [h1, u] = expect<Cons>(t);
+      auto const& [h2, _] = expect<Cons>(u);
       expect<Nil>(_);
       return expr(treeExpr(h1), treeExpr(h2));
     } else if (sym == "Lam") {
-      const auto& [h1, u] = expect<Cons>(t);
-      const auto& [h2, v] = expect<Cons>(u);
-      const auto& [h3, _] = expect<Cons>(v);
+      auto const& [h1, u] = expect<Cons>(t);
+      auto const& [h2, v] = expect<Cons>(u);
+      auto const& [h3, _] = expect<Cons>(v);
       expect<Nil>(_);
       return expr(Expr::LLam, expect<Symbol>(h1).val, treeExpr(h2), treeExpr(h3));
     } else if (sym == "Pi") {
-      const auto& [h1, u] = expect<Cons>(t);
-      const auto& [h2, v] = expect<Cons>(u);
-      const auto& [h3, _] = expect<Cons>(v);
+      auto const& [h1, u] = expect<Cons>(t);
+      auto const& [h2, v] = expect<Cons>(u);
+      auto const& [h3, _] = expect<Cons>(v);
       expect<Nil>(_);
       return expr(Expr::PPi, expect<Symbol>(h1).val, treeExpr(h2), treeExpr(h3));
     } else throw PartialEvalError(R"(symbol must be "Sort", "Var", "App", "Lam" or "Pi")", h);

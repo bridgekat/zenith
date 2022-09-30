@@ -18,21 +18,21 @@ namespace Eval {
   // Parsing error exception
   struct ParsingError: public std::runtime_error {
     size_t startPos, endPos;
-    ParsingError(const std::string& s, size_t startPos, size_t endPos):
+    ParsingError(std::string const& s, size_t startPos, size_t endPos):
       std::runtime_error(s), startPos(startPos), endPos(endPos) {}
   };
 
   // Evaluation error exception
   struct EvalError: public std::runtime_error {
-    const Tree *at, *e;
-    EvalError(const std::string& s, const Tree* at, const Tree* e): std::runtime_error(s), at(at), e(e) {}
-    EvalError(const EvalError&) = default;
-    EvalError& operator=(const EvalError&) = default;
+    Tree const *at, *e;
+    EvalError(std::string const& s, Tree const* at, Tree const* e): std::runtime_error(s), at(at), e(e) {}
+    EvalError(EvalError const&) = default;
+    EvalError& operator=(EvalError const&) = default;
   };
 
   // Throw this to let the most recent call of `Evaluator::eval()` to provide context.
   struct PartialEvalError: public EvalError {
-    PartialEvalError(const std::string& s, const Tree* at): EvalError(s, at, at) {}
+    PartialEvalError(std::string const& s, Tree const* at): EvalError(s, at, at) {}
   };
 
   // Convenient pattern-matching functions (throw customized exceptions on failure)
@@ -71,12 +71,12 @@ namespace Eval {
   class Evaluator {
   public:
     Evaluator();
-    Evaluator(const Evaluator&) = delete;
-    Evaluator& operator=(const Evaluator&) = delete;
+    Evaluator(Evaluator const&) = delete;
+    Evaluator& operator=(Evaluator const&) = delete;
     virtual ~Evaluator() = default;
 
     // Set the string of statements to be evaluated.
-    void setString(const std::string& s) { lexer.setString(s); }
+    void setString(std::string const& s) { lexer.setString(s); }
 
     // Parses next statement (results will be stored).
     bool parseNextStatement();
@@ -115,8 +115,8 @@ namespace Eval {
     std::vector<PrimitiveFunc> prims;
     std::unordered_map<std::string, size_t> namePrims;
 
-    size_t getSymbol(const std::string& name) {
-      const auto it = nameSymbols.find(name);
+    size_t getSymbol(std::string const& name) {
+      auto const it = nameSymbols.find(name);
       if (it != nameSymbols.end()) return it->second;
       size_t id = symbolNames.size();
       symbolNames.push_back(name);
@@ -128,16 +128,16 @@ namespace Eval {
     std::vector<Parsing::NFALexer::NFA> listPatterns(Tree* e);
     std::vector<std::pair<Parsing::Symbol, Parsing::Prec>> listSymbols(Tree* e);
     void setSyntax(Tree* p, Tree* r);
-    Tree* makeList(const std::initializer_list<Tree*>& es);
+    Tree* makeList(std::initializer_list<Tree*> const& es);
 
-    size_t addMacro(const std::string& name, const Closure& cl) {
+    size_t addMacro(std::string const& name, Closure const& cl) {
       size_t id = macros.size();
       macros.push_back(cl);
       nameMacros[name] = id;
       return id;
     }
 
-    size_t addPrimitive(const std::string& name, const PrimitiveFunc& f) {
+    size_t addPrimitive(std::string const& name, PrimitiveFunc const& f) {
       size_t id = prims.size();
       prims.push_back(f);
       namePrims[name] = id;
@@ -147,10 +147,10 @@ namespace Eval {
     bool match(Tree* e, Tree* pat, Tree*& env, bool quoteMode = false);
 
     // Far less efficient than hash tries (HAMTs), but should be enough for current purpose!
-    Tree* extend(Tree* env, const std::string& sym, Tree* e);
-    Tree* lookup(Tree* env, const std::string& sym);
+    Tree* extend(Tree* env, std::string const& sym, Tree* e);
+    Tree* lookup(Tree* env, std::string const& sym);
 
-    std::vector<Tree*> resolve(Parsing::EarleyParser::Location loc, const std::vector<Tree*>& right, size_t maxDepth);
+    std::vector<Tree*> resolve(Parsing::EarleyParser::Location loc, std::vector<Tree*> const& right, size_t maxDepth);
     Tree* resolve(size_t maxDepth = 4096);
     Tree* expand(Tree* e);
     Tree* expandList(Tree* e);

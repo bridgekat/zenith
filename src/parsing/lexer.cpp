@@ -6,11 +6,11 @@ namespace Parsing {
 
   constexpr unsigned int CodeUnits = Lexer::CodeUnits;
 
-  size_t cutFirstCodePoint(const string& s, size_t pos) {
+  size_t cutFirstCodePoint(string const& s, size_t pos) {
     if (pos >= s.size()) return 0;
     size_t i = 1;
     for (; pos + i < s.size(); i++) {
-      char8_t c = s[pos + i];
+      char8_t c = static_cast<char8_t>(s[pos + i]);
       if ((c & 0b11000000) != 0b10000000) break; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
     }
     return i;
@@ -61,13 +61,13 @@ namespace Parsing {
     };
 
     // Initial states
-    for (const auto& initial: patterns) {
+    for (auto const& initial: patterns) {
       s.push_back(initial);
       v[initial] = true;
     }
     closure(v, s);
     for (size_t i = 0; pos + i < str.size(); i++) {
-      char8_t c = str[pos + i];
+      char8_t c = static_cast<char8_t>(str[pos + i]);
       // Reset v[] to all false
       for (State x: s) v[x] = false;
       // Move one step
@@ -100,12 +100,12 @@ namespace Parsing {
   // Function object for the DFA construction from NFA
   class PowersetConstruction {
   public:
-    const NFALexer& nfa;
+    NFALexer const& nfa;
     DFALexer& dfa;
     vector<bool> v;
     unordered_map<vector<bool>, DFALexer::State> mp;
 
-    PowersetConstruction(const NFALexer& nfa, DFALexer& dfa): nfa(nfa), dfa(dfa), v(), mp() {}
+    PowersetConstruction(NFALexer const& nfa, DFALexer& dfa): nfa(nfa), dfa(dfa), v(), mp() {}
 
     void closure(vector<NFALexer::State>& s) {
       // Expand `s` and `v` to epsilon closure (using DFS)
@@ -132,7 +132,7 @@ namespace Parsing {
   dfa.table[s_].tr[c_] = t_
 
     // Invariant: all elements of v[] are false
-    void dfs(DFALexer::State x, const vector<NFALexer::State>& s) {
+    void dfs(DFALexer::State x, vector<NFALexer::State> const& s) {
       // Check if `s` contains accepting states
       optional<size_t> curr;
       for (auto ns: s) {
@@ -176,7 +176,7 @@ namespace Parsing {
       v.resize(nfa.table.size());
       mp.clear();
       // Initial states
-      for (const auto& initial: nfa.patterns) {
+      for (auto const& initial: nfa.patterns) {
         s.push_back(initial);
         v[initial] = true;
       }
@@ -191,7 +191,7 @@ namespace Parsing {
 #undef clearv
   };
 
-  DFALexer::DFALexer(const NFALexer& nfa): Lexer(), table(), initial(0) { PowersetConstruction(nfa, *this)(); }
+  DFALexer::DFALexer(NFALexer const& nfa): Lexer(), table(), initial(0) { PowersetConstruction(nfa, *this)(); }
 
   // Function object for the DFA state minimization
   //   See: https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm
@@ -306,7 +306,7 @@ namespace Parsing {
 
         // Calculate the domain sets for all c's
         for (unsigned int c = 1; c < CodeUnits; c++) dom[c].clear();
-        for (const List* p = cl[curr].head->r; p != cl[curr].head; p = p->r) {
+        for (List const* p = cl[curr].head->r; p != cl[curr].head; p = p->r) {
           // "Examine transitions" - this occurs a limited number of times, see below
           // Note that the total size of dom[] is bounded by this
           for (auto [c, s]: rev[p->x]) dom[c].push_back(s);
@@ -414,7 +414,7 @@ namespace Parsing {
     optional<pair<size_t, size_t>> res = nullopt;
     State s = initial;
     for (size_t i = 0; pos + i < str.size(); i++) {
-      char8_t c = str[pos + i];
+      char8_t c = static_cast<char8_t>(str[pos + i]);
       if (!table[s].has[c]) break;
       s = table[s].tr[c];
       // Update result if reaches accepting state

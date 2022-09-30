@@ -25,25 +25,25 @@ namespace Core {
     enum class LamTag: uint32_t { LLam }; using enum LamTag;
     enum class PiTag: uint32_t { PPi }; using enum PiTag;
 
-    const Tag tag;
+    Tag const tag;
     union {
-      struct { const SortTag tag; } sort;
-      struct { const VarTag tag; const uint64_t id; } var;
-      struct { const Expr *l, *r; } app;
-      struct { const std::string s; const Expr *t, *r; } lam;
-      struct { const std::string s; const Expr *t, *r; } pi;
+      struct { SortTag const tag; } sort;
+      struct { VarTag const tag; uint64_t const id; } var;
+      struct { Expr const *l, *r; } app;
+      struct { std::string const s; Expr const *t, *r; } lam;
+      struct { std::string const s; Expr const *t, *r; } pi;
     };
     // clang-format on
 
     // The constructors below guarantee that all pointers in the "active variant" are valid, if parameters are valid
     Expr(SortTag sorttag): tag(Sort), sort{sorttag} {}
     Expr(VarTag vartag, uint64_t id): tag(Var), var{vartag, id} {}
-    Expr(const Expr* l, const Expr* r): tag(App), app{l, r} {}
-    Expr(LamTag, std::string s, const Expr* t, const Expr* r): tag(Lam), lam{std::move(s), t, r} {}
-    Expr(PiTag, std::string s, const Expr* t, const Expr* r): tag(Pi), pi{std::move(s), t, r} {}
+    Expr(Expr const* l, Expr const* r): tag(App), app{l, r} {}
+    Expr(LamTag, std::string s, Expr const* t, Expr const* r): tag(Lam), lam{std::move(s), t, r} {}
+    Expr(PiTag, std::string s, Expr const* t, Expr const* r): tag(Pi), pi{std::move(s), t, r} {}
 
     // Immutability + non-trivial members in union = impossible to make a copy constructor...
-    Expr(const Expr&) = delete;
+    Expr(Expr const&) = delete;
 
     // Destructor needed for the `std::string` in union
     ~Expr() {
@@ -59,12 +59,12 @@ namespace Core {
 
     // Deep copy whole expression to `pool`
     // O(size)
-    const Expr* clone(Allocator<Expr>& pool) const;
+    Expr const* clone(Allocator<Expr>& pool) const;
 
     // Syntactical equality and hash code (up to alpha-renaming!)
     // O(size)
-    bool operator==(const Expr& rhs) const noexcept;
-    bool operator!=(const Expr& rhs) const noexcept { return !(*this == rhs); }
+    bool operator==(Expr const& rhs) const noexcept;
+    bool operator!=(Expr const& rhs) const noexcept { return !(*this == rhs); }
     size_t hash() const noexcept;
 
     // Give unnamed bound variables a random name
@@ -73,14 +73,14 @@ namespace Core {
     // Print
     // `names` will be unchanged
     // O(size)
-    std::string toString(const Context& ctx, std::vector<std::string>& stk) const;
-    std::string toString(const Context& ctx) const {
+    std::string toString(Context const& ctx, std::vector<std::string>& stk) const;
+    std::string toString(Context const& ctx) const {
       std::vector<std::string> stk;
       return toString(ctx, stk);
     }
 
     // Controls the Π-formation rule
-    constexpr static SortTag imax(SortTag s, SortTag t) {
+    static constexpr SortTag imax(SortTag s, SortTag t) {
       if (s == Expr::SProp || t == Expr::SProp) return Expr::SProp;
       // Mid: `s` and `t` are `Expr::SType` or `Expr::SKind`
       return (s == Expr::SKind || t == Expr::SKind) ? Expr::SKind : Expr::SType;
@@ -93,21 +93,21 @@ namespace Core {
     // (4) Returns `Prop` itself.
     // (Returned pointer lifetime is bound by `this`, `ctx` and `pool`!)
     // Throws exception on failure
-    const Expr* checkType(const Context& ctx, Allocator<Expr>& pool) const {
-      std::vector<const Expr*> stk;
+    Expr const* checkType(Context const& ctx, Allocator<Expr>& pool) const {
+      std::vector<Expr const*> stk;
       std::vector<std::string> names;
       return checkType(ctx, pool, stk, names);
     }
 
     // `stk` and `names` will be unchanged
-    const Expr* checkType(
-      const Context& ctx, Allocator<Expr>& pool, std::vector<const Expr*>& stk, std::vector<std::string>& names
+    Expr const* checkType(
+      Context const& ctx, Allocator<Expr>& pool, std::vector<Expr const*>& stk, std::vector<std::string>& names
     ) const;
 
     // Modification (lifetime of the resulting expression is bounded by `this` and `pool`)
     // n = (number of binders on top of current node)
     template <typename F>
-    const Expr* updateVars(F f, Allocator<Expr>& pool, uint64_t n = 0) const {
+    Expr const* updateVars(F f, Allocator<Expr>& pool, uint64_t n = 0) const {
       using enum Tag; // These are needed to avoid ICE on gcc...
       using enum LamTag;
       using enum PiTag;
@@ -115,18 +115,18 @@ namespace Core {
         case Sort: return this;
         case Var: return f(n, this);
         case App: {
-          const auto l = app.l->updateVars(f, pool, n);
-          const auto r = app.r->updateVars(f, pool, n);
+          auto const l = app.l->updateVars(f, pool, n);
+          auto const r = app.r->updateVars(f, pool, n);
           return (l == app.l && r == app.r) ? this : make(pool, l, r);
         }
         case Lam: {
-          const auto t = lam.t->updateVars(f, pool, n);
-          const auto r = lam.r->updateVars(f, pool, n + 1);
+          auto const t = lam.t->updateVars(f, pool, n);
+          auto const r = lam.r->updateVars(f, pool, n + 1);
           return (t == lam.t && r == lam.r) ? this : make(pool, LLam, lam.s, t, r);
         }
         case Pi: {
-          const auto t = pi.t->updateVars(f, pool, n);
-          const auto r = pi.r->updateVars(f, pool, n + 1);
+          auto const t = pi.t->updateVars(f, pool, n);
+          auto const r = pi.r->updateVars(f, pool, n + 1);
           return (t == pi.t && r == pi.r) ? this : make(pool, PPi, pi.s, t, r);
         }
       }
@@ -135,10 +135,10 @@ namespace Core {
 
     // Make a free variable into an overflow variable.
     // Lifetime of the resulting expression is bounded by `this` and `pool`.
-    const Expr* makeBound(uint64_t id, Allocator<Expr>& pool) const {
-      const Expr* v = nullptr;
+    Expr const* makeBound(uint64_t id, Allocator<Expr>& pool) const {
+      Expr const* v = nullptr;
       return updateVars(
-        [id, &v, &pool](uint64_t n, const Expr* x) {
+        [id, &v, &pool](uint64_t n, Expr const* x) {
           return (x->var.tag == VFree && x->var.id == id) ? (v ? v : v = make(pool, VBound, n)) : x;
         },
         pool
@@ -147,10 +147,9 @@ namespace Core {
 
     // Replace one overflow variable by an expression.
     // Lifetime of the resulting expression is bounded by `this`, `t` and `pool`.
-    const Expr* makeReplace(const Expr* t, Allocator<Expr>& pool) const {
+    Expr const* makeReplace(Expr const* t, Allocator<Expr>& pool) const {
       return updateVars(
-        [t](uint64_t n, const Expr* x) { return (x->var.tag == VBound && x->var.id == n) ? t : x; },
-        pool
+        [t](uint64_t n, Expr const* x) { return (x->var.tag == VBound && x->var.id == n) ? t : x; }, pool
       );
     }
 
@@ -160,7 +159,7 @@ namespace Core {
     // It does not terminate on inputs like (\x => x x x) (\x => x x x).
     // If expression is well-typed, worst case time complexity is O(size * 2^size).
     // Lifetime of the resulting expression is bounded by `this` and `pool`.
-    const Expr* reduce(Allocator<Expr>& pool) const;
+    Expr const* reduce(Allocator<Expr>& pool) const;
 
     // Returns the number of symbols of the expression.
     size_t size() const noexcept;
@@ -176,7 +175,7 @@ namespace Core {
 
     // Convenient constructor
     template <typename... Ts>
-    inline static const Expr* make(Allocator<Expr>& pool, Ts&&... args) {
+    inline static Expr const* make(Allocator<Expr>& pool, Ts&&... args) {
       return pool.emplaceBack(std::forward<Ts>(args)...);
     }
   };
@@ -190,11 +189,11 @@ namespace Core {
 
   // An exception class representing checking failure
   struct InvalidExpr: public std::runtime_error {
-    const Expr* e;
-    explicit InvalidExpr(const std::string& s, const Context& ctx, const Expr* e):
+    Expr const* e;
+    explicit InvalidExpr(std::string const& s, Context const& ctx, Expr const* e):
       std::runtime_error("Invalid expression, " + s + ": " + e->toString(ctx)), e(e) {}
-    InvalidExpr(const InvalidExpr&) = default;
-    InvalidExpr& operator=(const InvalidExpr&) = default;
+    InvalidExpr(InvalidExpr const&) = default;
+    InvalidExpr& operator=(InvalidExpr const&) = default;
   };
 
 }

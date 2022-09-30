@@ -17,8 +17,8 @@ namespace Eval {
     Core::FOLContext ctx;
     Core::Allocator<Core::Expr> epool;
 
-    Tree* exprTree(const Core::Expr* e);
-    const Core::Expr* treeExpr(Tree* e);
+    Tree* exprTree(Core::Expr const* e);
+    Core::Expr const* treeExpr(Tree* e);
   };
 
 }

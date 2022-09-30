@@ -2,7 +2,7 @@
 
 namespace Elab::Procs {
 
-  bool propValue(const Expr* e, const vector<bool>& fvmap) noexcept {
+  bool propValue(Expr const* e, vector<bool> const& fvmap) noexcept {
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
@@ -24,40 +24,34 @@ namespace Elab::Procs {
     unreachable;
   }
 
-  const Expr* nnf(const Expr* e, Allocator<Expr>& pool, bool negated) {
+  Expr const* nnf(Expr const* e, Allocator<Expr>& pool, bool f) {
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
-      case Other: return negated ? FOLForm(Not, e).toExpr(pool) : e;
-      case Equals: return negated ? FOLForm(Not, e).toExpr(pool) : e;
-      case True: return negated ? FOLForm(False).toExpr(pool) : e;
-      case False: return negated ? FOLForm(True).toExpr(pool) : e;
-      case Not: return nnf(fof.unary.e, pool, !negated);
-      case And:
-        return FOLForm(negated ? Or : And, nnf(fof.binary.l, pool, negated), nnf(fof.binary.r, pool, negated))
-          .toExpr(pool);
-      case Or:
-        return FOLForm(negated ? And : Or, nnf(fof.binary.l, pool, negated), nnf(fof.binary.r, pool, negated))
-          .toExpr(pool);
-      case Implies:
-        return FOLForm(negated ? And : Or, nnf(fof.binary.l, pool, !negated), nnf(fof.binary.r, pool, negated))
-          .toExpr(pool);
+      case Other: return f ? FOLForm(Not, e).toExpr(pool) : e;
+      case Equals: return f ? FOLForm(Not, e).toExpr(pool) : e;
+      case True: return f ? FOLForm(False).toExpr(pool) : e;
+      case False: return f ? FOLForm(True).toExpr(pool) : e;
+      case Not: return nnf(fof.unary.e, pool, !f);
+      case And: return FOLForm(f ? Or : And, nnf(fof.binary.l, pool, f), nnf(fof.binary.r, pool, f)).toExpr(pool);
+      case Or: return FOLForm(f ? And : Or, nnf(fof.binary.l, pool, f), nnf(fof.binary.r, pool, f)).toExpr(pool);
+      case Implies: return FOLForm(f ? And : Or, nnf(fof.binary.l, pool, !f), nnf(fof.binary.r, pool, f)).toExpr(pool);
       case Iff: {
-        const auto [mp, mpr] = fof.splitIff(pool);
-        return FOLForm(negated ? Or : And, nnf(mp, pool, negated), nnf(mpr, pool, negated)).toExpr(pool);
+        auto const [mp, mpr] = fof.splitIff(pool);
+        return FOLForm(f ? Or : And, nnf(mp, pool, f), nnf(mpr, pool, f)).toExpr(pool);
       }
-      case Forall: return FOLForm(negated ? Exists : Forall, fof.s, nnf(fof.binder.r, pool, negated)).toExpr(pool);
-      case Exists: return FOLForm(negated ? Forall : Exists, fof.s, nnf(fof.binder.r, pool, negated)).toExpr(pool);
+      case Forall: return FOLForm(f ? Exists : Forall, fof.s, nnf(fof.binder.r, pool, f)).toExpr(pool);
+      case Exists: return FOLForm(f ? Forall : Exists, fof.s, nnf(fof.binder.r, pool, f)).toExpr(pool);
       case Unique: {
-        const auto [exi, no2] = fof.splitUnique(pool);
-        return FOLForm(negated ? Or : And, nnf(exi, pool, negated), nnf(no2, pool, negated)).toExpr(pool);
+        auto const [exi, no2] = fof.splitUnique(pool);
+        return FOLForm(f ? Or : And, nnf(exi, pool, f), nnf(no2, pool, f)).toExpr(pool);
       }
     }
     unreachable;
   }
 
-  const Expr* skolemize(
-    const Expr* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool
+  Expr const* skolemize(
+    Expr const* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool
   ) {
     using enum Expr::VarTag;
     using enum FOLForm::Tag;
@@ -73,26 +67,26 @@ namespace Elab::Procs {
         return skolemize(nnf(e, pool), meta, skolem, metas, pool);
       }
       case And: {
-        const auto l = skolemize(fof.binary.l, meta, skolem, metas, pool);
-        const auto r = skolemize(fof.binary.r, meta, skolem, metas, pool);
+        auto const l = skolemize(fof.binary.l, meta, skolem, metas, pool);
+        auto const r = skolemize(fof.binary.r, meta, skolem, metas, pool);
         return (l == fof.binary.l && r == fof.binary.r) ? e : FOLForm(And, l, r).toExpr(pool);
       }
       case Or: {
-        const auto l = skolemize(fof.binary.l, meta, skolem, metas, pool);
-        const auto r = skolemize(fof.binary.r, meta, skolem, metas, pool);
+        auto const l = skolemize(fof.binary.l, meta, skolem, metas, pool);
+        auto const r = skolemize(fof.binary.r, meta, skolem, metas, pool);
         return (l == fof.binary.l && r == fof.binary.r) ? e : FOLForm(Or, l, r).toExpr(pool);
       }
       case Implies: return skolemize(nnf(e, pool), meta, skolem, metas, pool);
       case Iff: return skolemize(nnf(e, pool), meta, skolem, metas, pool);
       case Forall: {
         metas.push_back(meta);
-        const auto ee = fof.binder.r->makeReplace(pool.emplaceBack(VMeta, meta++), pool);
-        const auto res = skolemize(ee, meta, skolem, metas, pool);
+        auto const ee = fof.binder.r->makeReplace(pool.emplaceBack(VMeta, meta++), pool);
+        auto const res = skolemize(ee, meta, skolem, metas, pool);
         metas.pop_back();
         return res;
       }
       case Exists: {
-        const auto ee = fof.binder.r->makeReplace(makeSkolem(skolem++, metas, pool), pool);
+        auto const ee = fof.binder.r->makeReplace(makeSkolem(skolem++, metas, pool), pool);
         return skolemize(ee, meta, skolem, metas, pool);
       }
       case Unique: return skolemize(nnf(e, pool), meta, skolem, metas, pool);
@@ -101,21 +95,21 @@ namespace Elab::Procs {
   }
 
   template <typename T>
-  vector<T> concat(vector<T> a, const vector<T>& b) {
-    for (const auto& x: b) a.push_back(x);
+  vector<T> concat(vector<T> a, vector<T> const& b) {
+    for (auto const& x: b) a.push_back(x);
     return a;
   }
 
   template <typename T>
-  vector<vector<T>> distrib(const vector<vector<T>>& a, const vector<vector<T>>& b) {
+  vector<vector<T>> distrib(vector<vector<T>> const& a, vector<vector<T>> const& b) {
     vector<vector<T>> res;
-    for (const auto& x: a)
-      for (const auto& y: b) res.push_back(concat(x, y));
+    for (auto const& x: a)
+      for (auto const& y: b) res.push_back(concat(x, y));
     return res;
   }
 
   // TODO: simplification of clauses
-  vector<vector<const Expr*>> cnf(const Expr* e, Allocator<Expr>& pool) {
+  vector<vector<Expr const*>> cnf(Expr const* e, Allocator<Expr>& pool) {
     using enum Expr::VarTag;
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
@@ -136,15 +130,15 @@ namespace Elab::Procs {
     unreachable;
   }
 
-  string showClauses(const vector<vector<const Expr*>>& cs, const Context& ctx) {
+  string showClauses(vector<vector<Expr const*>> const& cs, Context const& ctx) {
     string res = "{";
     bool f = true;
-    for (const auto& c: cs) {
+    for (auto const& c: cs) {
       res += f ? "\n  " : "\n  "; // res += f? " " : ", ";
       f = false;
       res += "{";
       bool g = true;
-      for (const Expr* lit: c) {
+      for (Expr const* lit: c) {
         res += g ? " " : ", ";
         g = false;
         res += FOLForm::fromExpr(lit).toString(ctx);
@@ -156,13 +150,13 @@ namespace Elab::Procs {
   }
 
   /*
-  const Expr* collectClauses(const vector<vector<const Expr*>>& cs, Allocator<Expr>& pool) {
+  Expr const* collectClauses(vector<vector<Expr const*>> const& cs, Allocator<Expr>& pool) {
     using enum FOLForm::Tag;
     // Construct conjunction of disjunctions
-    const Expr* res = nullptr;
-    for (const auto& c: cs) {
-      const Expr* curr = nullptr;
-      for (const Expr* lit: c) {
+    Expr const* res = nullptr;
+    for (auto const& c: cs) {
+      Expr const* curr = nullptr;
+      for (Expr const* lit: c) {
         curr = (curr? FOLForm(Or, curr, lit).toExpr(pool) : lit);
       }
       if (!curr) curr = FOLForm(False).toExpr(pool);
@@ -171,7 +165,7 @@ namespace Elab::Procs {
     if (!res) res = FOLForm(True).toExpr(pool);
     // Add quantifiers for universals (metas)
     // uint64_t m = res->numMeta();
-    // res = res->updateVars([m, &pool] (uint64_t n, const Expr* x) {
+    // res = res->updateVars([m, &pool] (uint64_t n, Expr const* x) {
     //   return (x->var.tag == Expr::VMeta)? pool.emplaceBack(Expr::VBound, n + m - 1 - x->var.id) : x;
     // }, pool);
     // for (uint64_t i = 0; i < m; i++) res = FOLForm(Forall, "", res).toExpr(pool);
@@ -179,7 +173,7 @@ namespace Elab::Procs {
   }
   */
 
-  string showSubs(const Subs& subs, const Context& ctx) {
+  string showSubs(Subs const& subs, Context const& ctx) {
     using enum Expr::VarTag;
     string res;
     for (size_t i = 0; i < subs.size(); i++)
@@ -187,7 +181,7 @@ namespace Elab::Procs {
     return res;
   }
 
-  bool equalAfterSubs(const Expr* lhs, const Expr* rhs, const Subs& subs) noexcept {
+  bool equalAfterSubs(Expr const* lhs, Expr const* rhs, Subs const& subs) noexcept {
     using enum Expr::Tag;
     using enum Expr::VarTag;
     // Check if an undetermined variable has been replaced
@@ -216,7 +210,7 @@ namespace Elab::Procs {
 
     Antiunifier(Allocator<Expr>& pool): pool(pool), ls(), rs() {}
 
-    const Expr* dfs(const Expr* lhs, const Expr* rhs) {
+    Expr const* dfs(Expr const* lhs, Expr const* rhs) {
       using enum Expr::Tag;
       // If roots are different, return this
       auto different = [this, lhs, rhs]() {
@@ -231,51 +225,51 @@ namespace Elab::Procs {
         case Sort: return (lhs->sort.tag == rhs->sort.tag) ? lhs : different();
         case Var: return (lhs->var.tag == rhs->var.tag && lhs->var.id == rhs->var.id) ? lhs : different();
         case App: {
-          const auto l = dfs(lhs->app.l, rhs->app.l);
-          const auto r = dfs(lhs->app.r, rhs->app.r);
+          auto const l = dfs(lhs->app.l, rhs->app.l);
+          auto const r = dfs(lhs->app.r, rhs->app.r);
           return (l == lhs->app.l && r == lhs->app.r) ? lhs : pool.emplaceBack(l, r);
         }
         case Lam: {
-          const auto t = dfs(lhs->lam.t, rhs->lam.t);
-          const auto r = dfs(lhs->lam.r, rhs->lam.r);
+          auto const t = dfs(lhs->lam.t, rhs->lam.t);
+          auto const r = dfs(lhs->lam.r, rhs->lam.r);
           return (t == lhs->lam.t && r == lhs->lam.r) ? lhs : pool.emplaceBack(Expr::LLam, lhs->lam.s, t, r);
         }
         case Pi: {
-          const auto t = dfs(lhs->pi.t, rhs->pi.t);
-          const auto r = dfs(lhs->pi.r, rhs->pi.r);
+          auto const t = dfs(lhs->pi.t, rhs->pi.t);
+          auto const r = dfs(lhs->pi.r, rhs->pi.r);
           return (t == lhs->pi.t && r == lhs->pi.r) ? lhs : pool.emplaceBack(Expr::PPi, lhs->pi.s, t, r);
         }
       }
       unreachable;
     }
 
-    tuple<const Expr*, Subs, Subs> operator()(const Expr* lhs, const Expr* rhs) {
+    tuple<Expr const*, Subs, Subs> operator()(Expr const* lhs, Expr const* rhs) {
       ls.clear();
       rs.clear();
-      const Expr* c = dfs(lhs, rhs);
+      Expr const* c = dfs(lhs, rhs);
       return {c, ls, rs};
     }
   };
 
-  tuple<const Expr*, Subs, Subs> antiunify(const Expr* lhs, const Expr* rhs, Allocator<Expr>& pool) {
+  tuple<Expr const*, Subs, Subs> antiunify(Expr const* lhs, Expr const* rhs, Allocator<Expr>& pool) {
     return Antiunifier(pool)(lhs, rhs);
   }
 
   // The Robinson's unification algorithm (could take exponential time for certain cases).
   // See: https://en.wikipedia.org/wiki/Unification_(computer_science)#A_unification_algorithm
-  optional<Subs> unify(vector<pair<const Expr*, const Expr*>> a, Allocator<Expr>& pool) {
+  optional<Subs> unify(vector<pair<Expr const*, Expr const*>> a, Allocator<Expr>& pool) {
     using enum Expr::Tag;
     using enum Expr::VarTag;
     Subs res;
 
     // Add a new substitution to `res`, then update the rest of `a` to eliminate the variable with id `id`.
-    auto putsubs = [&res, &pool, &a](uint64_t id, const Expr* e, size_t i0) {
+    auto putsubs = [&res, &pool, &a](uint64_t id, Expr const* e, size_t i0) {
       // Make enough space
       while (id >= res.size()) res.push_back(nullptr);
       // id < res.size()
       res[id] = e;
       // Update the rest of `a`
-      auto f = [id, e](uint64_t, const Expr* x) { return (x->var.tag == VMeta && x->var.id == id) ? e : x; };
+      auto f = [id, e](uint64_t, Expr const* x) { return (x->var.tag == VMeta && x->var.id == id) ? e : x; };
       for (size_t i = i0; i < a.size(); i++) {
         a[i].first = a[i].first->updateVars(f, pool);
         a[i].second = a[i].second->updateVars(f, pool);
@@ -285,7 +279,7 @@ namespace Elab::Procs {
     // Each step transforms `a` into an equivalent set of equations
     // (in `a` and `res`; the latter contains equations in triangular/solved form.)
     for (size_t i = 0; i < a.size(); i++) {
-      const Expr *lhs = a[i].first, *rhs = a[i].second;
+      Expr const *lhs = a[i].first, *rhs = a[i].second;
       if (lhs->tag == Var && lhs->var.tag == VMeta) {
         if (*lhs != *rhs) {
           // Variable elimination on the left.

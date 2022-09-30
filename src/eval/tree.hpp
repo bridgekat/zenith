@@ -30,30 +30,30 @@ namespace Eval {
   struct BasicTree;
   template <typename T>
   struct BasicNil {
-    bool operator==(const BasicNil&) const noexcept = default;
+    bool operator==(BasicNil const&) const noexcept = default;
   };
   template <typename T>
   struct BasicCons {
     T *head, *tail;
-    bool operator==(const BasicCons& r) const noexcept { return *head == *r.head && *tail == *r.tail; };
+    bool operator==(BasicCons const& r) const noexcept { return *head == *r.head && *tail == *r.tail; };
   };
   template <typename T, typename... Ts>
   struct BasicTree {
     std::variant<BasicNil<T>, BasicCons<T>, Ts...> v{};
-    bool operator==(const BasicTree&) const noexcept = default;
+    bool operator==(BasicTree const&) const noexcept = default;
   };
 
   // clang-format off
   // Concrete atom types for Tree
   class Tree;
-  struct Symbol  { std::string val;           bool operator==(const Symbol&)   const noexcept = default; };
-  struct Prim    { size_t id;                 bool operator==(const Prim&)     const noexcept = default; };
-  struct Nat64   { uint64_t val;              bool operator==(const Nat64&)    const noexcept = default; };
-  struct String  { std::string val;           bool operator==(const String&)   const noexcept = default; };
-  struct Bool    { bool val;                  bool operator==(const Bool&)     const noexcept = default; };
-  struct Unit    {                            bool operator==(const Unit&)     const noexcept = default; };
-  struct Closure { Tree* env, * formal, * es; bool operator==(const Closure&)  const noexcept = default; };
-  struct Native  { std::any val;              bool operator==(const Native& r) const noexcept { return this == &r; } };
+  struct Symbol  { std::string val;           bool operator==(Symbol const&)   const noexcept = default; };
+  struct Prim    { size_t id;                 bool operator==(Prim const&)     const noexcept = default; };
+  struct Nat64   { uint64_t val;              bool operator==(Nat64 const&)    const noexcept = default; };
+  struct String  { std::string val;           bool operator==(String const&)   const noexcept = default; };
+  struct Bool    { bool val;                  bool operator==(Bool const&)     const noexcept = default; };
+  struct Unit    {                            bool operator==(Unit const&)     const noexcept = default; };
+  struct Closure { Tree* env, * formal, * es; bool operator==(Closure const&)  const noexcept = default; };
+  struct Native  { std::any val;              bool operator==(Native const& r) const noexcept { return this == &r; } };
   // clang-format on
 
   class Tree;
@@ -81,15 +81,15 @@ namespace Eval {
     Tree(Unit const& x): VarType{x} {}
     Tree(Closure const& x): VarType{x} {}
     Tree(Native const& x): VarType{x} {}
-    bool operator==(const Tree&) const noexcept = default;
+    bool operator==(Tree const&) const noexcept = default;
 
     Tree* clone(Core::Allocator<Tree>& pool, Tree* nil, Tree* unit) const;
 
     std::string toString() const;
-    std::pair<bool, std::string> toStringUntil(const Tree* p) const;
+    std::pair<bool, std::string> toStringUntil(Tree const* p) const;
 
-    static std::string escapeString(const std::string& s);
-    static std::string unescapeString(const std::string& s);
+    static std::string escapeString(std::string const& s);
+    static std::string unescapeString(std::string const& s);
   };
 
   /*

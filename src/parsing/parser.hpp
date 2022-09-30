@@ -57,20 +57,20 @@ namespace Parsing {
     bool eof() const noexcept { return lexer.eof(); }
     auto getStartSymbol() const noexcept { return startSymbol; }
     auto getIgnoredSymbol() const noexcept { return ignoredSymbol; }
-    const auto& getPattern(size_t i) const noexcept { return patterns[i]; }
-    const auto& getRule(size_t i) const noexcept { return rules[i]; }
+    auto const& getPattern(size_t i) const noexcept { return patterns[i]; }
+    auto const& getRule(size_t i) const noexcept { return rules[i]; }
 
     // Result getters (referred data remain unchanged until next parse)
-    const auto& getSentence() const noexcept { return sentence; }
-    const auto& getForest() const noexcept { return dpa; }
+    auto const& getSentence() const noexcept { return sentence; }
+    auto const& getForest() const noexcept { return dpa; }
     auto popErrors() { return std::exchange(errors, {}); }
 
     // Run parsing algorithm
     bool nextSentence();
 
     // Debug output
-    string showState(const LinkedState& ls, const vector<string>& names) const;
-    string showStates(const vector<string>& names) const;
+    string showState(LinkedState const& ls, vector<string> const& names) const;
+    string showStates(vector<string> const& names) const;
 
   private:
     Lexer& lexer;                        // Token stream
@@ -90,7 +90,7 @@ namespace Parsing {
     // The parsing algorithm
     void process();
     pair<bool, optional<Token>> run();
-    ErrorInfo lastError(size_t startPos, size_t endPos, const optional<Symbol>& got) const;
+    ErrorInfo lastError(size_t startPos, size_t endPos, optional<Symbol> const& got) const;
   };
 
 }

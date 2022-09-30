@@ -38,7 +38,7 @@ namespace Parsing {
     bool eof() const noexcept { return pos >= str.size(); }
     size_t position() const noexcept { return pos; }
     void setPosition(size_t p) noexcept { pos = p; }
-    void setString(const string& s) { pos = 0, str = s; }
+    void setString(string const& s) { pos = 0, str = s; }
 
     optional<Token> nextToken();
     vector<ErrorInfo> popErrors() { return std::exchange(errors, {}); }
@@ -95,7 +95,7 @@ namespace Parsing {
     NFA chars(Ts... a) {
       return charsvec({static_cast<char8_t>(a)...});
     }
-    NFA charsvec(const vector<char8_t>& ls) {
+    NFA charsvec(vector<char8_t> const& ls) {
       node(s);
       node(t);
       for (auto c: ls) trans(s, c, t);
@@ -106,7 +106,7 @@ namespace Parsing {
     NFA except(Ts... a) {
       return exceptvec({static_cast<char8_t>(a)...});
     }
-    NFA exceptvec(const vector<char8_t>& ls) {
+    NFA exceptvec(vector<char8_t> const& ls) {
       array<bool, CodeUnits> f{};
       for (auto c: ls) f[c] = true;
       node(s);
@@ -122,7 +122,7 @@ namespace Parsing {
       for (unsigned int i = a; i <= b; i++) trans(s, i, t);
       return {s, t};
     }
-    NFA word(const vector<char8_t>& word) {
+    NFA word(vector<char8_t> const& word) {
       node(s);
       State t = s;
       for (char8_t c: word) {
@@ -137,7 +137,7 @@ namespace Parsing {
     NFA alt(Ts... a) {
       return altvec({a...});
     }
-    NFA altvec(const vector<NFA>& ls) {
+    NFA altvec(vector<NFA> const& ls) {
       node(s);
       node(t);
       for (auto a: ls) {
@@ -151,7 +151,7 @@ namespace Parsing {
     NFA concat(Ts... a) {
       return concatvec({a...});
     }
-    NFA concatvec(const vector<NFA>& ls) {
+    NFA concatvec(vector<NFA> const& ls) {
       if (ls.empty()) unreachable;
       for (size_t i = 0; i + 1 < ls.size(); i++) {
         auto a = ls[i], b = ls[i + 1];
@@ -201,7 +201,7 @@ namespace Parsing {
     using State = size_t;
 
     // Create DFA from NFA
-    explicit DFALexer(const NFALexer& nfa);
+    explicit DFALexer(NFALexer const& nfa);
 
     // Optimize DFA
     void optimize();

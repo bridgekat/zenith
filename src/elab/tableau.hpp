@@ -19,18 +19,18 @@ namespace Elab {
   using std::unordered_set;
   using namespace Core;
 
-  // "Expression with hash" (a wrapper for `const Expr*` that overloads the `==` operator)
+  // "Expression with hash" (a wrapper for `Expr const*` that overloads the `==` operator)
   struct ExprHash {
-    const Expr* e;
+    Expr const* e;
     size_t hash;
 
     // `*e` should not be changed after this construction
-    explicit ExprHash(const Expr* e) noexcept: e(e), hash(e->hash()) {}
-    bool operator==(const ExprHash& r) const noexcept { return hash == r.hash && *e == *(r.e); }
-    bool operator!=(const ExprHash& r) const noexcept { return hash != r.hash || *e != *(r.e); }
+    explicit ExprHash(Expr const* e) noexcept: e(e), hash(e->hash()) {}
+    bool operator==(ExprHash const& r) const noexcept { return hash == r.hash && *e == *(r.e); }
+    bool operator!=(ExprHash const& r) const noexcept { return hash != r.hash || *e != *(r.e); }
 
     struct GetHash {
-      size_t operator()(const ExprHash& eh) const noexcept { return eh.hash; }
+      size_t operator()(ExprHash const& eh) const noexcept { return eh.hash; }
     };
   };
 
@@ -65,7 +65,7 @@ namespace Elab {
     enum Type : unsigned int { Iota, Alpha, Beta, Gamma, GammaRe, Delta, N };
 
     struct Branch {
-      vector<const Expr*> cedents[N][2];
+      vector<Expr const*> cedents[N][2];
       unordered_set<ExprHash, ExprHash::GetHash> hashset[2];
       size_t indices[N][2];
       vector<bool> betaUsed[2];
@@ -75,12 +75,12 @@ namespace Elab {
       vector<size_t> timestamps[N][2];    // DEBUG CODE
       vector<size_t> numUniversals[N][2]; // DEBUG CODE
 
-      bool operator==(const Branch& r) const noexcept = default;
+      bool operator==(Branch const& r) const noexcept = default;
     };
 
-    Tableau(const Context& ctx) noexcept: pools(), ctx(ctx), branch{}, cont(), numSkolem{}, maxDepth{}, maxTabDepth{} {}
+    Tableau(Context const& ctx) noexcept: pools(), ctx(ctx), branch{}, cont(), numSkolem{}, maxDepth{}, maxTabDepth{} {}
 
-    void addAntecedent(const Expr* e) {
+    void addAntecedent(Expr const* e) {
       auto it = branch.hashset[L].insert(ExprHash(e));
       if (it.second) {
         unsigned int i = classify(L, e);
@@ -91,7 +91,7 @@ namespace Elab {
       }
     }
 
-    void addSuccedent(const Expr* e) {
+    void addSuccedent(Expr const* e) {
       auto it = branch.hashset[R].insert(ExprHash(e));
       if (it.second) {
         unsigned int i = classify(R, e);
@@ -134,7 +134,7 @@ namespace Elab {
 
   private:
     vector<Allocator<Expr>> pools;
-    const Context& ctx;
+    Context const& ctx;
 
     Branch branch; // Current branch
 
@@ -148,13 +148,13 @@ namespace Elab {
     friend class WithCedent;
 
     static Position invert(Position pos) noexcept { return (pos == L) ? R : L; };
-    static Type classify(Position antesucc, const Expr* e) noexcept;
-    void applySubs(const Procs::Subs& subs, bool assertNoChange);
+    static Type classify(Position antesucc, Expr const* e) noexcept;
+    void applySubs(Procs::Subs const& subs, bool assertNoChange);
     bool dfs(size_t depth);
 
-    void checkBranch(const Branch& b);
+    void checkBranch(Branch const& b);
     void check();
-    void debughtml(const string& filename);
+    void debughtml(string const& filename);
   };
 
 }

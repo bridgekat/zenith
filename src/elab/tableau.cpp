@@ -17,7 +17,7 @@ namespace Elab {
 
   // Simple case: disjoint
   /*
-  Subs simpleCompose(const Subs& a, const Subs& b) noexcept {
+  Subs simpleCompose(Subs const& a, Subs const& b) noexcept {
     Subs res(std::max(a.size(), b.size()), nullptr);
     for (size_t i = 0; i < res.size(); i++) {
       bool af = i < a.size() && a[i], bf = i < b.size() && b[i];
@@ -41,7 +41,7 @@ namespace Elab {
     return "?";
   }
 
-  Tableau::Type Tableau::classify(Position antesucc, const Expr* e) noexcept {
+  Tableau::Type Tableau::classify(Position antesucc, Expr const* e) noexcept {
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
     switch (antesucc) {
@@ -82,14 +82,14 @@ namespace Elab {
   }
 
   // Apply `subs` to all of `cont`
-  void Tableau::applySubs(const Subs& subs, [[maybe_unused]] bool assertNoChange) {
+  void Tableau::applySubs(Subs const& subs, [[maybe_unused]] bool assertNoChange) {
     for (size_t ind = 0; ind < cont.size(); ind++) {
       auto& branch = cont[ind];
       branch.hashset[L].clear();
       branch.hashset[R].clear();
       for (unsigned int i = 0; i < N; i++) {
         for (auto& e: branch.cedents[i][L]) {
-          const Expr* newe = Procs::applySubs(e, subs, pools.back());
+          Expr const* newe = Procs::applySubs(e, subs, pools.back());
 #ifdef CHECK_INVARIANTS
           if (assertNoChange && *e != *newe) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
@@ -106,7 +106,7 @@ namespace Elab {
           branch.hashset[L].insert(ExprHash(e));
         }
         for (auto& e: branch.cedents[i][R]) {
-          const Expr* newe = Procs::applySubs(e, subs, pools.back());
+          Expr const* newe = Procs::applySubs(e, subs, pools.back());
 #ifdef CHECK_INVARIANTS
           if (assertNoChange && *e != *newe) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
@@ -127,7 +127,7 @@ namespace Elab {
   }
 
   // Check if `subs` does not contain variables with ID less than `offset`
-  bool subsStartsFrom(const Subs& subs, size_t offset) {
+  bool subsStartsFrom(Subs const& subs, size_t offset) {
     for (size_t i = 0; i < subs.size() && i < offset; i++)
       if (subs[i]) return false;
     return true;
@@ -137,10 +137,11 @@ namespace Elab {
   template <typename T>
   class WithValue {
   public:
-    T *p, prev;
-    WithValue(T* p, const T& value): p(p), prev(*p) { *p = value; }
-    WithValue(const WithValue&) = delete;
-    WithValue& operator=(const WithValue&) = delete;
+    T* const p;
+    T const prev;
+    WithValue(T* p, T const& value): p(p), prev(*p) { *p = value; }
+    WithValue(WithValue const&) = delete;
+    WithValue& operator=(WithValue const&) = delete;
     ~WithValue() { *p = prev; }
   };
 
@@ -153,7 +154,7 @@ namespace Elab {
     ExprHash ehash;
     bool inserted, reAdd;
 
-    WithCedent(Tableau* p, const Expr* e, Tableau::Position pos, bool* closed, bool reAdd = false):
+    WithCedent(Tableau* p, Expr const* e, Tableau::Position pos, bool* closed, bool reAdd = false):
       p(p), i(Tableau::classify(pos, e)), pos(pos), ehash(ExprHash(e)), inserted(false), reAdd(reAdd) {
       if (reAdd) i = Tableau::Type::GammaRe;
       inserted = p->branch.hashset[pos].insert(ehash).second;
@@ -166,8 +167,8 @@ namespace Elab {
         if (i == Tableau::Type::Beta) p->branch.betaUsed[pos].push_back(false);
       }
     }
-    WithCedent(const WithCedent&) = delete;
-    WithCedent& operator=(const WithCedent&) = delete;
+    WithCedent(WithCedent const&) = delete;
+    WithCedent& operator=(WithCedent const&) = delete;
     ~WithCedent() {
       if (inserted || reAdd) {
         p->branch.cedents[i][pos].pop_back();
@@ -217,7 +218,7 @@ namespace Elab {
 #define pool pools.back()
 
     // Iota
-    auto iota = [this, closing, depth](Position pos, const Expr* e) {
+    auto iota = [this, closing, depth](Position pos, Expr const* e) {
       // Try unify and close branch (no need to check for other closures...)
       // TODO: try optimise candidate selection...
       vector<Subs> unifiers;
@@ -247,7 +248,7 @@ namespace Elab {
       if (!unifiers.empty()) {
         backtrackPoints++;
         vector<Branch> backup = cont;
-        for (const Subs& unifier: unifiers) {
+        for (Subs const& unifier: unifiers) {
           pools.emplace_back();
           applySubs(unifier, false);
 #ifdef CHECK_INVARIANTS
@@ -266,14 +267,14 @@ namespace Elab {
     };
 
     // Unary
-    auto unary = [this, closing, depth](Position pos, const Expr* e) {
+    auto unary = [this, closing, depth](Position pos, Expr const* e) {
       bool closed = false;
       WithCedent g(this, e, pos, &closed);
       return closed ? closing(depth) : dfs(depth);
     };
 
     // Alpha
-    auto alpha = [this, closing, depth](Position pos1, const Expr* e1, Position pos2, const Expr* e2) {
+    auto alpha = [this, closing, depth](Position pos1, Expr const* e1, Position pos2, Expr const* e2) {
       bool closed = false;
       WithCedent g1(this, e1, pos1, &closed);
       WithCedent g2(this, e2, pos2, &closed);
@@ -281,7 +282,7 @@ namespace Elab {
     };
 
     // Beta
-    auto beta = [this, closing, depth](Position pos1, const Expr* e1, Position pos2, const Expr* e2) {
+    auto beta = [this, closing, depth](Position pos1, Expr const* e1, Position pos2, Expr const* e2) {
       if (e1->size() >= e2->size()) {
         std::swap(pos1, pos2);
         std::swap(e1, e2);
@@ -318,11 +319,11 @@ namespace Elab {
     using enum Expr::VarTag;
 
     // Gamma
-    auto gamma = [this, closing, depth](Position pos, const Expr* e, bool reentrant) {
+    auto gamma = [this, closing, depth](Position pos, Expr const* e, bool reentrant) {
       // TODO: selection in reentrant gamma expansions
       bool closed = false;
       size_t id = branch.numUniversal;
-      const Expr* body = e->app.r->lam.r->makeReplace(pool.emplaceBack(VMeta, id), pool);
+      Expr const* body = e->app.r->lam.r->makeReplace(pool.emplaceBack(VMeta, id), pool);
       WithValue gn(&branch.numUniversal, branch.numUniversal + 1);
       WithCedent g(this, body, pos, &closed);
 
@@ -340,12 +341,12 @@ namespace Elab {
     };
 
     // Delta
-    auto delta = [this, closing, depth](Position pos, const Expr* e) {
+    auto delta = [this, closing, depth](Position pos, Expr const* e) {
       bool closed = false;
       size_t id = numSkolem + ctx.size();
       vector<uint64_t> metas;
       for (uint64_t i = 0; i < branch.numUniversal; i++) metas.push_back(i);
-      const Expr* body = e->app.r->lam.r->makeReplace(Procs::makeSkolem(id, metas, pool), pool);
+      Expr const* body = e->app.r->lam.r->makeReplace(Procs::makeSkolem(id, metas, pool), pool);
       WithValue gn(&numSkolem, numSkolem + 1);
       WithCedent g(this, body, pos, &closed);
       return closed ? closing(depth) : dfs(depth);
@@ -359,7 +360,7 @@ namespace Elab {
 
       // Left logical rules (try breaking down one antecedent)
       if (antei < ante.size()) {
-        const Expr* e = ante[antei];
+        Expr const* e = ante[antei];
         WithValue gi(&antei, antei + 1);
         if (!(classify(L, e) == i || (classify(L, e) == Gamma && i == GammaRe))) unreachable;
         auto fof = FOLForm::fromExpr(e);
@@ -373,13 +374,13 @@ namespace Elab {
           case Or: unreachable;
           case Implies: unreachable;
           case Iff: {
-            const auto [mp, mpr] = fof.splitIff(pool);
+            auto const [mp, mpr] = fof.splitIff(pool);
             return alpha(L, mp, L, mpr);
           }
           case Forall: return gamma(L, e, false);
           case Exists: return delta(L, e);
           case Unique: {
-            const auto [exi, no2] = fof.splitUnique(pool);
+            auto const [exi, no2] = fof.splitUnique(pool);
             return alpha(L, exi, L, no2);
           }
         }
@@ -388,7 +389,7 @@ namespace Elab {
 
       // Right logical rules (try breaking down one succedent)
       if (succi < succ.size()) {
-        const Expr* e = succ[succi];
+        Expr const* e = succ[succi];
         WithValue gi(&succi, succi + 1);
         if (!(classify(R, e) == i || (classify(R, e) == Gamma && i == GammaRe))) unreachable;
         auto fof = FOLForm::fromExpr(e);
@@ -423,7 +424,7 @@ namespace Elab {
 
       for (size_t ii = 0; ii < ante.size(); ii++)
         if (!anteu[ii]) {
-          const Expr* e = ante[ii];
+          Expr const* e = ante[ii];
           anteu[ii] = true;
           bool res = false;
           auto fof = FOLForm::fromExpr(e);
@@ -437,7 +438,7 @@ namespace Elab {
         }
       for (size_t ii = 0; ii < succ.size(); ii++)
         if (!succu[ii]) {
-          const Expr* e = succ[ii];
+          Expr const* e = succ[ii];
           // Ahhhhhhh this is too messy
           succu[ii] = true;
           bool res = false;
@@ -445,11 +446,11 @@ namespace Elab {
           switch (fof.tag) {
             case And: res = beta(R, fof.binary.l, R, fof.binary.r); break;
             case Iff: {
-              const auto [mp, mpr] = fof.splitIff(pool);
+              auto const [mp, mpr] = fof.splitIff(pool);
               res = beta(R, mp, R, mpr);
             } break;
             case Unique: {
-              const auto [exi, no2] = fof.splitUnique(pool);
+              auto const [exi, no2] = fof.splitUnique(pool);
               res = beta(R, exi, R, no2);
             } break;
             default: unreachable;
@@ -465,7 +466,7 @@ namespace Elab {
       auto &ante = branch.cedents[i][L], &succ = branch.cedents[i][R];
       size_t &antei = branch.indices[i][L], &succi = branch.indices[i][R];
       for (size_t ii = antei; ii < ante.size(); ii++) {
-        const Expr* e = ante[ii];
+        Expr const* e = ante[ii];
         WithValue gi(&antei, ii + 1);
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
@@ -476,7 +477,7 @@ namespace Elab {
         }
       }
       for (size_t ii = succi; ii < succ.size(); ii++) {
-        const Expr* e = succ[ii];
+        Expr const* e = succ[ii];
         WithValue gi(&succi, ii + 1);
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
@@ -534,9 +535,9 @@ namespace Elab {
     string res;
     res += "+------------------------------------\n";
     for (unsigned int i = 0; i < N; i++)
-      for (const Expr* e: branch.cedents[i][L]) res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
+      for (Expr const* e: branch.cedents[i][L]) res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     for (unsigned int i = 0; i < N; i++)
-      for (const Expr* e: branch.cedents[i][R]) res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
+      for (Expr const* e: branch.cedents[i][R]) res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     res += "+------------------------------------\n";
     return res;
   }
@@ -546,11 +547,11 @@ namespace Elab {
     res += "+------------------------------------\n";
     for (unsigned int i = 0; i < N; i++) {
       res += "| (" + typeToString(i) + ") " + std::to_string(branch.indices[i][L]) + "\n";
-      for (const Expr* e: branch.cedents[i][L]) res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
+      for (Expr const* e: branch.cedents[i][L]) res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     }
     for (unsigned int i = 0; i < N; i++) {
       res += "| (" + typeToString(i) + ") " + std::to_string(branch.indices[i][R]) + "\n";
-      for (const Expr* e: branch.cedents[i][R]) res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
+      for (Expr const* e: branch.cedents[i][R]) res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     }
     res += "+------------------------------------\n";
     return res;
@@ -566,11 +567,11 @@ namespace Elab {
     return res;
   }
 
-  void Tableau::checkBranch(const Branch& b) {
+  void Tableau::checkBranch(Branch const& b) {
     unordered_set<ExprHash, ExprHash::GetHash> ths[2] = {b.hashset[0], b.hashset[1]};
     for (unsigned int i = 0; i < N; i++) {
       for (unsigned int pos = 0; pos < 2; pos++) {
-        for (const Expr* e: b.cedents[i][pos]) {
+        for (Expr const* e: b.cedents[i][pos]) {
           if (!ths[pos].contains(ExprHash(e))) {
             std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
             std::cout << "    " << e->toString(ctx) << std::endl;
@@ -582,16 +583,16 @@ namespace Elab {
     }
     for (unsigned int i = 0; i < N; i++) {
       for (unsigned int pos = 0; pos < 2; pos++) {
-        for (const Expr* e: b.cedents[i][pos]) { ths[pos].erase(ExprHash(e)); }
+        for (Expr const* e: b.cedents[i][pos]) { ths[pos].erase(ExprHash(e)); }
       }
     }
-    for (const ExprHash& eh: ths[0]) {
+    for (ExprHash const& eh: ths[0]) {
       std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
       std::cout << "    " << eh.e->toString(ctx) << std::endl;
       std::cout << "not found in cedents." << std::endl;
       unreachable;
     }
-    for (const ExprHash& eh: ths[1]) {
+    for (ExprHash const& eh: ths[1]) {
       std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
       std::cout << "    " << eh.e->toString(ctx) << std::endl;
       std::cout << "not found in cedents." << std::endl;
@@ -603,14 +604,14 @@ namespace Elab {
 #ifdef CHECK_INVARIANTS
     checkBranch(branch);
     for (size_t ind = 0; ind < cont.size(); ind++) {
-      const Branch& branch = cont[ind];
+      Branch const& branch = cont[ind];
       checkBranch(branch);
       if (branch.cedents[β][L].size() != branch.betaUsed[L].size()) unreachable;
       if (branch.cedents[β][R].size() != branch.betaUsed[R].size()) unreachable;
       for (unsigned int i = 0; i < N; i++) {
         if (branch.cedents[i][L].size() != branch.timestamps[i][L].size()) unreachable;
         if (branch.cedents[i][L].size() != branch.numUniversals[i][L].size()) unreachable;
-        for (const Expr* e: branch.cedents[i][L]) {
+        for (Expr const* e: branch.cedents[i][L]) {
           if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
             std::cout << "Branch has numUniversal = " << branch.numUniversal << std::endl;
@@ -622,7 +623,7 @@ namespace Elab {
         }
         if (branch.cedents[i][R].size() != branch.timestamps[i][R].size()) unreachable;
         if (branch.cedents[i][R].size() != branch.numUniversals[i][R].size()) unreachable;
-        for (const Expr* e: branch.cedents[i][R]) {
+        for (Expr const* e: branch.cedents[i][R]) {
           if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
             std::cout << "Branch has numUniversal = " << branch.numUniversal << std::endl;
@@ -637,7 +638,7 @@ namespace Elab {
 #endif
   }
 
-  void Tableau::debughtml(const string& filename) {
+  void Tableau::debughtml(string const& filename) {
     using std::endl;
     std::ofstream out(filename + ".html");
 
@@ -652,14 +653,14 @@ namespace Elab {
     out << "<p>Maximum beta-depth: " << maxTabDepth << "</p>";
 
     out << "<table><tbody><tr>";
-    auto printBranch = [this, &out](const Branch& b, const string& name) {
+    auto printBranch = [this, &out](Branch const& b, string const& name) {
       struct Item {
         size_t timestamp;
         unsigned int pos, type;
         bool active;
         size_t numUniversal;
-        const Expr* e;
-        auto operator<=>(const Item&) const = default;
+        Expr const* e;
+        auto operator<=>(Item const&) const = default;
       };
 
       out << "<td style=\"border: 1px solid black; padding: 10px; width: 480px;\">";

@@ -29,10 +29,10 @@ namespace Eval {
     vector<ParsingError> res;
     // See:
     // https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
-    for (const auto& e: lexer.popErrors()) {
+    for (auto const& e: lexer.popErrors()) {
       res.emplace_back("Parsing error, unexpected characters: " + e.lexeme, e.startPos, e.endPos);
     }
-    for (const auto& e: parser.popErrors()) {
+    for (auto const& e: parser.popErrors()) {
       string s = "Parsing error, expected one of: ";
       for (Parsing::Symbol sym: e.expected) s += "<" + symbolNames[sym] + ">, ";
       if (e.got) s += "got token <" + symbolNames[*e.got] + ">";
@@ -64,7 +64,7 @@ namespace Eval {
       return true;
     }
     if (holds<Cons>(pat)) {
-      const auto& [h, t] = get<Cons>(pat);
+      auto const& [h, t] = get<Cons>(pat);
       if (holds<Symbol>(h)) {
         string sym = get<Symbol>(h).val;
         if (sym == "quote" && !quoteMode) return match(e, expect<Cons>(t).head, env, true);   // Enter quote mode
@@ -77,14 +77,14 @@ namespace Eval {
     return *e == *pat;
   }
 
-  vector<char8_t> stringToCharVec(const string& s) {
+  vector<char8_t> stringToCharVec(string const& s) {
     vector<char8_t> res;
     for (char c: s) res.push_back(static_cast<char8_t>(c));
     return res;
   }
 
   NFALexer::NFA Evaluator::treePattern(Tree* e) {
-    const auto& [tag, t] = expect<Cons>(e);
+    auto const& [tag, t] = expect<Cons>(e);
     string stag = expect<Symbol>(tag).val;
     if (stag == "empty") return lexer.empty();
     if (stag == "any") return lexer.any();
@@ -92,8 +92,8 @@ namespace Eval {
     if (stag == "char") return lexer.charsvec(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
     if (stag == "except") return lexer.exceptvec(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
     if (stag == "range") {
-      const auto& [lbound, u] = expect<Cons>(t);
-      const auto& [ubound, _] = expect<Cons>(u);
+      auto const& [lbound, u] = expect<Cons>(t);
+      auto const& [ubound, _] = expect<Cons>(u);
       return lexer.range(
         static_cast<char8_t>(expect<Nat64>(lbound).val), static_cast<char8_t>(expect<Nat64>(ubound).val)
       );
@@ -116,8 +116,8 @@ namespace Eval {
   vector<pair<Parsing::Symbol, Parsing::Prec>> Evaluator::listSymbols(Tree* e) {
     vector<pair<Parsing::Symbol, Parsing::Prec>> res;
     for (auto it = e; holds<Cons>(it); it = get<Cons>(it).tail) {
-      const auto& [sym, t] = expect<Cons>(get<Cons>(it).head);
-      const auto& [pre, _] = expect<Cons>(t);
+      auto const& [sym, t] = expect<Cons>(get<Cons>(it).head);
+      auto const& [pre, _] = expect<Cons>(t);
       res.emplace_back(getSymbol(expect<Symbol>(sym).val), expect<Nat64>(pre).val);
     }
     return res;
@@ -144,31 +144,31 @@ namespace Eval {
 
     // Add patterns
     for (auto it = patterns; holds<Cons>(it); it = get<Cons>(it).tail) {
-      const auto& [name, t] = expect<Cons>(get<Cons>(it).head);
-      const auto& [lhs, u] = expect<Cons>(t);
-      const auto& [rhs, _1] = expect<Cons>(u);
-      const auto& [sym, v] = expect<Cons>(lhs);
-      const auto& [pre, _2] = expect<Cons>(v);
+      auto const& [name, t] = expect<Cons>(get<Cons>(it).head);
+      auto const& [lhs, u] = expect<Cons>(t);
+      auto const& [rhs, _1] = expect<Cons>(u);
+      auto const& [sym, v] = expect<Cons>(lhs);
+      auto const& [pre, _2] = expect<Cons>(v);
       string sname = expect<Symbol>(sym).val;
       size_t sid = (sname == "_") ? IgnoredSymbol : getSymbol(sname);
       size_t pid = patternNames.size();
       patternNames.push_back(expect<Symbol>(name).val);
       if (lexer.addPattern(treePattern(rhs)) != pid) unreachable;
-      if (parser.addPattern(sid, expect<Nat64>(pre).val) != pid) unreachable;
+      if (parser.addPattern(sid, static_cast<Parsing::Prec>(expect<Nat64>(pre).val)) != pid) unreachable;
     }
 
     // Add rules
     for (auto it = rules; holds<Cons>(it); it = get<Cons>(it).tail) {
-      const auto& [name, t] = expect<Cons>(get<Cons>(it).head);
-      const auto& [lhs, u] = expect<Cons>(t);
-      const auto& [rhs, _1] = expect<Cons>(u);
-      const auto& [sym, v] = expect<Cons>(lhs);
-      const auto& [pre, _2] = expect<Cons>(v);
+      auto const& [name, t] = expect<Cons>(get<Cons>(it).head);
+      auto const& [lhs, u] = expect<Cons>(t);
+      auto const& [rhs, _1] = expect<Cons>(u);
+      auto const& [sym, v] = expect<Cons>(lhs);
+      auto const& [pre, _2] = expect<Cons>(v);
       string sname = expect<Symbol>(sym).val;
       size_t sid = (sname == "_") ? StartSymbol : getSymbol(sname);
       size_t rid = ruleNames.size();
       ruleNames.push_back(expect<Symbol>(name).val);
-      if (parser.addRule(sid, expect<Nat64>(pre).val, listSymbols(rhs)) != rid) unreachable;
+      if (parser.addRule(sid, static_cast<Parsing::Prec>(expect<Nat64>(pre).val), listSymbols(rhs)) != rid) unreachable;
     }
   }
 
@@ -181,7 +181,7 @@ namespace Eval {
 #define unit       unit
 #define list(...)  makeList({__VA_ARGS__})
 
-  Tree* Evaluator::makeList(const std::initializer_list<Tree*>& es) {
+  Tree* Evaluator::makeList(std::initializer_list<Tree*> const& es) {
     Tree* res = nil;
     for (auto it = std::rbegin(es); it != std::rend(es); it++) res = cons(*it, res);
     return res;
@@ -196,10 +196,10 @@ namespace Eval {
     namePrims() {
 
     // Commonly used constants
-    // const auto nzero  = pool.emplaceBack(Nat64{ 0 });
-    // const auto sempty = pool.emplaceBack(String{ "" });
-    const auto btrue = pool.emplaceBack(Bool{true});
-    const auto bfalse = pool.emplaceBack(Bool{false});
+    // auto const nzero  = pool.emplaceBack(Nat64{ 0 });
+    // auto const sempty = pool.emplaceBack(String{ "" });
+    auto const btrue = pool.emplaceBack(Bool{true});
+    auto const bfalse = pool.emplaceBack(Bool{false});
 
     // =========================
     // Default syntax and macros
@@ -318,15 +318,15 @@ namespace Eval {
 
     // [√] Introduction rule for `Closure`
     addPrimitive("lambda", {false, [this](Tree* env, Tree* e) -> Result {
-                              const auto& [formal, es] = expect<Cons>(e);
+                              auto const& [formal, es] = expect<Cons>(e);
                               return pool.emplaceBack(Closure{env, formal, es});
                             }});
 
     // [√] Elimination rule for `Bool`
     addPrimitive("cond", {false, [this](Tree* env, Tree* e) -> Result {
-                            const auto& [test, t] = expect<Cons>(e);
-                            const auto& [iftrue, u] = expect<Cons>(t);
-                            const auto& iffalse = (holds<Cons>(u) ? get<Cons>(u).head : unit);
+                            auto const& [test, t] = expect<Cons>(e);
+                            auto const& [iftrue, u] = expect<Cons>(t);
+                            auto const& iffalse = (holds<Cons>(u) ? get<Cons>(u).head : unit);
                             bool result = expect<Bool>(eval(env, test)).val;
                             return {env, result ? iftrue : iffalse};
                           }});
@@ -339,14 +339,14 @@ namespace Eval {
 
     // [√] Elimination rule for sealed `Tree`
     addPrimitive("match", {false, [this](Tree* env, Tree* e) -> Result {
-                             const auto& [head, t] = expect<Cons>(e);
-                             const auto& [clauses, _] = expect<Cons>(t);
-                             const auto& target = eval(env, head);
+                             auto const& [head, t] = expect<Cons>(e);
+                             auto const& [clauses, _] = expect<Cons>(t);
+                             auto const& target = eval(env, head);
                              for (auto it = clauses; holds<Cons>(it); it = get<Cons>(it).tail) {
-                               const auto& [pat, u] = expect<Cons>(get<Cons>(it).head);
+                               auto const& [pat, u] = expect<Cons>(get<Cons>(it).head);
                                Tree* newEnv = env;
                                if (match(target, pat, newEnv)) {
-                                 const auto& [expr, _] = expect<Cons>(u);
+                                 auto const& [expr, _] = expect<Cons>(u);
                                  return {newEnv, expr};
                                }
                              }
@@ -354,7 +354,7 @@ namespace Eval {
                              string msg = "nonexhaustive patterns: { ";
                              bool first = true;
                              for (auto it = clauses; holds<Cons>(it); it = get<Cons>(it).tail) {
-                               const auto& [pat, _] = expect<Cons>(get<Cons>(it).head);
+                               auto const& [pat, _] = expect<Cons>(get<Cons>(it).head);
                                if (!first) msg += ", ";
                                first = false;
                                msg += pat->toString();
@@ -365,10 +365,10 @@ namespace Eval {
 
     // [√] Currently we don't have a `let`, and this is just a synonym of `let*`...
     addPrimitive("let", {false, [this](Tree* env, Tree* e) -> Result {
-                           const auto& [defs, es] = expect<Cons>(e);
+                           auto const& [defs, es] = expect<Cons>(e);
                            for (auto it = defs; holds<Cons>(it); it = get<Cons>(it).tail) {
-                             const auto& [lhs, t] = expect<Cons>(get<Cons>(it).head);
-                             const auto& [rhs, _] = expect<Cons>(t);
+                             auto const& [lhs, t] = expect<Cons>(get<Cons>(it).head);
+                             auto const& [rhs, _] = expect<Cons>(t);
                              env = extend(env, expect<Symbol>(lhs).val, eval(env, rhs));
                            }
                            return {env, beginList(env, es)};
@@ -376,11 +376,11 @@ namespace Eval {
 
     // [√] Currently we don't have a `letrec`, and this is just a synonym of `letrec*`...
     addPrimitive("letrec", {false, [this](Tree* env, Tree* e) -> Result {
-                              const auto& [defs, es] = expect<Cons>(e);
+                              auto const& [defs, es] = expect<Cons>(e);
                               // Add #unit (placeholder) bindings
                               vector<Tree**> refs;
                               for (auto it = defs; holds<Cons>(it); it = get<Cons>(it).tail) {
-                                const auto& [lhs, _] = expect<Cons>(get<Cons>(it).head);
+                                auto const& [lhs, _] = expect<Cons>(get<Cons>(it).head);
                                 env = extend(env, expect<Symbol>(lhs).val, unit);
                                 refs.push_back(&get<Cons>(get<Cons>(get<Cons>(env).head).tail).head
                                 ); // Will always succeed due to the recent `extend`
@@ -388,8 +388,8 @@ namespace Eval {
                               // Sequentially evaluate and assign
                               size_t i = 0;
                               for (auto it = defs; holds<Cons>(it); it = get<Cons>(it).tail) {
-                                const auto& [lhs, t] = expect<Cons>(get<Cons>(it).head);
-                                const auto& [rhs, _] = expect<Cons>(t);
+                                auto const& [lhs, t] = expect<Cons>(get<Cons>(it).head);
+                                auto const& [rhs, _] = expect<Cons>(t);
                                 *refs[i++] = eval(env, rhs);
                               }
                               return {env, beginList(env, es)};
@@ -398,16 +398,16 @@ namespace Eval {
     // [√] Global definitions will become effective only on the curr statement...
     // For local definitions, use `letrec*`.
     addPrimitive("define", {false, [this](Tree* env, Tree* e) -> Result {
-                              const auto& [lhs, t] = expect<Cons>(e);
-                              const auto& [rhs, _] = expect<Cons>(t);
+                              auto const& [lhs, t] = expect<Cons>(e);
+                              auto const& [rhs, _] = expect<Cons>(t);
                               globalEnv = extend(globalEnv, expect<Symbol>(lhs).val, eval(env, rhs));
                               return unit;
                             }});
 
     // [?]
     addPrimitive("define_macro", {false, [this](Tree* env, Tree* e) -> Result {
-                                    const auto& [lhs, t] = expect<Cons>(e);
-                                    const auto& [rhs, _] = expect<Cons>(t);
+                                    auto const& [lhs, t] = expect<Cons>(e);
+                                    auto const& [rhs, _] = expect<Cons>(t);
                                     addMacro(expect<Symbol>(lhs).val, expect<Closure>(eval(env, rhs)));
                                     return unit;
                                   }});
@@ -415,12 +415,12 @@ namespace Eval {
     // [√] This modifies nodes reachable through `env` (which prevents making `Tree*` into const pointers)
     // Ignores more arguments
     addPrimitive("set", {false, [this](Tree* env, Tree* e) -> Result {
-                           const auto& [lhs, t] = expect<Cons>(e);
-                           const auto& [rhs, _] = expect<Cons>(t);
-                           const auto& val = eval(env, rhs);
+                           auto const& [lhs, t] = expect<Cons>(e);
+                           auto const& [rhs, _] = expect<Cons>(t);
+                           auto const& val = eval(env, rhs);
                            string s = expect<Symbol>(lhs).val;
                            for (auto it = env; holds<Cons>(it); it = get<Cons>(it).tail) {
-                             const auto& curr = get<Cons>(it).head;
+                             auto const& curr = get<Cons>(it).head;
                              if (holds<Cons>(curr)) {
                                auto& [lhs, t] = get<Cons>(curr);
                                auto& [rhs, _] = get<Cons>(t);
@@ -443,15 +443,15 @@ namespace Eval {
 
     // [√]
     addPrimitive("eval", {true, [](Tree* env, Tree* e) -> Result {
-                            const auto& [h, t] = expect<Cons>(e);
+                            auto const& [h, t] = expect<Cons>(e);
                             if (holds<Cons>(t)) env = expect<Cons>(t).head;
                             return {env, h}; // Let it restart and evaluate
                           }});
     addPrimitive("env", {true, [](Tree* env, Tree*) -> Result { return env; }});
     addPrimitive("get_syntax", {true, [this](Tree*, Tree*) -> Result { return cons(patterns, cons(rules, nil)); }});
     addPrimitive("set_syntax", {true, [this](Tree*, Tree* e) -> Result {
-                                  const auto& [p, t] = expect<Cons>(e);
-                                  const auto& [r, _] = expect<Cons>(t);
+                                  auto const& [p, t] = expect<Cons>(e);
+                                  auto const& [r, _] = expect<Cons>(t);
                                   setSyntax(p, r);
                                   return unit;
                                 }});
@@ -465,8 +465,8 @@ namespace Eval {
     // but making them into primitives will make things run faster.
     addPrimitive("nil", {true, [this](Tree*, Tree*) -> Result { return nil; }});
     addPrimitive("cons", {true, [this](Tree*, Tree* e) -> Result {
-                            const auto& [lhs, t] = expect<Cons>(e);
-                            const auto& [rhs, _] = expect<Cons>(t);
+                            auto const& [lhs, t] = expect<Cons>(e);
+                            auto const& [rhs, _] = expect<Cons>(t);
                             return cons(lhs, rhs);
                           }});
     addPrimitive("list", {true, [](Tree*, Tree* e) -> Result { return e; }});
@@ -489,59 +489,59 @@ namespace Eval {
                                      return nat(expect<String>(expect<Cons>(e).head).val.size());
                                    }});
     addPrimitive("string_char", {true, [this](Tree*, Tree* e) -> Result {
-                                   const auto& [lhs, t] = expect<Cons>(e);
-                                   const auto& [rhs, _] = expect<Cons>(t);
-                                   const auto& sv = expect<String>(lhs).val;
+                                   auto const& [lhs, t] = expect<Cons>(e);
+                                   auto const& [rhs, _] = expect<Cons>(t);
+                                   auto const& sv = expect<String>(lhs).val;
                                    size_t iv = expect<Nat64>(rhs).val;
                                    if (iv >= sv.size())
                                      throw PartialEvalError("Index " + std::to_string(iv) + " out of range", rhs);
                                    return nat(static_cast<unsigned char>(sv[iv]));
                                  }});
     addPrimitive("char_string", {true, [this](Tree*, Tree* e) -> Result {
-                                   const auto& [chr, _] = expect<Cons>(e);
+                                   auto const& [chr, _] = expect<Cons>(e);
                                    uint64_t cv = expect<Nat64>(chr).val;
                                    if (cv >= 256)
                                      throw PartialEvalError(
                                        "Character code " + std::to_string(cv) + " out of range", chr
                                      );
-                                   return str(string(1, static_cast<unsigned char>(cv)));
+                                   return str(string(1, static_cast<char>(cv)));
                                  }});
     addPrimitive("string_concat", {true, [this](Tree*, Tree* e) -> Result {
-                                     const auto& [lhs, t] = expect<Cons>(e);
-                                     const auto& [rhs, _] = expect<Cons>(t);
+                                     auto const& [lhs, t] = expect<Cons>(e);
+                                     auto const& [rhs, _] = expect<Cons>(t);
                                      return str(expect<String>(lhs).val + expect<String>(rhs).val);
                                    }});
     addPrimitive("string_substr", {true, [this](Tree*, Tree* e) -> Result {
-                                     const auto& [s, t] = expect<Cons>(e);
-                                     const auto& [pos, u] = expect<Cons>(t);
-                                     const auto& [len, _] = expect<Cons>(u);
-                                     const auto& sv = expect<String>(s).val;
+                                     auto const& [s, t] = expect<Cons>(e);
+                                     auto const& [pos, u] = expect<Cons>(t);
+                                     auto const& [len, _] = expect<Cons>(u);
+                                     auto const& sv = expect<String>(s).val;
                                      size_t posv = expect<Nat64>(pos).val;
                                      if (posv > sv.size()) posv = sv.size();
                                      return str(sv.substr(posv, expect<Nat64>(len).val));
                                    }});
     addPrimitive("string_eq", {true, [this](Tree*, Tree* e) -> Result {
-                                 const auto& [lhs, t] = expect<Cons>(e);
-                                 const auto& [rhs, _] = expect<Cons>(t);
+                                 auto const& [lhs, t] = expect<Cons>(e);
+                                 auto const& [rhs, _] = expect<Cons>(t);
                                  return boolean(expect<String>(lhs).val == expect<String>(rhs).val);
                                }});
 
 // [√]
 #define unary(T, name, op)                                                  \
   addPrimitive(name, {true, [this](Tree*, Tree* e) -> Result {              \
-                        const auto& [lhs, _] = expect<Cons>(e);             \
+                        auto const& [lhs, _] = expect<Cons>(e);             \
                         return pool.emplaceBack(T{op(expect<T>(lhs).val)}); \
                       }})
 #define binary(T, name, op)                                                                   \
   addPrimitive(name, {true, [this](Tree*, Tree* e) -> Result {                                \
-                        const auto& [lhs, t] = expect<Cons>(e);                               \
-                        const auto& [rhs, _] = expect<Cons>(t);                               \
+                        auto const& [lhs, t] = expect<Cons>(e);                               \
+                        auto const& [rhs, _] = expect<Cons>(t);                               \
                         return pool.emplaceBack(T{expect<T>(lhs).val op expect<T>(rhs).val}); \
                       }})
 #define binpred(T, name, op)                                                                \
   addPrimitive(name, {true, [btrue, bfalse](Tree*, Tree* e) -> Result {                     \
-                        const auto& [lhs, t] = expect<Cons>(e);                             \
-                        const auto& [rhs, _] = expect<Cons>(t);                             \
+                        auto const& [lhs, t] = expect<Cons>(e);                             \
+                        auto const& [rhs, _] = expect<Cons>(t);                             \
                         return (expect<T>(lhs).val op expect<T>(rhs).val) ? btrue : bfalse; \
                       }})
 
@@ -574,13 +574,13 @@ namespace Eval {
 
     // [?] TODO: output to ostream
     addPrimitive("display", {true, [this](Tree*, Tree* e) -> Result {
-                               const auto& [head, tail] = expect<Cons>(e);
+                               auto const& [head, tail] = expect<Cons>(e);
                                std::cout << expect<String>(head).val << std::endl;
                                return unit;
                              }});
     addPrimitive("debug_save_file", {true, [this](Tree*, Tree* e) -> Result {
-                                       const auto& [lhs, t] = expect<Cons>(e);
-                                       const auto& [rhs, _] = expect<Cons>(t);
+                                       auto const& [lhs, t] = expect<Cons>(e);
+                                       auto const& [rhs, _] = expect<Cons>(t);
                                        std::ofstream out(expect<String>(lhs).val);
                                        if (!out.is_open()) throw PartialEvalError("Could not open file", lhs);
                                        out << expect<String>(rhs).val << std::endl;
@@ -589,27 +589,27 @@ namespace Eval {
   }
 
   // Evaluator entries are stored as lists of two elements.
-  Tree* Evaluator::extend(Tree* env, const std::string& s, Tree* e) { return cons(cons(sym(s), cons(e, nil)), env); }
+  Tree* Evaluator::extend(Tree* env, std::string const& s, Tree* e) { return cons(cons(sym(s), cons(e, nil)), env); }
 
-  Tree* Evaluator::lookup(Tree* env, const std::string& s) {
+  Tree* Evaluator::lookup(Tree* env, std::string const& s) {
     for (auto it = env; holds<Cons>(it); it = get<Cons>(it).tail) {
-      const auto& curr = get<Cons>(it).head;
+      auto const& curr = get<Cons>(it).head;
       if (!holds<Cons>(curr)) continue;
-      const auto& [lhs, t] = get<Cons>(curr);
+      auto const& [lhs, t] = get<Cons>(curr);
       if (!holds<Cons>(t)) continue;
-      const auto& [rhs, _] = get<Cons>(t);
+      auto const& [rhs, _] = get<Cons>(t);
       if (holds<Symbol>(lhs) && get<Symbol>(lhs).val == s) return (holds<Unit>(rhs)) ? nullptr : rhs;
     }
     return nullptr;
   }
 
-  bool operator==(const EarleyParser::Location& a, const EarleyParser::Location& b) {
+  bool operator==(EarleyParser::Location const& a, EarleyParser::Location const& b) {
     return a.pos == b.pos && a.i == b.i;
   }
 
-  vector<Tree*> Evaluator::resolve(EarleyParser::Location loc, const vector<Tree*>& right, size_t maxDepth) {
+  vector<Tree*> Evaluator::resolve(EarleyParser::Location loc, vector<Tree*> const& right, size_t maxDepth) {
     if (maxDepth == 0) return {};
-    const auto& [state, links] = parser.getForest()[loc.pos][loc.i];
+    auto const& [state, links] = parser.getForest()[loc.pos][loc.i];
     vector<Tree*> res;
 
     if (state.progress == 0) {
@@ -619,10 +619,10 @@ namespace Eval {
     }
 
     // One step to left
-    for (const auto& [prevLink, childLink]: links) {
+    for (auto const& [prevLink, childLink]: links) {
       vector<Tree*> child;
       if (childLink == EarleyParser::Leaf) {
-        const auto& tok = parser.getSentence()[loc.pos - 1];
+        auto const& tok = parser.getSentence()[loc.pos - 1];
         child = {cons(sym(patternNames[tok.pattern]), cons(str(tok.lexeme), nil))};
       } else {
         child = resolve(childLink, {nil}, maxDepth - 1);
@@ -638,15 +638,15 @@ namespace Eval {
   }
 
   Tree* Evaluator::resolve(size_t maxDepth) {
-    const size_t pos = parser.getSentence().size();
-    const auto& forest = parser.getForest();
+    auto const pos = parser.getSentence().size();
+    auto const& forest = parser.getForest();
     if (pos >= forest.size()) unreachable;
     // Mid: pos < forest.size()
 
     vector<Tree*> all;
     for (size_t i = 0; i < forest[pos].size(); i++) {
-      const auto& [state, links] = forest[pos][i];
-      const auto& [lhs, rhs] = parser.getRule(state.rule);
+      auto const& [state, links] = forest[pos][i];
+      auto const& [lhs, rhs] = parser.getRule(state.rule);
       if (state.startPos == 0 && lhs.first == StartSymbol && state.progress == rhs.size()) {
         vector<Tree*> final = resolve({pos, i}, {nil}, maxDepth);
         for (Tree* f: final) all.push_back(f);
@@ -659,7 +659,7 @@ namespace Eval {
     }
     if (all.size() > 1) {
       // Ambiguous
-      for (const auto& parse: all) std::cout << parse->toString() << std::endl;
+      for (auto const& parse: all) std::cout << parse->toString() << std::endl;
       notimplemented;
     }
     // Mid: all.size() == 1
@@ -680,11 +680,11 @@ namespace Eval {
       // Non-empty lists: expand all macros, from inside out
       try {
         e = expandList(e);
-        const auto& [head, tail] = get<Cons>(e);
+        auto const& [head, tail] = get<Cons>(e);
         if (holds<Symbol>(head)) {
-          const auto it = nameMacros.find(get<Symbol>(head).val);
+          auto const it = nameMacros.find(get<Symbol>(head).val);
           if (it != nameMacros.end()) {
-            const auto& cl = macros[it->second];
+            auto const& cl = macros[it->second];
             auto env = cl.env;
             bool matched = match(tail, cl.formal, env);
             if (!matched)
@@ -709,9 +709,9 @@ namespace Eval {
   Tree* Evaluator::expandList(Tree* e) {
     if (holds<Nil>(e)) return e;
     else if (holds<Cons>(e)) {
-      const auto& [head, tail] = get<Cons>(e);
-      const auto ehead = expand(head);
-      const auto etail = expandList(tail);
+      auto const& [head, tail] = get<Cons>(e);
+      auto const ehead = expand(head);
+      auto const etail = expandList(tail);
       return (ehead == head && etail == tail) ? e : pool.emplaceBack(ehead, etail);
     }
     return expand(e);
@@ -724,22 +724,22 @@ namespace Eval {
       if (holds<Symbol>(e)) {
         // Symbols: evaluate to their bound values
         string sym = get<Symbol>(e).val;
-        const auto val = lookup(env, sym);
+        auto const val = lookup(env, sym);
         if (val) return val;
-        const auto it = namePrims.find(sym);
+        auto const it = namePrims.find(sym);
         if (it != namePrims.end()) return pool.emplaceBack(Prim{it->second});
         throw PartialEvalError("unbound symbol \"" + sym + "\"", e);
 
       } else if (holds<Cons>(e)) {
         // Non-empty lists: evaluate as function application
         try {
-          const auto& [head, tail] = get<Cons>(e);
-          const auto ehead = eval(env, head);
+          auto const& [head, tail] = get<Cons>(e);
+          auto const ehead = eval(env, head);
 
           if (holds<Prim>(ehead)) {
             // Primitive function application
-            const auto& [evalParams, f] = prims[get<Prim>(ehead).id];
-            const auto res = f(env, evalParams ? evalList(env, tail) : tail);
+            auto const& [evalParams, f] = prims[get<Prim>(ehead).id];
+            auto const res = f(env, evalParams ? evalList(env, tail) : tail);
             // No tail call, return
             if (!res.env) return res.e;
             // Tail call
@@ -750,8 +750,8 @@ namespace Eval {
 
           if (holds<Closure>(ehead)) {
             // Lambda function application
-            const auto& cl = get<Closure>(ehead);
-            const auto params = evalList(env, tail);
+            auto const& cl = get<Closure>(ehead);
+            auto const params = evalList(env, tail);
             // Evaluate body as tail call
             env = cl.env;
             bool matched = match(params, cl.formal, env);
@@ -781,9 +781,9 @@ namespace Eval {
   Tree* Evaluator::evalList(Tree* env, Tree* e) {
     if (holds<Nil>(e)) return e;
     else if (holds<Cons>(e)) {
-      const auto& [head, tail] = get<Cons>(e);
-      const auto ehead = eval(env, head);
-      const auto etail = evalList(env, tail);
+      auto const& [head, tail] = get<Cons>(e);
+      auto const ehead = eval(env, head);
+      auto const etail = evalList(env, tail);
       return (ehead == head && etail == tail) ? e : pool.emplaceBack(ehead, etail);
     }
     return eval(env, e);
@@ -793,7 +793,7 @@ namespace Eval {
   // Returns the last one unevaluated, or `#unit` if list is empty
   Tree* Evaluator::beginList(Tree* env, Tree* e) {
     for (auto it = e; holds<Cons>(it); it = get<Cons>(it).tail) {
-      const auto& [head, tail] = get<Cons>(it);
+      auto const& [head, tail] = get<Cons>(it);
       if (!holds<Cons>(tail)) {
         expect<Nil>(tail);
         return head;
@@ -807,10 +807,10 @@ namespace Eval {
   // Evaluates a quasiquoted list
   Tree* Evaluator::quasiquote(Tree* env, Tree* e) {
     if (holds<Cons>(e)) {
-      const auto& [head, tail] = get<Cons>(e);
+      auto const& [head, tail] = get<Cons>(e);
       if (*head == Tree(Symbol{"unquote"})) return eval(env, expect<Cons>(tail).head);
-      const auto ehead = quasiquote(env, head);
-      const auto etail = quasiquote(env, tail);
+      auto const ehead = quasiquote(env, head);
+      auto const etail = quasiquote(env, tail);
       return (ehead == head && etail == tail) ? e : pool.emplaceBack(ehead, etail);
     }
     return e;

@@ -7,11 +7,11 @@ namespace Parsing {
   using std::unordered_map;
   using std::optional, std::make_optional, std::nullopt;
 
-  bool operator==(const EarleyParser::State& a, const EarleyParser::State& b) {
+  bool operator==(EarleyParser::State const& a, EarleyParser::State const& b) {
     return a.startPos == b.startPos && a.rule == b.rule && a.progress == b.progress;
   }
 
-  bool operator==(const EarleyParser::Location& a, const EarleyParser::Location& b) {
+  bool operator==(EarleyParser::Location const& a, EarleyParser::Location const& b) {
     return a.pos == b.pos && a.i == b.i;
   }
 
@@ -24,7 +24,7 @@ namespace Parsing {
     }
     optional<ErrorInfo> error;
     while (true) {
-      const auto& [found, nextToken] = run();
+      auto const& [found, nextToken] = run();
       if (found) { // Successful parse
         if (sentence.empty()) notimplemented;
         if (error) errors.push_back(*error);
@@ -50,8 +50,8 @@ namespace Parsing {
     }
   }
 
-  string EarleyParser::showState(const LinkedState& ls, const vector<string>& names) const {
-    const auto& [s, links] = ls;
+  string EarleyParser::showState(LinkedState const& ls, vector<string> const& names) const {
+    auto const& [s, links] = ls;
     string res = std::to_string(s.startPos) + ", <" + names.at(rules[s.rule].lhs.first) + "> ::= ";
     for (size_t i = 0; i < rules[s.rule].rhs.size(); i++) {
       if (i == s.progress) res += "|";
@@ -62,12 +62,12 @@ namespace Parsing {
     return res;
   }
 
-  string EarleyParser::showStates(const vector<string>& names) const {
+  string EarleyParser::showStates(vector<string> const& names) const {
     if (dpa.size() != sentence.size() + 1) unreachable;
     string res = "";
     for (size_t pos = 0; pos <= sentence.size(); pos++) {
       res += "States at position " + std::to_string(pos) + ":\n";
-      for (const LinkedState& ls: dpa[pos]) res += showState(ls, names);
+      for (LinkedState const& ls: dpa[pos]) res += showState(ls, names);
       res += "\n";
       if (pos < sentence.size()) res += "Next token: <" + names.at(patterns.at(sentence[pos].pattern).first) + ">\n";
     }
@@ -86,9 +86,9 @@ namespace Parsing {
 
     // Find the number of symbols involved.
     numSymbols = startSymbol + 1;
-    for (const auto& [lhs, rhs]: rules) {
+    for (auto const& [lhs, rhs]: rules) {
       numSymbols = std::max(numSymbols, lhs.first + 1);
-      for (const auto& r: rhs) numSymbols = std::max(numSymbols, r.first + 1);
+      for (auto const& r: rhs) numSymbols = std::max(numSymbols, r.first + 1);
     }
 
     // Find all empty rules, and confirm that no other rules are nullable.
@@ -96,14 +96,14 @@ namespace Parsing {
     // (just think about ambiguous empty derivations...)
     emptyRule = vector<optional<size_t>>(numSymbols, nullopt);
     for (size_t i = 0; i < rules.size(); i++) {
-      const auto& [lhs, rhs] = rules[i];
+      auto const& [lhs, rhs] = rules[i];
       if (rhs.empty()) emptyRule[lhs.first] = i;
     }
     for (size_t i = 0; i < rules.size(); i++) {
-      const auto& [lhs, rhs] = rules[i];
+      auto const& [lhs, rhs] = rules[i];
       if (emptyRule[lhs.first] != i) {
         bool f = false;
-        for (const auto& r: rhs)
+        for (auto const& r: rhs)
           if (!emptyRule[r.first]) f = true;
         if (!f) notimplemented;
       }
@@ -115,7 +115,7 @@ namespace Parsing {
     totalLength.clear();
     totalLength.push_back(0);
     for (size_t i = 0; i < rules.size(); i++) {
-      const auto& [lhs, rhs] = rules[i];
+      auto const& [lhs, rhs] = rules[i];
       if (emptyRule[lhs.first] != i) sorted.push_back(i);
       totalLength.push_back(totalLength[i] + rhs.size() + 1);
     }
@@ -126,7 +126,7 @@ namespace Parsing {
     // `n`)
     firstRule = vector<size_t>(numSymbols, n);
     for (size_t i = 0; i < n; i++) {
-      const auto& [lhs, rhs] = rules[sorted[i]];
+      auto const& [lhs, rhs] = rules[sorted[i]];
       if (firstRule[lhs.first] == n) firstRule[lhs.first] = i;
     }
   }
@@ -144,7 +144,7 @@ namespace Parsing {
     vector<bool> isAdded(numSymbols, false);
 
     // A hash function for DP states, for mapping states back to indices
-    auto hash = [this](const State& x) { return x.startPos * 524287u + (totalLength[x.rule] + x.progress); };
+    auto hash = [this](State const& x) { return x.startPos * 524287u + (totalLength[x.rule] + x.progress); };
     unordered_map<State, size_t, decltype(hash)> mp(0, hash);
 
     // Initial states
@@ -168,10 +168,10 @@ namespace Parsing {
       // "Prediction/completion" stage
       for (size_t i = 0; i < dpa[pos].size(); i++) {
         State s = dpa[pos][i].state;
-        const auto& [lhs, rhs] = rules[s.rule];
+        auto const& [lhs, rhs] = rules[s.rule];
         if (s.progress < rhs.size()) {
           // Perform prediction
-          const auto& [sym, prec] = rhs[s.progress];
+          auto const& [sym, prec] = rhs[s.progress];
           if (!isAdded[sym]) {
             isAdded[sym] = true;
             added.push_back(sym);
@@ -195,10 +195,10 @@ namespace Parsing {
           // Perform nonempty completion
           size_t tpos = s.startPos;
           if (tpos == pos) continue;
-          const auto& [sym, prec] = lhs;
+          auto const& [sym, prec] = lhs;
           for (size_t j = 0; j < dpa[tpos].size(); j++) {
             State t = dpa[tpos][j].state;
-            const auto& trhs = rules[t.rule].rhs;
+            auto const& trhs = rules[t.rule].rhs;
             if (t.progress < trhs.size() && trhs[t.progress].first == sym && trhs[t.progress].second <= prec) {
               State u{t.startPos, t.rule, t.progress + 1};
               ensure(u);
@@ -227,10 +227,10 @@ namespace Parsing {
       // Also updating `mp` to reflect `states[pos + 1]` instead (re-establish loop invariant)
       dpa.emplace_back();
       mp.clear();
-      const auto& [sym, prec] = patterns.at(nextToken->pattern);
+      auto const& [sym, prec] = patterns.at(nextToken->pattern);
       for (size_t i = 0; i < dpa[pos].size(); i++) {
         State s = dpa[pos][i].state;
-        const auto& rhs = rules[s.rule].rhs;
+        auto const& rhs = rules[s.rule].rhs;
         if (s.progress < rhs.size() && rhs[s.progress].first == sym && rhs[s.progress].second <= prec) {
           State u{s.startPos, s.rule, s.progress + 1};
           // No need to check for presence! `s` is already unique.
@@ -250,11 +250,11 @@ namespace Parsing {
 
     // Check if the start symbol completes
     if (dpa.size() != sentence.size() + 1) unreachable;
-    size_t pos = sentence.size();
+    auto const pos = sentence.size();
     bool found = false;
     for (size_t i = 0; i < dpa[pos].size(); i++) {
       State s = dpa[pos][i].state;
-      const auto& [lhs, rhs] = rules[s.rule];
+      auto const& [lhs, rhs] = rules[s.rule];
       if (lhs.first == startSymbol && s.startPos == 0 && s.progress == rhs.size()) found = true;
     }
 
@@ -293,17 +293,17 @@ namespace Parsing {
   }
 
   // For use in `nextSentence()` only
-  auto EarleyParser::lastError(size_t startPos, size_t endPos, const optional<Symbol>& got) const -> ErrorInfo {
+  auto EarleyParser::lastError(size_t startPos, size_t endPos, optional<Symbol> const& got) const -> ErrorInfo {
     if (dpa.size() != sentence.size() + 1) unreachable;
-    size_t pos = sentence.size();
+    auto const pos = sentence.size();
     vector<Symbol> expected;
-    for (const LinkedState& ls: dpa[pos]) {
-      const State& s = ls.state;
-      const auto& [lhs, rhs] = rules[s.rule];
+    for (auto const& ls: dpa[pos]) {
+      auto const& s = ls.state;
+      auto const& [lhs, rhs] = rules[s.rule];
       if (s.progress < rhs.size()) expected.push_back(rhs[s.progress].first);
     }
     std::sort(expected.begin(), expected.end());
-    expected.resize(std::unique(expected.begin(), expected.end()) - expected.begin());
+    expected.resize(static_cast<size_t>(std::unique(expected.begin(), expected.end()) - expected.begin()));
     return {startPos, endPos, expected, got};
   }
 

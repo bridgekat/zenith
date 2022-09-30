@@ -48,7 +48,7 @@ int main() {
     auto in = ctx.pushAssumption("in", pi("x", setvar, pi("y", setvar, prop)));
 
     // The axiom schema of separation...
-    const auto x = lam(
+    auto const x = lam(
       "phi", pi("", setvar, pi("", setvar, prop)),
       forall(
         "x",
@@ -66,12 +66,12 @@ int main() {
       ctx.pushAssumption("subset", pi("P", pi("x", setvar, pi("a", setvar, prop)), pi("x", setvar, setvar)));
     auto issc = ctx.pushAssumption("is_subclass", pi("P", pi("x", setvar, prop), pi("Q", pi("x", setvar, prop), prop)));
 
-    const auto y = lam("x", setvar, bin(lam("y", setvar, lam("z", setvar, tt)), subset, bv(0)));
+    auto const y = lam("x", setvar, bin(lam("y", setvar, lam("z", setvar, tt)), subset, bv(0)));
 
     cout << y->toString(ctx) << endl;
     cout << y->checkType(ctx, pool)->toString(ctx) << endl;
 
-    const auto z = bin(lam("x", setvar, ff), issc, lam("x", setvar, tt));
+    auto const z = bin(lam("x", setvar, ff), issc, lam("x", setvar, tt));
 
     cout << z->toString(ctx) << endl;
     cout << z->checkType(ctx, pool)->toString(ctx) << endl;
@@ -79,8 +79,8 @@ int main() {
     cout << (*x == *y) << (*y == *z) << (*z == *x) << endl;
     cout << (*x == *x) << (*y == *y) << (*z == *z) << endl;
 
-    const auto x1 = x->clone(pool);
-    const auto xrep = Expr(x, lam("x", setvar, lam("y", setvar, bin(bv(1), Equals, bv(0))))).reduce(pool);
+    auto const x1 = x->clone(pool);
+    auto const xrep = Expr(x, lam("x", setvar, lam("y", setvar, bin(bv(1), Equals, bv(0))))).reduce(pool);
 
     cout << (*x == *x1) << endl;
     cout << xrep->toString(ctx) << endl;
@@ -173,7 +173,7 @@ int main() {
     for (size_t i = 0; i < ctx.size(); i++) {
       cout << ctx.nameOf(i) << ": ";
       if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
-      if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
+      if (holds_alternative<Expr const*>(ctx[i])) cout << get<Expr const*>(ctx[i])->toString(ctx) << endl;
     }
     cout << endl;
   }
@@ -222,7 +222,7 @@ int main() {
     for (size_t i = 0; i < ctx.size(); i++) {
       cout << ctx.nameOf(i) << ": ";
       if (holds_alternative<Type>(ctx[i])) cout << showType(get<Type>(ctx[i])) << endl;
-      if (holds_alternative<const Expr*>(ctx[i])) cout << get<const Expr*>(ctx[i])->toString(ctx) << endl;
+      if (holds_alternative<Expr const*>(ctx[i])) cout << get<Expr const*>(ctx[i])->toString(ctx) << endl;
     }
     cout << endl;
   }
@@ -246,7 +246,7 @@ int main() {
     auto snf = Procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
     cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
-    Elab::Procs::foreachValuation({p, q, r, s}, [&e, &snf](const vector<bool>& fvmap) {
+    Elab::Procs::foreachValuation({p, q, r, s}, [&e, &snf](vector<bool> const& fvmap) {
       cout << Elab::Procs::propValue(e, fvmap);
       cout << !Elab::Procs::propValue(snf, fvmap);
     });
@@ -645,7 +645,7 @@ int main() {
     tableau.addAntecedent(e3);
     tableau.addSuccedent(goal);
     /*
-    const auto negated = bin(bin(bin(e1, And, e2), And, e3), And, un(Not, goal));
+    auto const negated = bin(bin(bin(e1, And, e2), And, e3), And, un(Not, goal));
     tableau.addAntecedent(Procs::collectClauses(Procs::cnf(Procs::nnf(negated, pool), ctx, pool), pool));
     */
 

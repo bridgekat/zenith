@@ -15,7 +15,7 @@ namespace Elab {
 
   // clang-format off
   /*
-  pair<const Expr*, const Expr*> inferHoles(const Expr* e, const Context& ctx, Allocator<Expr>& pool, vector<const Expr*>& stk, vector<string>& names) {
+  pair<Expr const*, Expr const*> inferHoles(Expr const* e, Context const& ctx, Allocator<Expr>& pool, vector<Expr const*>& stk, vector<string>& names) {
     switch (e->tag) {
       case Sort: {
         switch (e->sort.tag) {
@@ -38,8 +38,8 @@ namespace Elab {
         } unreachable;
       }
       case App: { // Π-elimination
-        const auto tl = inferHoles(e->app.l, ctx, pool, stk, names);
-        const auto tr = inferHoles(e->app.r, ctx, pool, stk, names);
+        auto const tl = inferHoles(e->app.l, ctx, pool, stk, names);
+        auto const tr = inferHoles(e->app.r, ctx, pool, stk, names);
         // #####
         // Add unification constraint `tl ?= Pi: tr, ?m` and return `?m`
         // if (tl->tag != Pi) throw InvalidExpr("expected function, term has type " + tl->toString(ctx, names), ctx, e->app.l);
@@ -47,19 +47,19 @@ namespace Elab {
         // return tl->pi.r->makeReplace(e->app.r, pool)->reduce(pool);
       }
       case Lam: { // Π-introduction
-        const auto tt = inferHoles(e->lam.t, ctx, pool, stk, names);
+        auto const tt = inferHoles(e->lam.t, ctx, pool, stk, names);
         names.push_back(e->lam.s);
         stk.push_back(e->lam.t);
-        const auto tr = inferHoles(e->lam.r, ctx, pool, stk, names);
+        auto const tr = inferHoles(e->lam.r, ctx, pool, stk, names);
         names.pop_back();
         stk.pop_back();
         return pool.emplaceBack(PPi, e->lam.s, e->lam.t->reduce(pool), tr);
       }
       case Pi: { // Π-formation
-        const auto tt = inferHoles(e->pi.t, ctx, pool, stk, names);
+        auto const tt = inferHoles(e->pi.t, ctx, pool, stk, names);
         names.push_back(e->pi.s);
         stk.push_back(e->pi.t);
-        const auto tr = inferHoles(e->pi.r, ctx, pool, stk, names);
+        auto const tr = inferHoles(e->pi.r, ctx, pool, stk, names);
         names.pop_back();
         stk.pop_back();
         return pool.emplaceBack(Expr::imax(st, sr));

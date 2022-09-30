@@ -36,7 +36,7 @@ namespace Core {
 #undef pi
   }
 
-  FOLForm FOLForm::fromExpr(const Expr* e) noexcept {
+  FOLForm FOLForm::fromExpr(Expr const* e) noexcept {
     using Constant = FOLContext::Constant;
     using enum Expr::Tag;
     using enum Expr::VarTag;
@@ -46,7 +46,7 @@ namespace Core {
         if (e->var.id == Constant::False) return {False};
       }
     } else if (e->tag == App) {
-      const auto [l, r] = e->app;
+      auto const [l, r] = e->app;
       if (l->tag == Var) {
         if (l->var.tag == VFree) {
           if (l->var.id == Constant::Not) return {Not, r};
@@ -57,7 +57,7 @@ namespace Core {
           }
         }
       } else if (l->tag == App) {
-        const auto [ll, lr] = l->app;
+        auto const [ll, lr] = l->app;
         if (ll->tag == Var) {
           if (ll->var.tag == VFree) {
             if (ll->var.id == Constant::Equals) return {Equals, lr, r};
@@ -74,7 +74,7 @@ namespace Core {
 
 #define expr(...) Expr::make(pool, __VA_ARGS__)
 
-  const Expr* FOLForm::toExpr(Allocator<Expr>& pool) const {
+  Expr const* FOLForm::toExpr(Allocator<Expr>& pool) const {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     using enum Expr::LamTag;
@@ -95,7 +95,7 @@ namespace Core {
     unreachable;
   }
 
-  pair<const Expr*, const Expr*> FOLForm::splitIff(Allocator<Expr>& pool) const {
+  pair<Expr const*, Expr const*> FOLForm::splitIff(Allocator<Expr>& pool) const {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     if (tag != Iff) unreachable;
@@ -107,15 +107,15 @@ namespace Core {
 
   // Splits "unique x, P" into "exists x, P" and "forall x, P implies (forall y, P implies x = y)"
   // Pre (checked): `tag` is `Unique`
-  pair<const Expr*, const Expr*> FOLForm::splitUnique(Allocator<Expr>& pool) const {
+  pair<Expr const*, Expr const*> FOLForm::splitUnique(Allocator<Expr>& pool) const {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     using enum Expr::LamTag;
     if (tag != Unique) unreachable;
-    const auto setvar = expr(VFree, Constant::SetVar);
-    const auto implies = expr(VFree, Constant::Implies);
-    const auto forall = expr(VFree, Constant::Forall);
-    const auto exists = expr(VFree, Constant::Exists);
+    auto const setvar = expr(VFree, Constant::SetVar);
+    auto const implies = expr(VFree, Constant::Implies);
+    auto const forall = expr(VFree, Constant::Forall);
+    auto const exists = expr(VFree, Constant::Exists);
     // clang-format off
     return {
       expr(exists, expr(LLam, s, setvar, binder.r)),
@@ -130,7 +130,7 @@ namespace Core {
 
 #define invprec(tag_) static_cast<std::underlying_type_t<Tag>>(tag_)
 
-  string FOLForm::toString(const Context& ctx, vector<string>& stk) const {
+  string FOLForm::toString(Context const& ctx, vector<string>& stk) const {
     switch (tag) {
       case Other: {
         auto fe = (unary.e->tag != Expr::Sort && unary.e->tag != Expr::Var && unary.e->tag != Expr::App);

@@ -8,13 +8,13 @@ namespace Core {
 
   Context::Context(): pools(), entries(), indices() { pools.emplace_back(); }
 
-  size_t Context::addDefinition(const string& s, const Expr* e) {
+  size_t Context::addDefinition(string const& s, Expr const* e) {
     e->checkType(*this, temp());
     entries.emplace_back(s, e->reduce(temp())->clone(pools.back()));
     return entries.size() - 1;
   }
 
-  size_t Context::pushAssumption(const string& s, const Expr* e) {
+  size_t Context::pushAssumption(string const& s, Expr const* e) {
     e->checkType(*this, temp());
     pools.emplace_back();
     entries.emplace_back(s, e->reduce(temp())->clone(pools.back()));
@@ -30,14 +30,14 @@ namespace Core {
     if (indices.empty() || pools.size() < 2) return false;
     auto& pool1 = pools[pools.size() - 1]; // To be deallocated, can be used as a temporary pool
     auto& pool2 = pools[pools.size() - 2];
-    const size_t index = indices.back();
-    const auto [s, x] = entries[index];
+    auto const index = indices.back();
+    auto const [s, x] = entries[index];
 
 #define expr(...) Expr::make(pool2, __VA_ARGS__)
 
     // Add abstractions over the hypothesized variable, copying all expressions from `pool1` to `pool2`
     // Make bound + remap index
-    auto modify = [&pool2, index](uint64_t n, const Expr* x) -> const Expr* {
+    auto modify = [&pool2, index](uint64_t n, Expr const* x) -> Expr const* {
       if (x->var.tag == VFree && x->var.id == index) return expr(VBound, n);
       if (x->var.tag == VFree && x->var.id > index) return expr(expr(VFree, x->var.id - 1), expr(VBound, n));
       return x->clone(pool2);
@@ -45,7 +45,7 @@ namespace Core {
 
     // Alter types
     for (size_t i = index; i + 1 < entries.size(); i++) {
-      const auto& [t, y] = entries[i + 1];
+      auto const& [t, y] = entries[i + 1];
       entries[i] = {t, expr(PPi, s, x->clone(pool2), y->updateVars(modify, pool1)->clone(pool2))};
     }
     entries.pop_back();

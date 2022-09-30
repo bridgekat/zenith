@@ -26,22 +26,22 @@ namespace Eval {
 
   string Tree::toString() const { return toStringUntil(nullptr).second; }
 
-  pair<bool, string> Tree::toStringUntil(const Tree* p) const {
+  pair<bool, string> Tree::toStringUntil(Tree const* p) const {
     if (this == p) return make_pair(true, "");
     return visit(
       Matcher{
         [](Nil) { return make_pair(false, string("()")); },
         [p](Cons const& x) {
           string res = "(";
-          const auto& [f0, s0] = x.head->toStringUntil(p);
+          auto const& [f0, s0] = x.head->toStringUntil(p);
           res += s0;
           if (f0) return make_pair(true, res);
-          const Tree* q = x.tail;
+          auto const* q = x.tail;
           while (holds_alternative<Cons>(q->v)) {
-            const auto& [hd, tl] = get<Cons>(q->v);
+            auto const& [hd, tl] = get<Cons>(q->v);
             res += " ";
             if (q == p) return make_pair(true, res);
-            const auto& [f1, s1] = hd->toStringUntil(p);
+            auto const& [f1, s1] = hd->toStringUntil(p);
             res += s1;
             if (f1) return make_pair(true, res);
             q = tl;
@@ -49,7 +49,7 @@ namespace Eval {
           if (!holds_alternative<Nil>(q->v)) {
             res += " . ";
             if (q == p) return make_pair(true, res);
-            const auto& [f2, s2] = q->toStringUntil(p);
+            auto const& [f2, s2] = q->toStringUntil(p);
             res += s2;
             if (f2) return make_pair(true, res);
           }
@@ -75,7 +75,7 @@ namespace Eval {
     );
   }
 
-  string Tree::escapeString(const string& s) {
+  string Tree::escapeString(string const& s) {
     string res;
     for (char c: s) {
       switch (c) {
@@ -94,7 +94,7 @@ namespace Eval {
     return res;
   }
 
-  string Tree::unescapeString(const string& s) {
+  string Tree::unescapeString(string const& s) {
     string res;
     for (size_t i = 0; i < s.size(); i++) {
       if (s[i] == '\\' && i + 1 < s.size()) {
