@@ -18,72 +18,73 @@ namespace Eval {
 #define unit       unit
 #define list(...)  makeList({__VA_ARGS__})
 
-  ExtendedEvaluator::ExtendedEvaluator(): Evaluator(), ctx(), epool() {
+  ExtendedEvaluator::ExtendedEvaluator():
+    Evaluator(),
+    ctx(),
+    epool() {
 
     // =========================
     // ApiMu-specific procedures
     // =========================
 
     // [!] Conversions between lists and native objects (`Expr`)
-    addPrimitive("tree_expr", {true, [this](Tree*, Tree* e) -> Result { return obj(treeExpr(expect<Cons>(e).head)); }});
-    addPrimitive("expr_tree", {true, [this](Tree*, Tree* e) -> Result {
-                                 return exprTree(expectNative<Expr const*>(expect<Cons>(e).head));
-                               }});
+    addPrimitive("tree_expr", true, [this](Tree*, Tree* e) -> Result { return obj(treeExpr(expect<Cons>(e).head)); });
+    addPrimitive("expr_tree", true, [this](Tree*, Tree* e) -> Result {
+      return exprTree(expectNative<Expr const*>(expect<Cons>(e).head));
+    });
 
     // [?] TEMP CODE
-    addPrimitive("context_size", {true, [this](Tree*, Tree*) -> Result {
-                                    return nat(static_cast<uint64_t>(ctx.size()));
-                                  }});
-    addPrimitive("context_get", {true, [this](Tree*, Tree* e) -> Result {
-                                   auto const i = expect<Nat64>(expect<Cons>(e).head).val;
-                                   auto const index = static_cast<size_t>(i);
-                                   if (index < ctx.size())
-                                     return cons(sym(ctx.identifier(index)), cons(obj(ctx[index]), nil));
-                                   return unit;
-                                 }});
-    addPrimitive("context_push", {true, [this](Tree*, Tree* e) -> Result {
-                                    auto const& [lhs, t] = expect<Cons>(expect<Cons>(e).head);
-                                    auto const& [rhs, _] = expect<Cons>(t);
-                                    auto const s = expect<Symbol>(lhs).val;
-                                    auto const expr = expectNative<Expr const*>(rhs);
-                                    try {
-                                      ctx.pushAssumption(s, expr);
-                                      return unit;
-                                    } catch (std::runtime_error& ex) { return str(ex.what()); }
-                                  }});
-    addPrimitive("context_pop", {true, [this](Tree*, Tree*) -> Result {
-                                   try {
-                                     ctx.pop();
-                                     return unit;
-                                   } catch (std::runtime_error& ex) { return str(ex.what()); }
-                                 }});
-    addPrimitive("expr_print", {true, [this](Tree*, Tree* e) -> Result {
-                                  return str(expectNative<Expr const*>(expect<Cons>(e).head)->toString(ctx));
-                                }});
-    addPrimitive("expr_fprint", {true, [this](Tree*, Tree* e) -> Result {
-                                   return str(Core::FOLForm::fromExpr(expectNative<Expr const*>(expect<Cons>(e).head))
-                                                .toString(ctx));
-                                 }});
-    addPrimitive("expr_check", {true, [this](Tree*, Tree* e) -> Result {
-                                  try {
-                                    return obj(expectNative<Expr const*>(expect<Cons>(e).head)->checkType(ctx, epool));
-                                  } catch (std::runtime_error& ex) { return str(ex.what()); }
-                                }});
+    addPrimitive("context_size", true, [this](Tree*, Tree*) -> Result {
+      return nat(static_cast<uint64_t>(ctx.size()));
+    });
+    addPrimitive("context_get", true, [this](Tree*, Tree* e) -> Result {
+      auto const& i = expect<Nat64>(expect<Cons>(e).head).val;
+      auto const& index = static_cast<size_t>(i);
+      if (index < ctx.size()) return cons(sym(ctx.identifier(index)), cons(obj(ctx[index]), nil));
+      return unit;
+    });
+    addPrimitive("context_push", true, [this](Tree*, Tree* e) -> Result {
+      auto const& [lhs, t] = expect<Cons>(expect<Cons>(e).head);
+      auto const& [rhs, _] = expect<Cons>(t);
+      auto const& s = expect<Symbol>(lhs).val;
+      auto const& expr = expectNative<Expr const*>(rhs);
+      try {
+        ctx.pushAssumption(s, expr);
+        return unit;
+      } catch (std::runtime_error& ex) { return str(ex.what()); }
+    });
+    addPrimitive("context_pop", true, [this](Tree*, Tree*) -> Result {
+      try {
+        ctx.pop();
+        return unit;
+      } catch (std::runtime_error& ex) { return str(ex.what()); }
+    });
+    addPrimitive("expr_print", true, [this](Tree*, Tree* e) -> Result {
+      return str(expectNative<Expr const*>(expect<Cons>(e).head)->toString(ctx));
+    });
+    addPrimitive("expr_fprint", true, [this](Tree*, Tree* e) -> Result {
+      return str(Core::FOLForm::fromExpr(expectNative<Expr const*>(expect<Cons>(e).head)).toString(ctx));
+    });
+    addPrimitive("expr_check", true, [this](Tree*, Tree* e) -> Result {
+      try {
+        return obj(expectNative<Expr const*>(expect<Cons>(e).head)->checkType(ctx, epool));
+      } catch (std::runtime_error& ex) { return str(ex.what()); }
+    });
 
     // [?] TEMP CODE
-    addPrimitive("expr_make_bound", {true, [this](Tree*, Tree* e) -> Result {
-                                       auto const& [h, t] = expect<Cons>(e);
-                                       auto const& [h1, u] = expect<Cons>(t);
-                                       auto const id = expect<Nat64>(h1).val;
-                                       auto const res = treeExpr(h)->makeBound(id, epool);
-                                       return exprTree(res);
-                                     }});
-    addPrimitive("expr_make_replace", {true, [this](Tree*, Tree* e) -> Result {
-                                         auto const& [h, t] = expect<Cons>(e);
-                                         auto const& [h1, u] = expect<Cons>(t);
-                                         auto const res = treeExpr(h)->makeReplace(treeExpr(h1), epool);
-                                         return exprTree(res);
-                                       }});
+    addPrimitive("expr_lift", true, [this](Tree*, Tree* e) -> Result {
+      auto const& [h, t] = expect<Cons>(e);
+      auto const& [h1, u] = expect<Cons>(t);
+      auto const& m = expect<Nat64>(h1).val;
+      auto const& res = treeExpr(h)->lift(m, epool);
+      return exprTree(res);
+    });
+    addPrimitive("expr_make_replace", true, [this](Tree*, Tree* e) -> Result {
+      auto const& [h, t] = expect<Cons>(e);
+      auto const& [h1, u] = expect<Cons>(t);
+      auto const& res = treeExpr(h)->makeReplace(treeExpr(h1), epool);
+      return exprTree(res);
+    });
   }
 
   Tree* ExtendedEvaluator::exprTree(Expr const* e) {
@@ -165,5 +166,4 @@ namespace Eval {
 #undef obj
 #undef unit
 #undef list
-
 }

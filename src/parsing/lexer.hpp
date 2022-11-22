@@ -4,6 +4,7 @@
 #define LEXER_HPP_
 
 #include <array>
+#include <concepts>
 #include <optional>
 #include <string>
 #include <utility>
@@ -12,58 +13,59 @@
 
 namespace Parsing {
 
-  using std::vector;
-  using std::array;
-  using std::pair, std::make_pair;
-  using std::optional, std::make_optional, std::nullopt;
-  using std::string;
-
   struct Token {
-    size_t pattern, startPos, endPos;
-    string lexeme;
+    size_t pattern;
+    size_t startPos;
+    size_t endPos;
+    std::string lexeme;
   };
 
-  // A common (abstract) base class for lexers.
+  struct LexerError {
+    size_t startPos;
+    size_t endPos;
+    std::string lexeme;
+  };
+
+  // Abstract base class for lexers.
   class Lexer {
   public:
-    struct ErrorInfo {
-      size_t startPos, endPos;
-      string lexeme;
-    };
-    static constexpr unsigned int SegBegin = 128;
-    static constexpr unsigned int CodeUnits = 256;
+    static constexpr auto SegBegin = 128u;
+    static constexpr auto CodeUnits = 256u;
 
     virtual ~Lexer() = default;
 
-    bool eof() const noexcept { return pos >= str.size(); }
-    size_t position() const noexcept { return pos; }
-    void setPosition(size_t p) noexcept { pos = p; }
-    void setString(string const& s) { pos = 0, str = s; }
+    auto position() const -> size_t { return mPosition; }
+    auto setPosition(size_t p) -> void { mPosition = p; }
 
-    optional<Token> nextToken();
-    vector<ErrorInfo> popErrors() { return std::exchange(errors, {}); }
+    auto string() const -> std::string { return mString; }
+    auto setString(std::string const& s) -> void { mPosition = 0, mString = s; }
+
+    auto eof() const -> bool { return mPosition >= mString.size(); }
+    auto nextToken() -> std::optional<Token>;
+    auto popErrors() -> std::vector<LexerError> { return std::exchange(mErrors, {}); }
 
   protected:
-    size_t pos;
-    string str;
-    vector<ErrorInfo> errors;
+    size_t mPosition;
+    std::string mString;
+    std::vector<LexerError> mErrors;
 
-    Lexer(): pos(0), str(), errors(){};
+    Lexer():
+      mPosition(0),
+      mString(),
+      mErrors(){};
 
-    // Returns longest match in the form of (length, pattern ID)
-    virtual optional<pair<size_t, size_t>> run() const = 0;
+    // Returns longest match in the form of (length, pattern ID).
+    virtual auto run() const -> std::optional<std::pair<size_t, size_t>> = 0;
   };
 
   // Implementation based on NFA. Patterns can be added/removed after creation.
   class NFALexer: public Lexer {
   public:
     using State = size_t;
-    using NFA = pair<State, State>;
+    using NFA = std::pair<State, State>;
 
-    NFALexer(): Lexer(), table(), patterns() {}
-
-    size_t addPattern(NFA nfa) {
-      size_t id = patterns.size();
+    auto addPattern(NFA nfa) -> size_t {
+      auto id = patterns.size();
       patterns.push_back(nfa.first);
       auto& o = table[nfa.second].ac;
       if (o) unreachable;
@@ -71,7 +73,7 @@ namespace Parsing {
       return id;
     }
 
-    void clearPatterns() noexcept {
+    void clearPatterns() {
       table.clear();
       patterns.clear();
     }
@@ -81,33 +83,23 @@ namespace Parsing {
   table.emplace_back()
 #define trans(s, c, t) table[s].tr.emplace_back(static_cast<char8_t>(c), t)
 
-    // Some useful pattern constructors (equivalent to regexes)
-    NFA empty() {
+    // Some useful pattern constructors (equivalent to regexes).
+    auto empty() -> NFA {
       node(s);
       node(t);
       trans(s, 0, t);
       return {s, t};
     }
-    NFA any() { return range(1, CodeUnits - 1); }
-    NFA utf8segment() { return range(SegBegin, CodeUnits - 1); }
-
-    template <typename... Ts>
-    NFA chars(Ts... a) {
-      return charsvec({static_cast<char8_t>(a)...});
-    }
-    NFA charsvec(vector<char8_t> const& ls) {
+    auto any() -> NFA { return range(1, CodeUnits - 1); }
+    auto utf8segment() -> NFA { return range(SegBegin, CodeUnits - 1); }
+    auto chars(std::vector<char8_t> const& ls) -> NFA {
       node(s);
       node(t);
       for (auto c: ls) trans(s, c, t);
       return {s, t};
     }
-
-    template <typename... Ts>
-    NFA except(Ts... a) {
-      return exceptvec({static_cast<char8_t>(a)...});
-    }
-    NFA exceptvec(vector<char8_t> const& ls) {
-      array<bool, CodeUnits> f{};
+    auto except(std::vector<char8_t> const& ls) -> NFA {
+      std::array<bool, CodeUnits> f{};
       for (auto c: ls) f[c] = true;
       node(s);
       node(t);
@@ -115,14 +107,13 @@ namespace Parsing {
         if (!f[i]) trans(s, i, t);
       return {s, t};
     }
-
-    NFA range(char8_t a, char8_t b) {
+    auto range(char8_t a, char8_t b) -> NFA {
       node(s);
       node(t);
       for (unsigned int i = a; i <= b; i++) trans(s, i, t);
       return {s, t};
     }
-    NFA word(vector<char8_t> const& word) {
+    auto word(std::vector<char8_t> const& word) -> NFA {
       node(s);
       State t = s;
       for (char8_t c: word) {
@@ -132,12 +123,7 @@ namespace Parsing {
       }
       return {s, t};
     }
-
-    template <typename... Ts>
-    NFA alt(Ts... a) {
-      return altvec({a...});
-    }
-    NFA altvec(vector<NFA> const& ls) {
+    auto alt(std::vector<NFA> const& ls) -> NFA {
       node(s);
       node(t);
       for (auto a: ls) {
@@ -146,12 +132,7 @@ namespace Parsing {
       }
       return {s, t};
     }
-
-    template <typename... Ts>
-    NFA concat(Ts... a) {
-      return concatvec({a...});
-    }
-    NFA concatvec(vector<NFA> const& ls) {
+    auto concat(std::vector<NFA> const& ls) -> NFA {
       if (ls.empty()) unreachable;
       for (size_t i = 0; i + 1 < ls.size(); i++) {
         auto a = ls[i], b = ls[i + 1];
@@ -159,12 +140,11 @@ namespace Parsing {
       }
       return {ls.front().first, ls.back().second};
     }
-
-    NFA opt(NFA a) {
+    auto opt(NFA const& a) -> NFA {
       trans(a.first, 0, a.second);
       return {a.first, a.second};
     }
-    NFA star(NFA a) {
+    auto star(NFA const& a) -> NFA {
       node(s);
       node(t);
       trans(s, 0, a.first);
@@ -173,25 +153,32 @@ namespace Parsing {
       trans(s, 0, t);
       return {s, t};
     }
-    NFA plus(NFA a) { return concat(a, star(a)); }
+    auto plus(NFA const& a) -> NFA { return concat({a, star(a)}); }
 
 #undef node
 #undef trans
 
-    // Returns the size of the table
-    size_t tableSize() const noexcept { return table.size(); }
+    // Returns the size of the table.
+    auto tableSize() const -> size_t { return table.size(); }
 
   private:
-    struct Entry {
-      vector<pair<char8_t, State>> tr;
-      optional<size_t> ac;
-      Entry(): tr(), ac() {}
+    class Entry {
+    public:
+      std::vector<std::pair<char8_t, State>> tr;
+      std::optional<size_t> ac;
     };
-    vector<Entry> table;    // The transition & accepting state table
-    vector<State> patterns; // The list of starting states, one for each pattern
 
-    optional<pair<size_t, size_t>> run() const override;
+    std::vector<Entry> table;    // The transition & accepting state table.
+    std::vector<State> patterns; // The list of starting states, one for each pattern.
 
+    // Expands `s` to epsilon closure using DFS.
+    // Pre: the indices where v[] is true must match the elements of s.
+    auto closure(std::vector<bool>& v, std::vector<State>& s) const -> void;
+
+    // Directly runs NFA.
+    auto run() const -> std::optional<std::pair<size_t, size_t>> override;
+
+    // Function object for the DFA construction from NFA.
     friend class PowersetConstruction;
   };
 
@@ -200,28 +187,33 @@ namespace Parsing {
   public:
     using State = size_t;
 
-    // Create DFA from NFA
+    // Constructs DFA from NFA using `PowersetConstruction`.
     explicit DFALexer(NFALexer const& nfa);
 
-    // Optimize DFA
-    void optimize();
+    // Minimises DFA.
+    auto minimise() -> void;
 
-    // Returns the size of the table
-    size_t tableSize() const noexcept { return table.size(); }
+    // Returns the size of the table.
+    auto tableSize() const -> size_t { return table.size(); }
 
   private:
-    struct Entry {
-      array<bool, CodeUnits> has;
-      array<State, CodeUnits> tr;
-      optional<size_t> ac;
-      Entry(): has{}, tr{}, ac() {}
+    class Entry {
+    public:
+      std::array<bool, CodeUnits> has{};
+      std::array<State, CodeUnits> tr{};
+      std::optional<size_t> ac;
     };
-    vector<Entry> table; // The transition & accepting state table
-    State initial;       // The initial state
 
-    optional<pair<size_t, size_t>> run() const override;
+    std::vector<Entry> table; // The transition & accepting state table.
+    State initial = 0;        // The initial state.
 
+    // Runs DFA.
+    auto run() const -> std::optional<std::pair<size_t, size_t>> override;
+
+    // Function object for the DFA construction from NFA.
     friend class PowersetConstruction;
+
+    // Function object for the DFA state minimisation.
     friend class PartitionRefinement;
   };
 

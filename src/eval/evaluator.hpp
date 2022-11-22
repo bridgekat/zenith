@@ -19,20 +19,26 @@ namespace Eval {
   struct ParsingError: public std::runtime_error {
     size_t startPos, endPos;
     ParsingError(std::string const& s, size_t startPos, size_t endPos):
-      std::runtime_error(s), startPos(startPos), endPos(endPos) {}
+      std::runtime_error(s),
+      startPos(startPos),
+      endPos(endPos) {}
   };
 
   // Evaluation error exception
   struct EvalError: public std::runtime_error {
     Tree const *at, *e;
-    EvalError(std::string const& s, Tree const* at, Tree const* e): std::runtime_error(s), at(at), e(e) {}
+    EvalError(std::string const& s, Tree const* at, Tree const* e):
+      std::runtime_error(s),
+      at(at),
+      e(e) {}
     EvalError(EvalError const&) = default;
     EvalError& operator=(EvalError const&) = default;
   };
 
   // Throw this to let the most recent call of `Evaluator::eval()` to provide context.
   struct PartialEvalError: public EvalError {
-    PartialEvalError(std::string const& s, Tree const* at): EvalError(s, at, at) {}
+    PartialEvalError(std::string const& s, Tree const* at):
+      EvalError(s, at, at) {}
   };
 
   // Convenient pattern-matching functions (throw customized exceptions on failure)
@@ -45,7 +51,7 @@ namespace Eval {
   template <>                                                                                         \
   inline T& expect<T>(Tree * e) {                                                                     \
     try {                                                                                             \
-      return std::get<T>(e->v);                                                                       \
+      return std::get<T>(*e);                                                                         \
     } catch (std::bad_variant_access&) { throw PartialEvalError((msg ", got ") + e->toString(), e); } \
   }
   defineExpect(Nil, "expected end-of-list")
@@ -92,8 +98,12 @@ namespace Eval {
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
     struct Result {
       Tree *env, *e;
-      Result(Tree* e): env(nullptr), e(e){};
-      Result(Tree* env, Tree* e): env(env), e(e){};
+      Result(Tree* e):
+        env(nullptr),
+        e(e){};
+      Result(Tree* env, Tree* e):
+        env(env),
+        e(e){};
     };
     using PrimitiveFunc = std::pair<bool, std::function<Result(Tree*, Tree*)>>;
     static constexpr Parsing::Symbol IgnoredSymbol = 0;
@@ -126,7 +136,7 @@ namespace Eval {
 
     Parsing::NFALexer::NFA treePattern(Tree* e);
     std::vector<Parsing::NFALexer::NFA> listPatterns(Tree* e);
-    std::vector<std::pair<Parsing::Symbol, Parsing::Prec>> listSymbols(Tree* e);
+    std::vector<std::pair<Parsing::Symbol, Parsing::Precedence>> listSymbols(Tree* e);
     void setSyntax(Tree* p, Tree* r);
     Tree* makeList(std::initializer_list<Tree*> const& es);
 
@@ -137,9 +147,9 @@ namespace Eval {
       return id;
     }
 
-    size_t addPrimitive(std::string const& name, PrimitiveFunc const& f) {
+    size_t addPrimitive(std::string const& name, bool evalParams, std::function<Result(Tree*, Tree*)> const& f) {
       size_t id = prims.size();
-      prims.push_back(f);
+      prims.emplace_back(evalParams, f);
       namePrims[name] = id;
       return id;
     }

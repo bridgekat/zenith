@@ -27,6 +27,8 @@ IndentExternBlock: Indent
 IndentGotoLabels: false
 IndentPPDirectives: AfterHash
 IndentWrappedFunctionNames: false
+IndentRequiresClause: false
+RequiresExpressionIndentation: OuterScope
 
 # Line break points
 BreakBeforeBinaryOperators: NonAssignment
@@ -35,15 +37,16 @@ BreakConstructorInitializers: AfterColon
 BreakInheritanceList: AfterColon
 BreakStringLiterals: false
 
-AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
-BinPackArguments: true
-BinPackParameters: true
-PackConstructorInitializers: BinPack
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+BinPackArguments: false
+BinPackParameters: false
+PackConstructorInitializers: Never
 
 AlwaysBreakAfterReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
+RequiresClausePosition: WithPreceding
 
 AttributeMacros: []
 StatementMacros: ['defineExpect']
@@ -86,7 +89,15 @@ SpaceBeforeInheritanceColon: false
 SpaceBeforeRangeBasedForLoopColon: false
 BitFieldColonSpacing: After
 
-SpaceBeforeParens: ControlStatements
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterFunctionDeclarationName: false
+  AfterFunctionDefinitionName: false
+  AfterOverloadedOperator: false
+  AfterRequiresInClause: true
+  AfterRequiresInExpression: true
+  BeforeNonEmptyParentheses: false
 SpaceBeforeSquareBrackets: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false

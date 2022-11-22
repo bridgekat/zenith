@@ -50,7 +50,7 @@ namespace Server {
 
     while (s != "") {
       size_t p = s.find(": ");
-      if (p == string::npos) notimplemented;
+      if (p == string::npos) unimplemented;
       string key = s.substr(0, p), value = s.substr(p + 2);
       // log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
 
@@ -58,8 +58,8 @@ namespace Server {
         std::stringstream ss(value);
         ss >> n;
       } else if (key == "Content-Type") {
-        if (value != CONTENT_TYPE_VALUE) notimplemented;
-      } else notimplemented;
+        if (value != CONTENT_TYPE_VALUE) unimplemented;
+      } else unimplemented;
 
       // Get next line
       s = getline();
@@ -100,7 +100,7 @@ namespace Server {
 
         // Handle JSON request
         if (j.is_object()) handleRequest(j);
-        else if (j.is_array()) notimplemented;
+        else if (j.is_array()) unimplemented;
         else {
           sendError(INVALID_REQUEST, "ill-formed JSON request, expected array or object");
           continue;
@@ -112,13 +112,13 @@ namespace Server {
   void JSONRPC2Server::handleRequest(const json& j) {
 
     // Check if the the version number is present and correct
-    if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0") notimplemented;
+    if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0") unimplemented;
 
     // Determine the type of the message
     bool hasid = false;
     int64_t id;
     if (j.contains("id") && !j["id"].is_null()) {
-      if (j["id"].is_string()) notimplemented;
+      if (j["id"].is_string()) unimplemented;
       if (j["id"].is_number_integer()) {
         hasid = true;
         id = j["id"].get<int64_t>();
@@ -128,7 +128,7 @@ namespace Server {
     if (j.contains("method") && j["method"].is_string()) {
       json params;
       if (j.contains("params") && !j["params"].is_null()) {
-        if (j["params"].is_array()) notimplemented;
+        if (j["params"].is_array()) unimplemented;
         if (j["params"].is_object()) params = j["params"];
       }
       if (hasid) {
@@ -219,7 +219,7 @@ namespace Server {
       // Erase using `id` instead of `it`, as `requests` could have been modified by the coroutine
       requests.erase(id);
 
-    } else notimplemented;
+    } else unimplemented;
   }
 
   void JSONRPC2Server::send(const json& j) {

@@ -133,24 +133,23 @@ namespace Core {
       unreachable;
     }
 
-    // Make a free variable into an overflow variable.
+    // Lift overflow variables by `m` levels.
     // Lifetime of the resulting expression is bounded by `this` and `pool`.
-    Expr const* makeBound(uint64_t id, Allocator<Expr>& pool) const {
-      Expr const* v = nullptr;
-      return updateVars(
-        [id, &v, &pool](uint64_t n, Expr const* x) {
-          return (x->var.tag == VFree && x->var.id == id) ? (v ? v : v = make(pool, VBound, n)) : x;
-        },
-        pool
-      );
+    Expr const* lift(uint64_t m, Allocator<Expr>& pool) const {
+      return updateVars([m, &pool](uint64_t n, Expr const* x) {
+        if (x->var.tag == VBound && x->var.id >= n) return make(pool, VBound, x->var.id + m);
+        return x;
+      }, pool);
     }
 
-    // Replace one overflow variable by an expression.
+    // Replace one overflow variable by an expression (i.e. deleting the outermost binder).
     // Lifetime of the resulting expression is bounded by `this`, `t` and `pool`.
     Expr const* makeReplace(Expr const* t, Allocator<Expr>& pool) const {
-      return updateVars(
-        [t](uint64_t n, Expr const* x) { return (x->var.tag == VBound && x->var.id == n) ? t : x; }, pool
-      );
+      return updateVars([t, &pool](uint64_t n, Expr const* x) {
+        if (x->var.tag == VBound && x->var.id == n) return t->lift(n, pool);
+        if (x->var.tag == VBound && x->var.id > n) return make(pool, VBound, x->var.id - 1);
+        return x;
+      }, pool);
     }
 
     // Performs applicative-order beta-reduction.

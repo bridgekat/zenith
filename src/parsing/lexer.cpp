@@ -4,9 +4,9 @@
 
 namespace Parsing {
 
-  constexpr unsigned int CodeUnits = Lexer::CodeUnits;
+  constexpr auto CodeUnits = Lexer::CodeUnits;
 
-  size_t cutFirstCodePoint(string const& s, size_t pos) {
+  auto cutFirstCodePoint(std::string const& s, size_t pos) -> size_t {
     if (pos >= s.size()) return 0;
     size_t i = 1;
     for (; pos + i < s.size(); i++) {
@@ -16,63 +16,58 @@ namespace Parsing {
     return i;
   }
 
-  optional<Token> Lexer::nextToken() {
-    string skipped;
+  auto Lexer::nextToken() -> std::optional<Token> {
+    auto skipped = std::string();
     while (!eof()) {
       auto opt = run();
       if (opt) {
-        if (!skipped.empty()) errors.push_back(ErrorInfo{pos - skipped.size(), pos, skipped});
+        if (!skipped.empty()) mErrors.push_back(LexerError{mPosition - skipped.size(), mPosition, skipped});
         auto [len, id] = opt.value();
-        Token res{id, pos, pos + len, str.substr(pos, len)};
-        pos += len;
+        auto res = Token{id, mPosition, mPosition + len, mString.substr(mPosition, len)};
+        mPosition += len;
         return res;
       }
       // Mid: !opt
-      size_t len = cutFirstCodePoint(str, pos);
-      skipped += str.substr(pos, len);
-      pos += len;
+      auto len = cutFirstCodePoint(mString, mPosition);
+      skipped += mString.substr(mPosition, len);
+      mPosition += len;
     }
     // Mid: eof()
-    if (!skipped.empty()) errors.push_back(ErrorInfo{pos - skipped.size(), pos, skipped});
-    return nullopt;
+    if (!skipped.empty()) mErrors.push_back(LexerError{mPosition - skipped.size(), mPosition, skipped});
+    return std::nullopt;
   }
 
-  // Directly run NFA
-  optional<pair<size_t, size_t>> NFALexer::run() const {
-    optional<pair<size_t, size_t>> res = nullopt;
-    vector<State> s;
-    vector<bool> v(table.size(), false);
+  auto NFALexer::closure(std::vector<bool>& v, std::vector<State>& s) const -> void {
+    auto stk = s;
+    while (!stk.empty()) {
+      auto x = stk.back();
+      stk.pop_back();
+      for (auto [cc, u]: table[x].tr)
+        if (cc == 0 && !v[u]) {
+          s.push_back(u);
+          stk.push_back(u);
+          v[u] = true;
+        }
+    }
+  }
 
-    // A helper function
-    // Pre: the indices where v[] is true must match the elements of s
-    auto closure = [this](vector<bool>& v, vector<State>& s) {
-      // Expand to epsilon closure (using DFS)
-      vector<State> stk = s;
-      while (!stk.empty()) {
-        State x = stk.back();
-        stk.pop_back();
-        for (auto [cc, u]: table[x].tr)
-          if (cc == 0 && !v[u]) {
-            s.push_back(u);
-            stk.push_back(u);
-            v[u] = true;
-          }
-      }
-    };
-
-    // Initial states
+  auto NFALexer::run() const -> std::optional<std::pair<size_t, size_t>> {
+    auto res = std::optional<std::pair<size_t, size_t>>();
+    auto s = std::vector<State>();
+    auto v = std::vector<bool>(table.size(), false);
+    // Initial states.
     for (auto const& initial: patterns) {
       s.push_back(initial);
       v[initial] = true;
     }
     closure(v, s);
-    for (size_t i = 0; pos + i < str.size(); i++) {
-      char8_t c = static_cast<char8_t>(str[pos + i]);
-      // Reset v[] to all false
-      for (State x: s) v[x] = false;
-      // Move one step
-      vector<State> t;
-      for (State x: s)
+    for (auto i = 0_z; mPosition + i < mString.size(); i++) {
+      auto c = static_cast<char8_t>(mString[mPosition + i]);
+      // Reset v[] to all false.
+      for (auto x: s) v[x] = false;
+      // Move one step.
+      auto t = std::vector<State>();
+      for (auto x: s)
         for (auto [cc, u]: table[x].tr)
           if (cc == c && !v[u]) {
             t.push_back(u);
@@ -80,50 +75,34 @@ namespace Parsing {
           }
       closure(v, t);
       s.swap(t);
-      // Update result if reaches accepting state
-      // Patterns with larger IDs have higher priority
-      optional<size_t> curr = nullopt;
-      for (State x: s)
+      // Update result if reaches accepting state.
+      // Patterns with larger IDs have higher priority.
+      auto curr = std::optional<size_t>();
+      for (auto x: s)
         if (table[x].ac) {
           if (!curr || curr.value() < table[x].ac.value()) curr = table[x].ac;
         }
-      // Update longest match, if applicable
+      // Update longest match, if applicable.
       if (curr) res = {i + 1, curr.value()};
-      // Exit if no more possible matches
+      // Exit if no more possible matches.
       if (s.empty()) break;
     }
     return res;
   }
 
-  using std::unordered_map;
-
-  // Function object for the DFA construction from NFA
   class PowersetConstruction {
   public:
     NFALexer const& nfa;
     DFALexer& dfa;
-    vector<bool> v;
-    unordered_map<vector<bool>, DFALexer::State> mp;
+    std::vector<bool> v;
+    std::unordered_map<std::vector<bool>, DFALexer::State> mp;
 
-    PowersetConstruction(NFALexer const& nfa, DFALexer& dfa): nfa(nfa), dfa(dfa), v(), mp() {}
-
-    void closure(vector<NFALexer::State>& s) {
-      // Expand `s` and `v` to epsilon closure (using DFS)
-      vector<NFALexer::State> stk = s;
-      while (!stk.empty()) {
-        NFALexer::State nx = stk.back();
-        stk.pop_back();
-        for (auto [cc, nu]: nfa.table[nx].tr)
-          if (cc == 0 && !v[nu]) {
-            s.push_back(nu);
-            stk.push_back(nu);
-            v[nu] = true;
-          }
-      }
-    };
+    PowersetConstruction(NFALexer const& nfa, DFALexer& dfa):
+      nfa(nfa),
+      dfa(dfa) {}
 
 #define clearv(s_) \
-  for (NFALexer::State i: s_) v[i] = false;
+  for (auto i: s_) v[i] = false;
 #define node(x_, s_)              \
   x_ = mp[s_] = dfa.table.size(); \
   dfa.table.emplace_back()
@@ -132,19 +111,19 @@ namespace Parsing {
   dfa.table[s_].tr[c_] = t_
 
     // Invariant: all elements of v[] are false
-    void dfs(DFALexer::State x, vector<NFALexer::State> const& s) {
-      // Check if `s` contains accepting states
-      optional<size_t> curr;
+    auto dfs(DFALexer::State x, std::vector<NFALexer::State> const& s) -> void {
+      // Check if `s` contains accepting states.
+      auto curr = std::optional<size_t>();
       for (auto ns: s) {
         auto opt = nfa.table[ns].ac;
         if (opt && (!curr || curr.value() < opt.value())) curr = opt;
       }
       dfa.table[x].ac = curr;
-      // Compute transitions
-      // Invariant: all elements of v[] are false at the end of the loop
+      // Compute transitions.
+      // Invariant: all elements of v[] are false at the end of the loop.
       for (unsigned int c = 1; c < CodeUnits; c++) {
-        // Compute u
-        vector<NFALexer::State> t;
+        // Compute u.
+        auto t = std::vector<NFALexer::State>();
         for (auto nx: s)
           for (auto [cc, nu]: nfa.table[nx].tr) {
             if (cc == c && !v[nu]) {
@@ -152,16 +131,16 @@ namespace Parsing {
               v[nu] = true;
             }
           }
-        if (t.empty()) continue; // No need to clear v: t is empty
-        closure(t);
+        if (t.empty()) continue; // No need to clear v: t is empty.
+        nfa.closure(v, t);
         // Look at u:
         auto it = mp.find(v);
         if (it != mp.end()) {
-          // Already seen
+          // Already seen.
           trans(x, c, it->second);
           clearv(t);
         } else {
-          // Haven't seen before, create new DFA node and recurse
+          // Have not seen before, create new DFA node and recurse.
           node(DFALexer::State u, v);
           trans(x, c, u);
           clearv(t);
@@ -170,17 +149,18 @@ namespace Parsing {
       }
     }
 
+    // Main function.
     void operator()() {
-      vector<NFALexer::State> s;
+      auto s = std::vector<NFALexer::State>();
       v.clear();
       v.resize(nfa.table.size());
       mp.clear();
-      // Initial states
+      // Initial states.
       for (auto const& initial: nfa.patterns) {
         s.push_back(initial);
         v[initial] = true;
       }
-      closure(s);
+      nfa.closure(v, s);
       node(dfa.initial, v);
       clearv(s);
       dfs(dfa.initial, s);
@@ -191,26 +171,30 @@ namespace Parsing {
 #undef clearv
   };
 
-  DFALexer::DFALexer(NFALexer const& nfa): Lexer(), table(), initial(0) { PowersetConstruction(nfa, *this)(); }
+  DFALexer::DFALexer(NFALexer const& nfa) { PowersetConstruction(nfa, *this)(); }
 
-  // Function object for the DFA state minimization
-  //   See: https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm
-  //   See: https://en.wikipedia.org/wiki/Partition_refinement
+  // Function object for the DFA state minimisation.
+  // - See: https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm
+  // - See: https://en.wikipedia.org/wiki/Partition_refinement
   // Pre: the pattern IDs in accepting states are small nonnegative integers.
-  // (They are directly used as initial partition IDs)
+  // (They are directly used as initial partition IDs.)
   class PartitionRefinement {
   public:
     using State = DFALexer::State;
     using Entry = DFALexer::Entry;
+
     struct List {
-      List *l, *r;
+      List* l;
+      List* r;
       State x;
     };
+
     struct Class {
       size_t size;
       List* head;
       bool isDist;
     };
+
     struct Identity {
       size_t cl;
       List* ptr;
@@ -219,106 +203,108 @@ namespace Parsing {
     Core::Allocator<List> pool;
     DFALexer& dfa;
 
-    // Ephemeral states
-    vector<vector<pair<char8_t, State>>> rev; // Reverse edges
-    vector<Class> cl;                         // Classes (size, pointer to head, is used as distinguisher set)
-    vector<Identity> id;                      // Identities (class index, pointer to list)
-    vector<size_t> dist;                      // Indices of classes used as distinguisher sets
-    array<vector<State>, CodeUnits> dom;      // Character -> domain
-    vector<vector<State>> interStates;        // Class index -> list of intersecting states
+    // Ephemeral states.
+    std::vector<std::vector<std::pair<char8_t, State>>> rev; // Reverse edges.
+    std::vector<Class> cl;                         // Classes (size, pointer to head, is used as distinguisher set).
+    std::vector<Identity> id;                      // Identities (class index, pointer to list).
+    std::vector<size_t> dist;                      // Indices of classes used as distinguisher sets.
+    std::array<std::vector<State>, CodeUnits> dom; // Character -> domain.
+    std::vector<std::vector<State>> interStates;   // Class index -> list of intersecting states.
 
-    explicit PartitionRefinement(DFALexer& dfa): pool(), dfa(dfa), rev(), cl(), id(), dist(), dom(), interStates() {}
+    explicit PartitionRefinement(DFALexer& dfa):
+      dfa(dfa) {}
 
-    // Add DFA node `x` to class `i`, overwriting `id[x]`
-    void add(State x, size_t i) {
+    // Add DFA node `x` to class `i`, overwriting `id[x]`.
+    auto add(State x, size_t i) -> void {
       cl[i].size++;
-      List *l = cl[i].head, *r = l->r;
-      List* curr = pool.pushBack(List{l, r, x});
+      auto l = cl[i].head, r = l->r;
+      auto curr = pool.pushBack(List{l, r, x});
       l->r = r->l = curr;
       id[x] = {i, curr};
     }
 
-    // Remove DFA node `x` from its class, as indicated in `id[x]`
-    void remove(State x) {
+    // Remove DFA node `x` from its class, as indicated in `id[x]`.
+    auto remove(State x) -> void {
       auto [i, curr] = id[x];
-      List *l = curr->l, *r = curr->r;
+      auto l = curr->l, r = curr->r;
       l->r = r;
       r->l = l;
       cl[i].size--;
     }
 
-    // Create new class and return its ID (always = partition.size() - 1, just for convenience)
-    size_t newClass() {
-      List* head = pool.pushBack(List{nullptr, nullptr, 0});
+    // Create new class and return its ID (always = partition.size() - 1, just for convenience).
+    auto newClass() -> size_t {
+      auto head = pool.pushBack(List{nullptr, nullptr, 0});
       head->l = head->r = head;
-      size_t index = cl.size();
+      auto index = cl.size();
       cl.push_back(Class{0, head, false});
       return index;
     }
 
-    void operator()() {
+    // Main function.
+    auto operator()() -> void {
       auto& table = dfa.table;
       auto& initial = dfa.initial;
 
-      // Add the dead state
-      State dead = table.size();
+      // Add the dead state.
+      auto dead = table.size();
       table.emplace_back();
-      State n = table.size();
-      size_t numPatterns = 0;
-      for (State i = 0; i < n; i++) {
+      auto n = table.size();
+      auto numPatterns = 0_z;
+      for (auto i = 0_z; i < n; i++) {
         if (table[i].ac) numPatterns = std::max(numPatterns, table[i].ac.value() + 1);
-        // Other states now have transitions to the dead state
-        // The dead state has all its transitions pointing to itself
-        for (unsigned int c = 1; c < CodeUnits; c++)
+        // Other states now have transitions to the dead state.
+        // The dead state has all its transitions pointing to itself.
+        for (auto c = 1u; c < CodeUnits; c++)
           if (!table[i].has[c]) table[i].tr[c] = dead;
       }
-      // `has[]` can be ignored below
+      // `has[]` can be ignored below.
 
-      // Process reverse edges (arcs)
+      // Process reverse edges.
       rev.clear();
       rev.resize(n);
-      for (State i = 0; i < n; i++) {
-        for (unsigned int c = 1; c < CodeUnits; c++) rev[table[i].tr[c]].emplace_back(static_cast<char8_t>(c), i);
+      for (auto i = 0_z; i < n; i++) {
+        for (auto c = 1u; c < CodeUnits; c++) rev[table[i].tr[c]].emplace_back(static_cast<char8_t>(c), i);
       }
 
-      // Initial partition (numPatterns + 1 classes)
+      // Initial partition (numPatterns + 1 classes).
       cl.clear();
-      for (size_t i = 0; i <= numPatterns; i++) newClass();
+      for (auto i = 0_z; i <= numPatterns; i++) newClass();
       id.clear();
       id.resize(n);
-      for (State i = 0; i < n; i++) {
+      for (auto i = 0_z; i < n; i++) {
         if (table[i].ac) add(i, table[i].ac.value());
         else add(i, numPatterns);
       }
 
-      // All classes except the last one (just not needed) are used as initial distinguisher sets
+      // All classes except the last one (just not needed) are used as initial distinguisher sets.
       dist.clear();
-      for (size_t i = 0; i < numPatterns; i++) {
+      for (auto i = 0_z; i < numPatterns; i++) {
         dist.push_back(i);
         cl[i].isDist = true;
       }
 
       interStates.clear();
       while (!dist.empty()) {
-        size_t curr = dist.back();
+        auto curr = dist.back();
         dist.pop_back();
         cl[curr].isDist = false;
 
-        // Calculate the domain sets for all c's
-        for (unsigned int c = 1; c < CodeUnits; c++) dom[c].clear();
-        for (List const* p = cl[curr].head->r; p != cl[curr].head; p = p->r) {
-          // "Examine transitions" - this occurs a limited number of times, see below
-          // Note that the total size of dom[] is bounded by this
+        // Calculate the domain sets for all c's.
+        for (auto c = 1u; c < CodeUnits; c++) dom[c].clear();
+        for (auto p = cl[curr].head->r; p != cl[curr].head; p = p->r) {
+          // "Examine transitions" - this occurs a limited number of times, see below.
+          // Note that the total size of dom[] is bounded by this.
           for (auto [c, s]: rev[p->x]) dom[c].push_back(s);
         }
 
-        for (unsigned int c = 1; c < CodeUnits; c++) {
-          // Inner loop: time complexity should be O(size of dom[c])
-          // Mid: all entries of interStates[] are empty
+        for (auto c = 1u; c < CodeUnits; c++) {
+          // Inner loop: time complexity should be O(size of dom[c]).
+          // Mid: all entries of interStates[] are empty.
           interStates.resize(cl.size());
-          for (State x: dom[c]) interStates[id[x].cl].push_back(x);
-          for (State x: dom[c]) {
-            size_t i = id[x].cl;
+          for (auto x: dom[c]) interStates[id[x].cl].push_back(x);
+          for (auto x: dom[c]) {
+            auto i = id[x].cl;
 
             // If intersection has been processed before...
             if (i >= interStates.size() || interStates[i].empty()) continue;
@@ -328,37 +314,38 @@ namespace Parsing {
               continue;
             }
 
-            // Create a new class for the "intersection"
-            size_t interi = newClass();
+            // Create a new class for the "intersection".
+            auto interi = newClass();
             // Add elements into it...
-            for (State y: interStates[i]) {
+            for (auto y: interStates[i]) {
               remove(y);
               add(y, interi);
             }
             // The original class now becomes the "set difference"!
-            // Avoid processing multiple times, also does the clearing
+            // Avoid processing multiple times, also does the clearing.
             interStates[i].clear();
 
-            // See which splits will be used as distinguisher sets
+            // See which splits will be used as distinguisher sets.
             if (cl[i].isDist || cl[interi].size <= cl[i].size) {
               dist.push_back(interi);
               cl[interi].isDist = true;
-            } else { // Mid: !cl[i].isDist && cl[i].size < cl[interi].size
+            } else { // !cl[i].isDist && cl[i].size < cl[interi].size
               dist.push_back(i);
               cl[i].isDist = true;
             }
           }
-          // Mid: all interStates[] are empty
+          // Mid: all interStates[] are empty.
         }
       }
 
-      // Rebuild `table` and `initial`
-      vector<Entry> newTable(cl.size());
-      State newInitial = id[initial].cl, newDead = id[dead].cl;
-      for (State i = 0; i < table.size(); i++) {
-        State srci = id[i].cl;
-        for (unsigned int c = 1; c < CodeUnits; c++) {
-          State dsti = id[table[i].tr[c]].cl;
+      // Rebuild `table` and `initial`.
+      auto newTable = std::vector<Entry>(cl.size());
+      auto newInitial = id[initial].cl;
+      auto newDead = id[dead].cl;
+      for (auto i = 0_z; i < table.size(); i++) {
+        auto srci = id[i].cl;
+        for (auto c = 1u; c < CodeUnits; c++) {
+          auto dsti = id[table[i].tr[c]].cl;
           if (dsti != newDead) {
             newTable[srci].has[c] = true;
             newTable[srci].tr[c] = dsti;
@@ -369,10 +356,10 @@ namespace Parsing {
       table.swap(newTable);
       initial = newInitial;
 
-      // Remove the dead state
-      for (State i = 0; i + 1 < table.size(); i++) {
+      // Remove the dead state.
+      for (auto i = 0_z; i + 1 < table.size(); i++) {
         if (i >= newDead) table[i] = table[i + 1];
-        for (unsigned int c = 1; c < CodeUnits; c++) {
+        for (auto c = 1u; c < CodeUnits; c++) {
           if (table[i].has[c] && table[i].tr[c] > newDead) table[i].tr[c]--;
         }
       }
@@ -407,17 +394,16 @@ namespace Parsing {
     }
   };
 
-  void DFALexer::optimize() { PartitionRefinement (*this)(); }
+  auto DFALexer::minimise() -> void { PartitionRefinement (*this)(); }
 
-  // Run DFA
-  optional<pair<size_t, size_t>> DFALexer::run() const {
-    optional<pair<size_t, size_t>> res = nullopt;
-    State s = initial;
-    for (size_t i = 0; pos + i < str.size(); i++) {
-      char8_t c = static_cast<char8_t>(str[pos + i]);
+  auto DFALexer::run() const -> std::optional<std::pair<size_t, size_t>> {
+    auto res = std::optional<std::pair<size_t, size_t>>();
+    auto s = initial;
+    for (auto i = 0_z; mPosition + i < mString.size(); i++) {
+      auto c = static_cast<char8_t>(mString[mPosition + i]);
       if (!table[s].has[c]) break;
       s = table[s].tr[c];
-      // Update result if reaches accepting state
+      // Update result if reaches accepting state.
       auto curr = table[s].ac;
       if (curr) res = {i + 1, curr.value()};
     }

@@ -1,7 +1,11 @@
-cmake_minimum_required (VERSION 3.12...3.22)
+cmake_minimum_required (VERSION 3.12)
+if (POLICY CMP0135)
+  cmake_policy (SET CMP0135 NEW)
+endif ()
 
 project (ApiMu VERSION 0.1 LANGUAGES CXX)
 
+option (APIMU_ENABLE_IPO "Enable inter-procedural optimizations" OFF)
 option (APIMU_ENABLE_CODE_ANALYSIS "Run code analysis with cppcheck" OFF)
 option (APIMU_ENABLE_MOST_WARNINGS "Enable most warnings" OFF)
 option (APIMU_ENABLE_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
@@ -15,7 +19,7 @@ option (APIMU_LINK_EXTEND_STACK "Extend stack memory to 10MB (MSVC LINK)" OFF)
 # See: https://cliutils.gitlab.io/modern-cmake/chapters/features/small.html
 include (CheckIPOSupported)
 check_ipo_supported (RESULT IPO_SUPPORTED)
-if (IPO_SUPPORTED)
+if (IPO_SUPPORTED AND APIMU_ENABLE_IPO)
   message (STATUS "IPO/LTO ENABLED")
 endif ()
 
@@ -39,7 +43,7 @@ if (APIMU_ENABLE_CODE_ANALYSIS)
   endif ()
 endif ()
 
-# Set default compile options
+# Set default compile options.
 macro (target_default_compile_options TARGET)
   target_compile_features     (${TARGET} PRIVATE cxx_std_20)
   set_target_properties       (${TARGET} PROPERTIES CXX_EXTENSIONS OFF)
@@ -87,12 +91,12 @@ macro (target_default_compile_options TARGET)
   if (APIMU_LINK_EXTEND_STACK)
     set_target_properties     (${TARGET} PROPERTIES LINK_FLAGS "/STACK:10000000")
   endif ()
-  if (IPO_SUPPORTED)
+  if (IPO_SUPPORTED AND APIMU_ENABLE_IPO)
     set_target_properties     (${TARGET} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
   endif ()
 endmacro ()
 
-# Add targets
+# Add targets.
 add_executable (testcore
   src/core/context.cpp
   src/core/expr.cpp
@@ -122,12 +126,8 @@ target_include_directories      (testeval PRIVATE src)
 set (JSON_Install OFF CACHE INTERNAL "")
 set (JSON_MultipleHeaders ON)
 include (FetchContent)
-FetchContent_Declare (nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.10.5/json.tar.xz)
-FetchContent_GetProperties (nlohmann_json)
-if (NOT nlohmann_json_POPULATED)
-  FetchContent_Populate (nlohmann_json)
-  add_subdirectory (${nlohmann_json_SOURCE_DIR} ${nlohmann_json_BINARY_DIR} EXCLUDE_FROM_ALL)
-endif ()
+FetchContent_Declare (nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz)
+FetchContent_MakeAvailable (nlohmann_json)
 
 if (FALSE)
 

@@ -4,7 +4,7 @@
 namespace Eval {
 
   using std::string, std::pair, std::make_pair;
-  using std::get, std::holds_alternative, std::visit;
+  using std::get, std::get_if, std::visit;
 
   Tree* Tree::clone(Core::Allocator<Tree>& pool, Tree* nil, Tree* unit) const {
     return visit(
@@ -17,10 +17,10 @@ namespace Eval {
         [&](String const& x) { return pool.emplaceBack(x); },
         [&](Bool const& x) { return pool.emplaceBack(x); },
         [&](Unit const&) { return unit; },
-        [&](Closure const&) -> Tree* { notimplemented; },
+        [&](Closure const&) -> Tree* { unimplemented; },
         [&](Native const& x) { return pool.emplaceBack(x); },
       },
-      v
+      *this
     );
   }
 
@@ -37,8 +37,8 @@ namespace Eval {
           res += s0;
           if (f0) return make_pair(true, res);
           auto const* q = x.tail;
-          while (holds_alternative<Cons>(q->v)) {
-            auto const& [hd, tl] = get<Cons>(q->v);
+          while (auto cons = get_if<Cons>(q)) {
+            auto const& [hd, tl] = *cons;
             res += " ";
             if (q == p) return make_pair(true, res);
             auto const& [f1, s1] = hd->toStringUntil(p);
@@ -46,7 +46,7 @@ namespace Eval {
             if (f1) return make_pair(true, res);
             q = tl;
           }
-          if (!holds_alternative<Nil>(q->v)) {
+          if (!get_if<Nil>(q)) {
             res += " . ";
             if (q == p) return make_pair(true, res);
             auto const& [f2, s2] = q->toStringUntil(p);
@@ -71,7 +71,7 @@ namespace Eval {
           return make_pair(false, "#<native type: " + string(x.val.type().name()) + ", addr: " + addr.str() + ">");
         },
       },
-      v
+      *this
     );
   }
 

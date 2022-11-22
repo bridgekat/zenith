@@ -141,7 +141,7 @@ namespace Core {
       case Var:
         switch (var.tag) {
           case VBound:
-            if (var.id < stk.size()) return stk[stk.size() - 1 - var.id]->reduce(pool);
+            if (var.id < stk.size()) return stk[stk.size() - 1 - var.id]->lift(var.id + 1, pool)->reduce(pool);
             else throw InvalidExpr("de Bruijn index overflow", ctx, this);
           case VFree:
             if (var.id < ctx.size()) return ctx[var.id]->reduce(pool);
@@ -151,9 +151,9 @@ namespace Core {
         unreachable;
       case App: { // Π-elimination
         auto const tl = app.l->checkType(ctx, pool, stk, names);
-        auto const tr = app.r->checkType(ctx, pool, stk, names);
         if (tl->tag != Pi)
           throw InvalidExpr("expected function, term has type " + tl->toString(ctx, names), ctx, app.l);
+        auto const tr = app.r->checkType(ctx, pool, stk, names);
         if (*tl->pi.t != *tr)
           throw InvalidExpr(
             "argument type mismatch, expected " + tl->pi.t->toString(ctx, names) + ", got " + tr->toString(ctx, names),

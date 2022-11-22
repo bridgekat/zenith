@@ -7,14 +7,14 @@
 
   // Blank, line comment and block comment
   (_ (_ 0) (star (char " \f\n\r\t\v")))
-  (_ (_ 0) (concat (word "//") (star (except "\n\r"))))
+  (_ (_ 0) (concat (word "--") (star (except "\n\r"))))
   (_ (_ 0)
-    (concat (word "/*")
-            (star (concat (star (except "*"))
-                          (plus (char "*"))
+    (concat (word "/-")
+            (star (concat (star (except "-"))
+                          (plus (char "-"))
                           (except "/")))
-            (star (except "*"))
-            (plus (char "*"))
+            (star (except "-"))
+            (plus (char "-"))
             (char "/")))
 
   // Identifiers
@@ -52,6 +52,9 @@
   (_ (op_minus 0) (word "-"))
   (_ (op_asterisk 0) (word "*"))
   (_ (op_slash 0) (word "/"))
+  (_ (op_amp 0) (word "&"))
+  (_ (op_bar 0) (word "|"))
+  (_ (op_caret 0) (word "^"))
   (_ (op_less_equals 0) (word "<="))
   (_ (op_less 0) (word "<"))
   (_ (op_greater_equals 0) (word ">="))
@@ -78,6 +81,7 @@
   (_ (kw_match 0) (word "match"))
   (_ (kw_with 0) (word "with"))
   (_ (kw_begin 0) (word "begin"))
+  (_ (kw_end 0) (word "end"))
 
 ))
 
@@ -94,7 +98,7 @@
   (period' (list 0) ((tree 0) (op_period 0) (tree 0)))
   (quote' (tree 0) ((op_quote 0) (tree 0)))
   (unquote' (tree 0) ((op_comma 0) (tree 0)))
-  (tree' (tree 0) ((op_left_paren 0) (list 0) (op_right_paren 0)))
+  (tree' (tree 0) ((op_left_bracket 0) (list 0) (op_right_bracket 0)))
 
   // Extended part
   // A more natural way (with less parentheses) to write BNF grammars
@@ -107,6 +111,9 @@
   (rule' (tree 0) ((op_left_bracket 0) (symbol 0) (syncat 0) (op_double_colon_equals 0) (syncats 0) (op_right_bracket 0)))
 
   // A more natural way (with less parentheses) to write expressions
+  (list_init' (expr_list 0) ((expr 100) (expr 100)))
+  (list_cons' (expr_list 0) ((expr 100) (expr_list 0)))
+  (id' (expr 99) ((expr_list 0)))
   (minus' (expr 90) ((op_minus 0) (expr 90)))
   (mul' (expr 80) ((expr 80) (op_asterisk 0) (expr 81)))
   (div' (expr 80) ((expr 80) (op_slash 0) (expr 81)))
@@ -128,24 +135,25 @@
   (_ (opt_semicolon 0) ((op_semicolon 0)))
 
   (binding' (binding 0) ((symbol 0) (op_equals 0) (expr 0)))
-  (nil' (bindings 0) ())
-  (period' (bindings 0) ((binding 0) (opt_semicolon 0) (bindings 0)))
-  (let' (expr 0) ((kw_let 0) (bindings 0) (kw_in 0) (expr 0))) // Possibly ambiguous
-  (letrec' (expr 0) ((kw_letrec 0) (bindings 0) (kw_in 0) (expr 0))) // Possibly ambiguous
+  (single' (bindings 0) ((binding 0)))
+  (period' (bindings 0) ((binding 0) (op_semicolon 0) (bindings 0)))
+  (let' (expr 0) ((kw_let 0) (bindings 0) (opt_semicolon 0) (kw_in 0) (expr 0)))
+  (letrec' (expr 0) ((kw_letrec 0) (bindings 0) (opt_semicolon 0) (kw_in 0) (expr 0)))
   (fun' (expr 0) ((kw_fun 0) (expr 100) (op_double_right_arrow 0) (expr 0)))
   (if' (expr 0) ((kw_if 0) (expr 1) (kw_then 0) (expr 1) (kw_else 0) (expr 0)))
   (clause' (clause 0) ((expr 100) (op_double_right_arrow 0) (expr 0)))
-  (nil' (clauses 0) ())
-  (period' (clauses 0) ((clause 0) (opt_semicolon 0) (clauses 0)))
-  (match' (expr 0) ((kw_match 0) (expr 1) (kw_with 0) (clauses 0))) // Possibly ambiguous
-  (nil' (begin 0) ())
-  (period' (begin 0) ((expr 0) (opt_semicolon 0) (begin 0)))
+  (single' (clauses 0) ((clause 0)))
+  (period' (clauses 0) ((clause 0) (op_bar 0) (clauses 0)))
+  (match' (expr 0) ((kw_match 0) (expr 1) (kw_with 0) (op_bar 0) (clauses 0) (kw_end 0)))
+  (match1' (expr 0) ((kw_match 0) (expr 1) (kw_with 0) (clause 0)))
+  (single' (begin 0) ((expr 0)))
+  (period' (begin 0) ((expr 0) (op_semicolon 0) (begin 0)))
   (set' (expr 0) ((symbol 0) (op_equals 0) (expr 0)))
-  (begin' (expr 0) ((kw_begin 0) (begin 0))) // Possibly ambiguous
+  (begin' (expr 0) ((kw_begin 0) (begin 0) (opt_semicolon 0) (kw_end 0)))
 
   (id' (expr 100) ((tree 0)))
-  (tree' (tree 0) ((op_left_bracket 0) (expr 0) (op_right_bracket 0)))
-  (id' (_ 0) ((expr 0)))
+  (tree' (tree 0) ((op_left_paren 0) (expr 0) (op_right_paren 0)))
+  (stmt' (_ 0) ((expr 0) (op_semicolon 0)))
 
 ))
 
@@ -159,6 +167,8 @@
 (define_macro pattern' (lambda (_ m l _ r _) ``(,m ,l ,r)))
 (define_macro rule' (lambda (_ m l _ r _) ``(,m ,l ,r)))
 
+(define_macro list_init' (lambda (l r) (list l r)))
+(define_macro list_cons' (lambda (l r) (cons l r)))
 (define_macro minus' (lambda (_ x) `(minus ,x)))
 (define_macro add' (lambda (l _ r) `(add ,l ,r)))
 (define_macro sub' (lambda (l _ r) `(sub ,l ,r)))
@@ -176,78 +186,81 @@
 (define_macro implies' (lambda (l _ r) `(implies ,l ,r)))
 (define_macro iff' (lambda (l _ r) `(iff ,l ,r)))
 
+(define_macro single' (lambda (l) (list l)))
 (define_macro binding' (lambda (sym _ val) `(,sym ,val)))
-(define_macro let' (lambda (_ bindings _ body) `(let ,bindings ,body)))
-(define_macro letrec' (lambda (_ bindings _ body) `(letrec ,bindings ,body)))
+(define_macro let' (lambda (_ bindings _ _ body) `(let ,bindings ,body)))
+(define_macro letrec' (lambda (_ bindings _ _ body) `(letrec ,bindings ,body)))
 (define_macro fun' (lambda (_ arg _ body) `(lambda ,arg ,body)))
 (define_macro if' (lambda (_ c _ t _ f) `(cond ,c ,t ,f)))
 (define_macro clause' (lambda (pat _ val) `(,pat ,val)))
-(define_macro match' (lambda (_ e _ clauses) `(match ,e ,clauses)))
+(define_macro match' (lambda (_ e _ _ clauses _) `(match ,e ,clauses)))
+(define_macro match1' (lambda (_ e _ clause) `(match ,e (,clause))))
 (define_macro set' (lambda (s _ e) `(set ,s ,e)))
-(define_macro begin' (lambda (_ x) (cons `begin x)))
+(define_macro begin' (lambda (_ x _ _) (cons `begin x)))
+(define_macro stmt' (lambda (s _) s))
 
 // Update syntax
 (set_syntax patterns rules)
-// Starting from this line, we can write everything in the enhanced syntax!
 
-// =================
-// Utility functions
-// =================
+"Starting from this line, we can write everything in the enhanced syntax!";
 
-(define reset_syntax [fun () => (set_syntax patterns rules)])
-(define get_patterns [fun () => match (get_syntax) with (patterns rules) => patterns])
-(define get_rules [fun () => match (get_syntax) with (patterns rules) => rules])
+-- =================
+-- Utility functions
+-- =================
 
-letrec sum = fun (l) =>
+define reset_syntax (fun [] => set_syntax patterns rules);
+define get_patterns (fun [] => match [get_syntax] with [patterns rules] => patterns);
+define get_rules (fun [] => match [get_syntax] with [patterns rules] => rules);
+
+letrec sum = fun [l] =>
   match l with
-  ()       => 0
-  (x . xs) => x + (sum xs)
-in (define sum sum)
+  | []       => 0
+  | [x . xs] => x + sum xs
+  end
+in define sum sum;
 
-letrec concat = fun (l r) =>
+letrec concat = fun [l r] =>
   match l with
-  ()       => r
-  (x . xs) => (cons x (concat xs r))
-in (define concat concat)
+  | []       => r
+  | [x . xs] => cons x (concat xs r)
+  end
+in define concat concat;
 
-(define symbol_eq [fun (a b) => (string_eq (print a) (print b))])
-(define max [fun (a b) => if a >= b then a else b])
+define symbol_eq (fun [a b] => string_eq (print a) (print b));
+define max (fun [a b] => if a >= b then a else b);
 
-(define add_pattern [fun (pattern) => match (get_syntax) with (patterns rules) => (set_syntax (concat patterns (list pattern)) rules)])
-(define add_rule [fun (rule) => match (get_syntax) with (patterns rules) => (set_syntax patterns (concat rules (list rule)))])
+define add_pattern (fun [pattern] => match [get_syntax] with [patterns rules] => set_syntax (concat patterns (list pattern)) rules);
+define add_rule (fun [rule] => match [get_syntax] with [patterns rules] => set_syntax patterns (concat rules (list rule)));
 
-// Helper function for the next one
-letrec split_rule_rhs = fun (syncats n) =>
+-- Helper function for the next one
+letrec split_rule_rhs = fun [syncats n] =>
   match syncats with
-  ()       => (list `() `() `())
-  (x . xs) => [
-    match (split_rule_rhs xs [n + 1]) with (rhs arg_list body) => [
-      match x with
-      (x)        => (list (cons x rhs) (cons `_ arg_list) body)
-      (sym prec) => let var_sym = (string_symbol (string_concat "_" (print n)))
-                    in (list (cons x rhs) (cons var_sym arg_list) (cons (list `unquote var_sym) body))
-    ]
-  ]
-in (define split_rule_rhs split_rule_rhs)
+  | []       => list `[] `[] `[]
+  | [x . xs] => match split_rule_rhs xs (n + 1) with [rhs arg_list body] =>
+    match x with
+    | [x]        => list (cons x rhs) (cons `_ arg_list) body
+    | [sym prec] => let var_sym = string_symbol (string_concat "_" (print n))
+                    in list (cons x rhs) (cons var_sym arg_list) (cons (list `unquote var_sym) body)
+    end
+  end
+in define split_rule_rhs split_rule_rhs;
 
-// Automatically generates code that defines a "symbol-discarding" macro like the ones on lines 154~184
-// Along with the new syntax rule, of course
-(define add_rule_auto [fun ((func_name lhs rhs)) =>
-  let macro_name = (string_symbol (string_concat (print func_name) "'"))
-  in match (split_rule_rhs rhs 0) with (rhs arg_list body) => `[begin
-    [match (get_syntax) with (patterns rules) => (set_syntax patterns (concat rules (quote ((,macro_name ,lhs ,rhs)))))]
-    (define_macro ,macro_name [fun ,arg_list => (quote ,(cons func_name body))])
-  ]
-])
-(define_macro add_rule_auto' [fun (_ _ e _) => (add_rule_auto (eval e))])
+-- Automatically generates code that defines a "symbol-discarding" macro like the ones on lines 154~184
+-- Along with the new syntax rule, of course
+define add_rule_auto (fun [[func_name lhs rhs]] =>
+  let macro_name = string_symbol (string_concat (print func_name) "'") in
+    match split_rule_rhs rhs 0 with [rhs arg_list body] =>
+      `(begin
+        match [get_syntax] with [patterns rules] => set_syntax patterns (concat rules (quote [[,macro_name ,lhs ,rhs]]));
+        define_macro ,macro_name (fun ,arg_list => quote ,[cons func_name body]);
+      end));
+define_macro add_rule_auto' (fun [_ e] => add_rule_auto (eval e));
 
-(add_pattern `(_ (kw_add_rule_auto 0) (word "add_rule_auto")))
-(add_rule `(add_rule_auto' (tree 0) ((op_left_paren 0) (kw_add_rule_auto 0) (tree 0) (op_right_paren 0))))
+add_pattern `[_ [kw_add_rule_auto 0] [word "add_rule_auto"]];
+add_rule `[add_rule_auto' [tree 0] [[kw_add_rule_auto 0] [tree 0]]];
 
-// TODO: add a new pattern, but allowing it to be treated as an identifier (symbol)
-
-// Additional operators
-(add_pattern   [_ <op_double_plus> ::= (word "++")])
-(add_pattern   [_ <op_period_double_plus> ::= (word ".++")])
-(add_rule_auto [concat <expr 70> ::= <expr 71> <op_double_plus>* <expr 70>])
-(add_rule_auto [string_concat <expr 70> ::= <expr 71> <op_period_double_plus>* <expr 70>])
+-- Additional operators
+add_pattern   [_ <op_double_plus> ::= [word "++"]];
+add_pattern   [_ <op_period_double_plus> ::= [word ".++"]];
+add_rule_auto [concat <expr 70> ::= <expr 71> <op_double_plus>* <expr 70>];
+add_rule_auto [string_concat <expr 70> ::= <expr 71> <op_period_double_plus>* <expr 70>];
