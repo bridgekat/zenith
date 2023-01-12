@@ -14,15 +14,15 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
           - os: ubuntu-latest
-            cc: gcc-11
-            cxx: g++-11
+            cc: gcc-12
+            cxx: g++-12
             cmake_args: >
               -DAPIMU_ENABLE_MOST_WARNINGS=ON
               -DAPIMU_ENABLE_GLIBCXX_DEBUG_CHECKS=ON
               -DAPIMU_LD_EXTEND_STACK=ON
           - os: macos-latest
-            cc: gcc-11
-            cxx: g++-11
+            cc: gcc-12
+            cxx: g++-12
             cmake_args: >
               -DAPIMU_ENABLE_MOST_WARNINGS=ON
               -DAPIMU_ENABLE_GLIBCXX_DEBUG_CHECKS=ON
@@ -49,7 +49,7 @@ jobs:
       name: Set up GCC
       uses: egor-tensin/setup-gcc@v1
       with:
-        version: 11
+        version: 12
 
     # See https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
     - name: CMake FetchContent Cache
