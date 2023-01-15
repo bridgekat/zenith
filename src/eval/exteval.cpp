@@ -8,13 +8,13 @@ namespace Eval {
   using std::optional;
   using Core::Expr, Core::Allocator;
 
-#define cons       pool.emplaceBack
+#define cons       pool.emplace
 #define nil        nil
-#define sym(s)     pool.emplaceBack(Symbol{s})
-#define str(s)     pool.emplaceBack(String{s})
-#define nat(n)     pool.emplaceBack(Nat64{n})
-#define boolean(b) pool.emplaceBack(Bool{b})
-#define obj(n)     pool.emplaceBack(Native{n})
+#define sym(s)     pool.emplace(Symbol{s})
+#define str(s)     pool.emplace(String{s})
+#define nat(n)     pool.emplace(Nat64{n})
+#define boolean(b) pool.emplace(Bool{b})
+#define obj(n)     pool.emplace(Native{n})
 #define unit       unit
 #define list(...)  makeList({__VA_ARGS__})
 
@@ -115,7 +115,7 @@ namespace Eval {
 
   Expr const* ExtendedEvaluator::treeExpr(Tree* e) {
     using enum Expr::Tag;
-#define expr epool.emplaceBack
+#define expr epool.emplace
     auto const& [h, t] = expect<Cons>(e);
     string sym = expect<Symbol>(h).val;
     if (sym == "Sort") {

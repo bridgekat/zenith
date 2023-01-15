@@ -63,9 +63,9 @@ namespace Eval {
     return *e == *pat;
   }
 
-  vector<char8_t> stringToCharVec(string const& s) {
-    vector<char8_t> res;
-    for (char c: s) res.push_back(static_cast<char8_t>(c));
+  vector<unsigned int> stringToCharVec(string const& s) {
+    vector<unsigned int> res;
+    for (char c: s) res.push_back(static_cast<unsigned int>(c));
     return res;
   }
 
@@ -81,8 +81,8 @@ namespace Eval {
       auto const& [lbound, u] = expect<Cons>(t);
       auto const& [ubound, _] = expect<Cons>(u);
       return lexer.range(
-        static_cast<char8_t>(expect<Nat64>(lbound).val),
-        static_cast<char8_t>(expect<Nat64>(ubound).val)
+        static_cast<unsigned int>(expect<Nat64>(lbound).val),
+        static_cast<unsigned int>(expect<Nat64>(ubound).val)
       );
     }
     if (stag == "word") return lexer.word(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
@@ -160,12 +160,12 @@ namespace Eval {
     }
   }
 
-#define cons       pool.emplaceBack
+#define cons       pool.emplace
 #define nil        nil
-#define sym(s)     pool.emplaceBack(Symbol{s})
-#define str(s)     pool.emplaceBack(String{s})
-#define nat(n)     pool.emplaceBack(Nat64{n})
-#define boolean(b) pool.emplaceBack(Bool{b})
+#define sym(s)     pool.emplace(Symbol{s})
+#define str(s)     pool.emplace(String{s})
+#define nat(n)     pool.emplace(Nat64{n})
+#define boolean(b) pool.emplace(Bool{b})
 #define unit       unit
 #define list(...)  makeList({__VA_ARGS__})
 
@@ -180,8 +180,8 @@ namespace Eval {
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#Prim-functions
   Evaluator::Evaluator():
     pool(),
-    nil(pool.emplaceBack(Nil{})),
-    unit(pool.emplaceBack(Unit{})),
+    nil(pool.emplace(Nil{})),
+    unit(pool.emplace(Unit{})),
     patterns(nil),
     rules(nil),
     symbolNames(),
@@ -197,10 +197,10 @@ namespace Eval {
     namePrims() {
 
     // Commonly used constants
-    // auto const& nzero  = pool.emplaceBack(Nat64{ 0 });
-    // auto const& sempty = pool.emplaceBack(String{ "" });
-    auto const& btrue = pool.emplaceBack(Bool{true});
-    auto const& bfalse = pool.emplaceBack(Bool{false});
+    // auto const& nzero  = pool.emplace(Nat64{ 0 });
+    // auto const& sempty = pool.emplace(String{ "" });
+    auto const& btrue = pool.emplace(Bool{true});
+    auto const& bfalse = pool.emplace(Bool{false});
 
     // =========================
     // Default syntax and macros
@@ -334,7 +334,7 @@ namespace Eval {
     // [√] Introduction rule for `Closure`
     addPrimitive("lambda", false, [this](Tree* env, Tree* e) -> Result {
       auto const& [formal, es] = expect<Cons>(e);
-      return pool.emplaceBack(Closure{env, formal, es});
+      return pool.emplace(Closure{env, formal, es});
     });
 
     // [√] Elimination rule for `Bool`
@@ -542,13 +542,13 @@ namespace Eval {
 #define unary(T, name, op)                                    \
   addPrimitive(name, true, [this](Tree*, Tree* e) -> Result { \
     auto const& [lhs, _] = expect<Cons>(e);                   \
-    return pool.emplaceBack(T{op(expect<T>(lhs).val)});       \
+    return pool.emplace(T{op(expect<T>(lhs).val)});       \
   })
 #define binary(T, name, op)                                               \
   addPrimitive(name, true, [this](Tree*, Tree* e) -> Result {             \
     auto const& [lhs, t] = expect<Cons>(e);                               \
     auto const& [rhs, _] = expect<Cons>(t);                               \
-    return pool.emplaceBack(T{expect<T>(lhs).val op expect<T>(rhs).val}); \
+    return pool.emplace(T{expect<T>(lhs).val op expect<T>(rhs).val}); \
   })
 #define binpred(T, name, op)                                            \
   addPrimitive(name, true, [btrue, bfalse](Tree*, Tree* e) -> Result {  \
@@ -581,7 +581,7 @@ namespace Eval {
 
     // [√] For debugging?
     addPrimitive("print", true, [this](Tree*, Tree* e) -> Result {
-      return pool.emplaceBack(String{expect<Cons>(e).head->toString()});
+      return pool.emplace(String{expect<Cons>(e).head->toString()});
     });
 
     // [?] TODO: output to ostream
@@ -724,7 +724,7 @@ namespace Eval {
       auto const& [head, tail] = *econs;
       auto const& ehead = expand(head);
       auto const& etail = expandList(tail);
-      return (ehead == head && etail == tail) ? e : pool.emplaceBack(ehead, etail);
+      return (ehead == head && etail == tail) ? e : pool.emplace(ehead, etail);
     }
     return expand(e);
   }
@@ -736,7 +736,7 @@ namespace Eval {
       if (auto const& sym = get_if<Symbol>(e)) {
         // Symbols: evaluate to their bound values
         if (auto const& val = lookup(env, sym->val)) return val;
-        if (auto const& it = namePrims.find(sym->val); it != namePrims.end()) return pool.emplaceBack(Prim{it->second});
+        if (auto const& it = namePrims.find(sym->val); it != namePrims.end()) return pool.emplace(Prim{it->second});
         throw PartialEvalError("unbound symbol \"" + sym->val + "\"", e);
 
       } else if (auto const& econs = get_if<Cons>(e)) {
@@ -793,7 +793,7 @@ namespace Eval {
       auto const& [head, tail] = *econs;
       auto const& ehead = eval(env, head);
       auto const& etail = evalList(env, tail);
-      return (ehead == head && etail == tail) ? e : pool.emplaceBack(ehead, etail);
+      return (ehead == head && etail == tail) ? e : pool.emplace(ehead, etail);
     }
     return eval(env, e);
   }
@@ -820,7 +820,7 @@ namespace Eval {
       if (*head == Tree(Symbol{"unquote"})) return eval(env, expect<Cons>(tail).head);
       auto const& ehead = quasiquote(env, head);
       auto const& etail = quasiquote(env, tail);
-      return (ehead == head && etail == tail) ? e : pool.emplaceBack(ehead, etail);
+      return (ehead == head && etail == tail) ? e : pool.emplace(ehead, etail);
     }
     return e;
   }

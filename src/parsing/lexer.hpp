@@ -29,8 +29,9 @@ namespace Parsing {
   // Abstract base class for lexers.
   class Lexer {
   public:
-    static constexpr auto SegBegin = 128u;
-    static constexpr auto CodeUnits = 256u;
+    using CodeUnit = unsigned int;
+    static constexpr CodeUnit SegBegin = 128u;
+    static constexpr CodeUnit CodeUnits = 256u;
 
     virtual ~Lexer() = default;
 
@@ -65,7 +66,7 @@ namespace Parsing {
     using NFA = std::pair<State, State>;
 
     auto addPattern(NFA nfa) -> size_t {
-      auto id = patterns.size();
+      auto const id = patterns.size();
       patterns.push_back(nfa.first);
       auto& o = table[nfa.second].ac;
       if (o) unreachable;
@@ -73,90 +74,76 @@ namespace Parsing {
       return id;
     }
 
-    void clearPatterns() {
+    auto clearPatterns() -> void {
       table.clear();
       patterns.clear();
     }
 
-#define node(x)           \
-  State x = table.size(); \
-  table.emplace_back()
-#define trans(s, c, t) table[s].tr.emplace_back(static_cast<char8_t>(c), t)
-
     // Some useful pattern constructors (equivalent to regexes).
     auto empty() -> NFA {
-      node(s);
-      node(t);
-      trans(s, 0, t);
+      auto const s = node(), t = node();
+      transition(s, 0, t);
       return {s, t};
     }
     auto any() -> NFA { return range(1, CodeUnits - 1); }
     auto utf8segment() -> NFA { return range(SegBegin, CodeUnits - 1); }
-    auto chars(std::vector<char8_t> const& ls) -> NFA {
-      node(s);
-      node(t);
-      for (auto c: ls) trans(s, c, t);
+    auto chars(std::vector<CodeUnit> const& ls) -> NFA {
+      auto const s = node(), t = node();
+      for (auto const c: ls) transition(s, c, t);
       return {s, t};
     }
-    auto except(std::vector<char8_t> const& ls) -> NFA {
-      std::array<bool, CodeUnits> f{};
-      for (auto c: ls) f[c] = true;
-      node(s);
-      node(t);
-      for (unsigned int i = 1; i < CodeUnits; i++)
-        if (!f[i]) trans(s, i, t);
+    auto except(std::vector<CodeUnit> const& ls) -> NFA {
+      auto f = std::array<bool, CodeUnits>{};
+      for (auto const c: ls) f[c] = true;
+      auto const s = node(), t = node();
+      for (auto i = 1u; i < CodeUnits; i++)
+        if (!f[i]) transition(s, i, t);
       return {s, t};
     }
-    auto range(char8_t a, char8_t b) -> NFA {
-      node(s);
-      node(t);
-      for (unsigned int i = a; i <= b; i++) trans(s, i, t);
+    auto range(CodeUnit a, CodeUnit b) -> NFA {
+      auto const s = node(), t = node();
+      for (auto i = a; i <= b; i++) transition(s, i, t);
       return {s, t};
     }
-    auto word(std::vector<char8_t> const& word) -> NFA {
-      node(s);
-      State t = s;
-      for (char8_t c: word) {
-        node(curr);
-        trans(t, c, curr);
+    auto word(std::vector<CodeUnit> const& word) -> NFA {
+      auto const s = node();
+      auto t = s;
+      for (auto const c: word) {
+        auto const curr = node();
+        transition(t, c, curr);
         t = curr;
       }
       return {s, t};
     }
     auto alt(std::vector<NFA> const& ls) -> NFA {
-      node(s);
-      node(t);
-      for (auto a: ls) {
-        trans(s, 0, a.first);
-        trans(a.second, 0, t);
+      auto const s = node(), t = node();
+      for (auto const& a: ls) {
+        transition(s, 0, a.first);
+        transition(a.second, 0, t);
       }
       return {s, t};
     }
     auto concat(std::vector<NFA> const& ls) -> NFA {
       if (ls.empty()) unreachable;
-      for (size_t i = 0; i + 1 < ls.size(); i++) {
-        auto a = ls[i], b = ls[i + 1];
-        for (auto [c, t]: table[b.first].tr) trans(a.second, c, t);
+      for (auto i = 0uz; i + 1 < ls.size(); i++) {
+        auto const a = ls[i], b = ls[i + 1];
+        for (auto const& [c, t]: table[b.first].tr) transition(a.second, c, t);
       }
       return {ls.front().first, ls.back().second};
     }
     auto opt(NFA const& a) -> NFA {
-      trans(a.first, 0, a.second);
+      transition(a.first, 0, a.second);
       return {a.first, a.second};
     }
     auto star(NFA const& a) -> NFA {
-      node(s);
-      node(t);
-      trans(s, 0, a.first);
-      trans(a.second, 0, t);
-      trans(a.second, 0, a.first);
-      trans(s, 0, t);
+      auto const s = node(), t = node();
+      transition(s, 0, a.first);
+      transition(a.second, 0, t);
+      transition(a.second, 0, a.first);
+      transition(s, 0, t);
       return {s, t};
     }
     auto plus(NFA const& a) -> NFA { return concat({a, star(a)}); }
-
-#undef node
-#undef trans
 
     // Returns the size of the table.
     auto tableSize() const -> size_t { return table.size(); }
@@ -164,15 +151,25 @@ namespace Parsing {
   private:
     class Entry {
     public:
-      std::vector<std::pair<char8_t, State>> tr;
+      std::vector<std::pair<CodeUnit, State>> tr;
       std::optional<size_t> ac;
     };
 
     std::vector<Entry> table;    // The transition & accepting state table.
     std::vector<State> patterns; // The list of starting states, one for each pattern.
 
+    // Allocates new node and returns its ID.
+    auto node() -> size_t {
+      auto const res = table.size();
+      table.emplace_back();
+      return res;
+    }
+
+    // Adds a transition from node `s` to node `t` with character `c`.
+    auto transition(State s, CodeUnit c, State t) -> void { table[s].tr.emplace_back(c, t); }
+
     // Expands `s` to epsilon closure using DFS.
-    // Pre: the indices where v[] is true must match the elements of s.
+    // Pre: the indices where `v[]` is true must match the elements of `s`.
     auto closure(std::vector<bool>& v, std::vector<State>& s) const -> void;
 
     // Directly runs NFA.

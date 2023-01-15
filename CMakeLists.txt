@@ -1,102 +1,27 @@
-cmake_minimum_required (VERSION 3.12)
-if (POLICY CMP0135)
-  cmake_policy (SET CMP0135 NEW)
-endif ()
+cmake_minimum_required (VERSION 3.15)
 
-project (ApiMu VERSION 0.1 LANGUAGES CXX)
+project (
+  ApiMu
+  VERSION       0.1.0
+  DESCRIPTION   ""
+  HOMEPAGE_URL  ""
+  LANGUAGES     CXX
+)
 
-option (APIMU_ENABLE_IPO "Enable inter-procedural optimizations" OFF)
-option (APIMU_ENABLE_CODE_ANALYSIS "Run code analysis with cppcheck" OFF)
-option (APIMU_ENABLE_MOST_WARNINGS "Enable most warnings" OFF)
-option (APIMU_ENABLE_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
-option (APIMU_ENABLE_GLIBCXX_DEBUG_CHECKS "Enable GLIBCXX debug checks at debug configuration" ON)
-option (APIMU_ENABLE_ASAN "Enable ASan (MSVC/GCC/Clang)" OFF)
-option (APIMU_ENABLE_UBSAN "Enable UBSan (GCC/Clang)" OFF)
-option (APIMU_LD_EXTEND_STACK "Extend stack memory to 10MB (Linux LD)" OFF)
-option (APIMU_MACOS_LD_EXTEND_STACK "Extend stack memory to 10MB (macOS LD)" OFF)
-option (APIMU_LINK_EXTEND_STACK "Extend stack memory to 10MB (MSVC LINK)" OFF)
+list (PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/extern/prelude/cmake")
+include (Prelude)
 
-# See: https://cliutils.gitlab.io/modern-cmake/chapters/features/small.html
-include (CheckIPOSupported)
-check_ipo_supported (RESULT IPO_SUPPORTED)
-if (IPO_SUPPORTED AND APIMU_ENABLE_IPO)
-  message (STATUS "IPO/LTO ENABLED")
-endif ()
+# ===== Dependencies =====
+# See: https://stackoverflow.com/questions/49768454/whats-the-differences-between-pthread-and-pthread-options-in-cmake
+set (THREADS_PREFER_PTHREAD_FLAG ON)
+find_package (Threads REQUIRED)
+# See: https://json.nlohmann.me/integration/cmake/#fetchcontent
+set (JSON_Install OFF CACHE INTERNAL "")
+set (JSON_MultipleHeaders ON)
+FetchContent_Declare (nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz)
+FetchContent_MakeAvailable (nlohmann_json)
 
-# See: https://stackoverflow.com/questions/56957172/cmake-conditionally-run-cppcheck
-if (APIMU_ENABLE_CODE_ANALYSIS)
-  find_program (cppcheck cppcheck)
-  message (STATUS "cppcheck ${cppcheck}")
-  if (NOT (cppcheck MATCHES "NOTFOUND"))
-    # Notes:
-    # - unmatchedSuppression needed since not all source files are analyzed simultaneously
-    # - unusedFunction needed since not all source files are analyzed simultaneously
-    # - template needed to force `warning` into output string, and to make `id` available for suppression
-    set (CMAKE_CXX_CPPCHECK "${cppcheck}"
-      "--enable=all"
-      "--inconclusive"
-      "--inline-suppr"
-      "--quiet"
-      "--suppress=unmatchedSuppression"
-      "--suppress=unusedFunction"
-      "--template='{file}:{line}: warning: {id} ({severity}): {message}'")
-  endif ()
-endif ()
-
-# Set default compile options.
-macro (target_default_compile_options TARGET)
-  target_compile_features     (${TARGET} PRIVATE cxx_std_20)
-  set_target_properties       (${TARGET} PROPERTIES CXX_EXTENSIONS OFF)
-  if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    target_compile_options    (${TARGET} PRIVATE "/MP" "/EHsc")
-  endif ()
-  if (APIMU_ENABLE_MOST_WARNINGS)
-    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      target_compile_options  (${TARGET} PRIVATE "-Wall" "-Wextra" "-Wpedantic" "-Wdeprecated" "-Wconversion" "-Wsign-conversion" "-Werror=old-style-cast")
-      # target_compile_options  (${TARGET} PRIVATE "-Weffc++")
-      target_compile_options  (${TARGET} PRIVATE "-Wno-nested-anon-types")
-    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-      target_compile_options  (${TARGET} PRIVATE "-Wall" "-Wextra" "-Wpedantic" "-Wdeprecated" "-Wconversion" "-Wsign-conversion" "-Werror=old-style-cast")
-      target_compile_options  (${TARGET} PRIVATE "-Wno-nested-anon-types")
-    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      target_compile_options  (${TARGET} PRIVATE "/W4" "/permissive-")
-    endif ()
-  endif ()
-  if (APIMU_ENABLE_WARNINGS_AS_ERRORS)
-    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      target_compile_options  (${TARGET} PRIVATE "-Werror")
-    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-      target_compile_options  (${TARGET} PRIVATE "-Werror")
-    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      target_compile_options  (${TARGET} PRIVATE "/WX")
-    endif ()
-  endif ()
-  if (APIMU_ENABLE_GLIBCXX_DEBUG_CHECKS)
-    target_compile_options    (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_CONCEPT_CHECKS>")
-    target_compile_options    (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG>")
-    target_compile_options    (${TARGET} PRIVATE "$<$<CONFIG:Debug>:-D_GLIBCXX_DEBUG_PEDANTIC>")
-  endif ()
-  if (APIMU_ENABLE_ASAN)
-    target_compile_options    (${TARGET} PRIVATE "-fsanitize=address")
-  endif ()
-  if (APIMU_ENABLE_UBSAN)
-    target_compile_options    (${TARGET} PRIVATE "-fsanitize=undefined")
-  endif ()
-  if (APIMU_LD_EXTEND_STACK)
-    set_target_properties     (${TARGET} PROPERTIES LINK_FLAGS "-Wl,-z,stack-size=10000000")
-  endif ()
-  if (APIMU_MACOS_LD_EXTEND_STACK)
-    set_target_properties     (${TARGET} PROPERTIES LINK_FLAGS "-Wl,-stack_size,10000000")
-  endif ()
-  if (APIMU_LINK_EXTEND_STACK)
-    set_target_properties     (${TARGET} PROPERTIES LINK_FLAGS "/STACK:10000000")
-  endif ()
-  if (IPO_SUPPORTED AND APIMU_ENABLE_IPO)
-    set_target_properties     (${TARGET} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-  endif ()
-endmacro ()
-
-# Add targets.
+# ===== Targets =====
 add_executable (testcore
   src/core/context.cpp
   src/core/expr.cpp
@@ -122,40 +47,25 @@ add_executable (testeval
 target_default_compile_options  (testeval)
 target_include_directories      (testeval PRIVATE src)
 
-# See: https://json.nlohmann.me/integration/cmake/#fetchcontent
-set (JSON_Install OFF CACHE INTERNAL "")
-set (JSON_MultipleHeaders ON)
-include (FetchContent)
-FetchContent_Declare (nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz)
-FetchContent_MakeAvailable (nlohmann_json)
+# add_executable (testserver
+#   src/core/context.cpp
+#   src/core/expr.cpp
+#   src/core/fol/fol.cpp
+#   src/parsing/lexer.cpp
+#   src/parsing/parser.cpp
+#   src/server/jsonrpc2.cpp
+#   src/server/languageserver.cpp
+#   src/server/lsp.cpp
+#   src/testserver.cpp)
+# target_default_compile_options  (testserver)
+# target_include_directories      (testserver PRIVATE src)
+# target_link_libraries           (testserver PRIVATE Threads::Threads nlohmann_json::nlohmann_json)
 
-if (FALSE)
-
-# See: https://stackoverflow.com/questions/49768454/whats-the-differences-between-pthread-and-pthread-options-in-cmake
-set (THREADS_PREFER_PTHREAD_FLAG ON)
-find_package (Threads)
-
-add_executable (testserver
-  src/core/context.cpp
-  src/core/expr.cpp
-  src/core/fol/fol.cpp
-  src/parsing/lexer.cpp
-  src/parsing/parser.cpp
-  src/server/jsonrpc2.cpp
-  src/server/languageserver.cpp
-  src/server/lsp.cpp
-  src/testserver.cpp)
-target_default_compile_options  (testserver)
-target_include_directories      (testserver PRIVATE src)
-target_link_libraries           (testserver PRIVATE nlohmann_json::nlohmann_json Threads::Threads)
-#target_precompile_headers       (testserver PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann/json.hpp)
-
-endif ()
-
+# ===== Tests =====
 enable_testing ()
+
 add_executable (testtest
   test/testtest.cpp)
 target_default_compile_options  (testtest)
 target_include_directories      (testtest PRIVATE src)
-
-add_test (testtest testtest)
+add_test                        (testtest testtest)

@@ -18,14 +18,12 @@ jobs:
             cxx: g++-12
             cmake_args: >
               -DAPIMU_ENABLE_MOST_WARNINGS=ON
-              -DAPIMU_ENABLE_GLIBCXX_DEBUG_CHECKS=ON
               -DAPIMU_LD_EXTEND_STACK=ON
           - os: macos-latest
-            cc: gcc-12
-            cxx: g++-12
+            cc: clang
+            cxx: clang++
             cmake_args: >
               -DAPIMU_ENABLE_MOST_WARNINGS=ON
-              -DAPIMU_ENABLE_GLIBCXX_DEBUG_CHECKS=ON
               -DAPIMU_MACOS_LD_EXTEND_STACK=ON
           - os: windows-latest
             cc: cl.exe
@@ -42,14 +40,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        submodules: recursive
 
     # See: https://github.com/actions/virtual-environments
     # See: https://github.com/egor-tensin/setup-gcc
-    - if: ${{ matrix.os == 'ubuntu-latest' }}
-      name: Set up GCC
-      uses: egor-tensin/setup-gcc@v1
-      with:
-        version: 12
+    # - if: ${{ matrix.os == 'ubuntu-latest' }}
+    #   name: Set up GCC
+    #   uses: egor-tensin/setup-gcc@v1
+    #   with:
+    #     version: 12
 
     # See https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
     - name: CMake FetchContent Cache
@@ -67,17 +67,17 @@ jobs:
     - name: CMake Configure
       run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} ${{ matrix.cmake_args }}
 
-    # Build your program with the given configuration
+    # Build your program with the given configuration.
     - name: CMake Build
       run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }}
 
     # Execute tests defined by the CMake configuration.
-    # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+    # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail.
     - name: CMake Test
       working-directory: ${{ github.workspace }}/build
       run: ctest -C ${{ env.BUILD_TYPE }}
 
-    # Upload artifacts
+    # Upload artifacts.
     - uses: actions/upload-artifact@v3
       with:
         name: artifacts-${{ matrix.os }}

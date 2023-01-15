@@ -36,11 +36,25 @@ namespace Core {
     // clang-format on
 
     // The constructors below guarantee that all pointers in the "active variant" are valid, if parameters are valid
-    Expr(SortTag sorttag): tag(Sort), sort{sorttag} {}
-    Expr(VarTag vartag, uint64_t id): tag(Var), var{vartag, id} {}
-    Expr(Expr const* l, Expr const* r): tag(App), app{l, r} {}
-    Expr(LamTag, std::string s, Expr const* t, Expr const* r): tag(Lam), lam{std::move(s), t, r} {}
-    Expr(PiTag, std::string s, Expr const* t, Expr const* r): tag(Pi), pi{std::move(s), t, r} {}
+    Expr(SortTag sorttag):
+      tag(Sort),
+      sort{sorttag} {}
+
+    Expr(VarTag vartag, uint64_t id):
+      tag(Var),
+      var{vartag, id} {}
+
+    Expr(Expr const* l, Expr const* r):
+      tag(App),
+      app{l, r} {}
+
+    Expr(LamTag, std::string s, Expr const* t, Expr const* r):
+      tag(Lam),
+      lam{std::move(s), t, r} {}
+
+    Expr(PiTag, std::string s, Expr const* t, Expr const* r):
+      tag(Pi),
+      pi{std::move(s), t, r} {}
 
     // Immutability + non-trivial members in union = impossible to make a copy constructor...
     Expr(Expr const&) = delete;
@@ -101,7 +115,10 @@ namespace Core {
 
     // `stk` and `names` will be unchanged
     Expr const* checkType(
-      Context const& ctx, Allocator<Expr>& pool, std::vector<Expr const*>& stk, std::vector<std::string>& names
+      Context const& ctx,
+      Allocator<Expr>& pool,
+      std::vector<Expr const*>& stk,
+      std::vector<std::string>& names
     ) const;
 
     // Modification (lifetime of the resulting expression is bounded by `this` and `pool`)
@@ -136,20 +153,26 @@ namespace Core {
     // Lift overflow variables by `m` levels.
     // Lifetime of the resulting expression is bounded by `this` and `pool`.
     Expr const* lift(uint64_t m, Allocator<Expr>& pool) const {
-      return updateVars([m, &pool](uint64_t n, Expr const* x) {
-        if (x->var.tag == VBound && x->var.id >= n) return make(pool, VBound, x->var.id + m);
-        return x;
-      }, pool);
+      return updateVars(
+        [m, &pool](uint64_t n, Expr const* x) {
+          if (x->var.tag == VBound && x->var.id >= n) return make(pool, VBound, x->var.id + m);
+          return x;
+        },
+        pool
+      );
     }
 
     // Replace one overflow variable by an expression (i.e. deleting the outermost binder).
     // Lifetime of the resulting expression is bounded by `this`, `t` and `pool`.
     Expr const* makeReplace(Expr const* t, Allocator<Expr>& pool) const {
-      return updateVars([t, &pool](uint64_t n, Expr const* x) {
-        if (x->var.tag == VBound && x->var.id == n) return t->lift(n, pool);
-        if (x->var.tag == VBound && x->var.id > n) return make(pool, VBound, x->var.id - 1);
-        return x;
-      }, pool);
+      return updateVars(
+        [t, &pool](uint64_t n, Expr const* x) {
+          if (x->var.tag == VBound && x->var.id == n) return t->lift(n, pool);
+          if (x->var.tag == VBound && x->var.id > n) return make(pool, VBound, x->var.id - 1);
+          return x;
+        },
+        pool
+      );
     }
 
     // Performs applicative-order beta-reduction.
@@ -172,10 +195,10 @@ namespace Core {
     // Check if the expression does not contain undetermined variables.
     bool isGround() const noexcept { return numMeta() == 0; }
 
-    // Convenient constructor
+    // Convenient constructor.
     template <typename... Ts>
     inline static Expr const* make(Allocator<Expr>& pool, Ts&&... args) {
-      return pool.emplaceBack(std::forward<Ts>(args)...);
+      return pool.emplace(std::forward<Ts>(args)...);
     }
   };
 
@@ -190,7 +213,8 @@ namespace Core {
   struct InvalidExpr: public std::runtime_error {
     Expr const* e;
     explicit InvalidExpr(std::string const& s, Context const& ctx, Expr const* e):
-      std::runtime_error("Invalid expression, " + s + ": " + e->toString(ctx)), e(e) {}
+      std::runtime_error("Invalid expression, " + s + ": " + e->toString(ctx)),
+      e(e) {}
     InvalidExpr(InvalidExpr const&) = default;
     InvalidExpr& operator=(InvalidExpr const&) = default;
   };

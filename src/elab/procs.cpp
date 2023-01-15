@@ -50,9 +50,8 @@ namespace Elab::Procs {
     unreachable;
   }
 
-  Expr const* skolemize(
-    Expr const* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool
-  ) {
+  Expr const*
+  skolemize(Expr const* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool) {
     using enum Expr::VarTag;
     using enum FOLForm::Tag;
     auto fof = FOLForm::fromExpr(e);
@@ -80,7 +79,7 @@ namespace Elab::Procs {
       case Iff: return skolemize(nnf(e, pool), meta, skolem, metas, pool);
       case Forall: {
         metas.push_back(meta);
-        auto const ee = fof.binder.r->makeReplace(pool.emplaceBack(VMeta, meta++), pool);
+        auto const ee = fof.binder.r->makeReplace(pool.emplace(VMeta, meta++), pool);
         auto const res = skolemize(ee, meta, skolem, metas, pool);
         metas.pop_back();
         return res;
@@ -166,7 +165,7 @@ namespace Elab::Procs {
     // Add quantifiers for universals (metas)
     // uint64_t m = res->numMeta();
     // res = res->updateVars([m, &pool] (uint64_t n, Expr const* x) {
-    //   return (x->var.tag == Expr::VMeta)? pool.emplaceBack(Expr::VBound, n + m - 1 - x->var.id) : x;
+    //   return (x->var.tag == Expr::VMeta)? pool.emplace(Expr::VBound, n + m - 1 - x->var.id) : x;
     // }, pool);
     // for (uint64_t i = 0; i < m; i++) res = FOLForm(Forall, "", res).toExpr(pool);
     return res;
@@ -208,7 +207,10 @@ namespace Elab::Procs {
     Allocator<Expr>& pool;
     Subs ls, rs;
 
-    Antiunifier(Allocator<Expr>& pool): pool(pool), ls(), rs() {}
+    Antiunifier(Allocator<Expr>& pool):
+      pool(pool),
+      ls(),
+      rs() {}
 
     Expr const* dfs(Expr const* lhs, Expr const* rhs) {
       using enum Expr::Tag;
@@ -217,7 +219,7 @@ namespace Elab::Procs {
         uint64_t id = ls.size();
         ls.push_back(lhs);
         rs.push_back(rhs);
-        return pool.emplaceBack(Expr::VMeta, id);
+        return pool.emplace(Expr::VMeta, id);
       };
       if (lhs->tag != rhs->tag) return different();
       // lhs->tag == rhs->tag
@@ -227,17 +229,17 @@ namespace Elab::Procs {
         case App: {
           auto const l = dfs(lhs->app.l, rhs->app.l);
           auto const r = dfs(lhs->app.r, rhs->app.r);
-          return (l == lhs->app.l && r == lhs->app.r) ? lhs : pool.emplaceBack(l, r);
+          return (l == lhs->app.l && r == lhs->app.r) ? lhs : pool.emplace(l, r);
         }
         case Lam: {
           auto const t = dfs(lhs->lam.t, rhs->lam.t);
           auto const r = dfs(lhs->lam.r, rhs->lam.r);
-          return (t == lhs->lam.t && r == lhs->lam.r) ? lhs : pool.emplaceBack(Expr::LLam, lhs->lam.s, t, r);
+          return (t == lhs->lam.t && r == lhs->lam.r) ? lhs : pool.emplace(Expr::LLam, lhs->lam.s, t, r);
         }
         case Pi: {
           auto const t = dfs(lhs->pi.t, rhs->pi.t);
           auto const r = dfs(lhs->pi.r, rhs->pi.r);
-          return (t == lhs->pi.t && r == lhs->pi.r) ? lhs : pool.emplaceBack(Expr::PPi, lhs->pi.s, t, r);
+          return (t == lhs->pi.t && r == lhs->pi.r) ? lhs : pool.emplace(Expr::PPi, lhs->pi.s, t, r);
         }
       }
       unreachable;

@@ -1,6 +1,3 @@
-// ApiMu verifier v0.1 (C++ version)
-// Licensed under Creative Commons CC0 (no copyright reserved, use at your will)
-
 #ifndef CORE_HPP_
 #define CORE_HPP_
 

@@ -53,7 +53,7 @@ namespace Parsing {
   auto EarleyParser::showState(LinkedState const& ls, std::vector<std::string> const& names) const -> std::string {
     auto const& [s, links] = ls;
     auto res = std::to_string(s.startPos) + ", <" + names.at(mRules[s.rule].lhs.first) + "> ::= ";
-    for (auto i = 0_z; i < mRules[s.rule].rhs.size(); i++) {
+    for (auto i = 0uz; i < mRules[s.rule].rhs.size(); i++) {
       if (i == s.progress) res += "|";
       res += "<" + names.at(mRules[s.rule].rhs[i].first) + ">";
     }
@@ -65,7 +65,7 @@ namespace Parsing {
   auto EarleyParser::showStates(std::vector<std::string> const& names) const -> std::string {
     if (mDP.size() != mSentence.size() + 1) unreachable;
     auto res = std::string();
-    for (auto pos = 0_z; pos <= mSentence.size(); pos++) {
+    for (auto pos = 0uz; pos <= mSentence.size(); pos++) {
       res += "States at position " + std::to_string(pos) + ":\n";
       for (auto const& ls: mDP[pos]) res += showState(ls, names);
       res += "\n";
@@ -93,11 +93,11 @@ namespace Parsing {
     // It is quite possible to support arbitrary nullable rules, but that would make things significantly messier
     // (just think about ambiguous empty derivations...)
     mEmptyRule = std::vector<std::optional<size_t>>(mNumSymbols);
-    for (auto i = 0_z; i < mRules.size(); i++) {
+    for (auto i = 0uz; i < mRules.size(); i++) {
       auto const& [lhs, rhs] = mRules[i];
       if (rhs.empty()) mEmptyRule[lhs.first] = i;
     }
-    for (auto i = 0_z; i < mRules.size(); i++) {
+    for (auto i = 0uz; i < mRules.size(); i++) {
       auto const& [lhs, rhs] = mRules[i];
       if (mEmptyRule[lhs.first] != i) {
         bool f = false;
@@ -112,7 +112,7 @@ namespace Parsing {
     mSorted.clear();
     mTotalLength.clear();
     mTotalLength.push_back(0);
-    for (auto i = 0_z; i < mRules.size(); i++) {
+    for (auto i = 0uz; i < mRules.size(); i++) {
       auto const& [lhs, rhs] = mRules[i];
       if (mEmptyRule[lhs.first] != i) mSorted.push_back(i);
       mTotalLength.push_back(mTotalLength[i] + rhs.size() + 1);
@@ -123,7 +123,7 @@ namespace Parsing {
     // For each symbol find the index of its first production rule
     // (for faster access in `run()`, if none then set to `n`.)
     mFirstRule = std::vector<size_t>(mNumSymbols, n);
-    for (auto i = 0_z; i < n; i++) {
+    for (auto i = 0uz; i < n; i++) {
       auto const& [lhs, rhs] = mRules[mSorted[i]];
       if (mFirstRule[lhs.first] == n) mFirstRule[lhs.first] = i;
     }
@@ -155,7 +155,7 @@ namespace Parsing {
     auto nextToken = std::optional<Token>();
 
     // Invariant: `map` maps all `state`s of items of `mDP[pos]` to the items' indices.
-    for (auto pos = 0_z;; pos++) {
+    for (auto pos = 0uz;; pos++) {
 
 #define ensure(s)                           \
   if (!map.contains(s)) {                   \
@@ -164,7 +164,7 @@ namespace Parsing {
   }
 
       // "Prediction/completion" stage.
-      for (auto i = 0_z; i < mDP[pos].size(); i++) {
+      for (auto i = 0uz; i < mDP[pos].size(); i++) {
         auto s = mDP[pos][i].state;
         auto const& [lhs, rhs] = mRules[s.rule];
         if (s.progress < rhs.size()) {
@@ -194,7 +194,7 @@ namespace Parsing {
           auto tpos = s.startPos;
           if (tpos == pos) continue;
           auto const& [sym, prec] = lhs;
-          for (auto j = 0_z; j < mDP[tpos].size(); j++) {
+          for (auto j = 0uz; j < mDP[tpos].size(); j++) {
             auto t = mDP[tpos][j].state;
             auto const& trhs = mRules[t.rule].rhs;
             if (t.progress < trhs.size() && trhs[t.progress].first == sym && trhs[t.progress].second <= prec) {
@@ -226,7 +226,7 @@ namespace Parsing {
       mDP.emplace_back();
       map.clear();
       auto const& [sym, prec] = mPatterns.at(nextToken->pattern).sym;
-      for (auto i = 0_z; i < mDP[pos].size(); i++) {
+      for (auto i = 0uz; i < mDP[pos].size(); i++) {
         auto s = mDP[pos][i].state;
         auto const& rhs = mRules[s.rule].rhs;
         if (s.progress < rhs.size() && rhs[s.progress].first == sym && rhs[s.progress].second <= prec) {
@@ -250,7 +250,7 @@ namespace Parsing {
     if (mDP.size() != mSentence.size() + 1) unreachable;
     auto pos = mSentence.size();
     auto found = false;
-    for (auto i = 0_z; i < mDP[pos].size(); i++) {
+    for (auto i = 0uz; i < mDP[pos].size(); i++) {
       auto s = mDP[pos][i].state;
       auto const& [lhs, rhs] = mRules[s.rule];
       if (lhs.first == mStartSymbol && s.startPos == 0 && s.progress == rhs.size()) found = true;

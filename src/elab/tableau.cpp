@@ -323,7 +323,7 @@ namespace Elab {
       // TODO: selection in reentrant gamma expansions
       bool closed = false;
       size_t id = branch.numUniversal;
-      Expr const* body = e->app.r->lam.r->makeReplace(pool.emplaceBack(VMeta, id), pool);
+      Expr const* body = e->app.r->lam.r->makeReplace(pool.emplace(VMeta, id), pool);
       WithValue gn(&branch.numUniversal, branch.numUniversal + 1);
       WithCedent g(this, body, pos, &closed);
 

@@ -15,13 +15,12 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 
 ## Building (experimental)
 
-Make sure a C++20 compiler (I'm using GCC 12.2) and CMake 3.12+ is available on your computer. In the root directory, run:
+Make sure a C++23 compiler (I'm using GCC 12.2) and CMake 3.15+ is available on your computer. In the root directory, run:
 
 ```sh
-mkdir build
-cd build
-cmake ..
-cmake --build .
+git submodule update --init --recursive
+cmake -S . -B build
+cmake --build build -j 4
 ```
 
 If everything is fine, you can then find three executables (`testcore`, `testeval` and `testtest`) in the `build` directory.
@@ -32,8 +31,8 @@ The `testeval` is a REPL for a Scheme-like scripting language with reconfigurabl
 - Use `:{` to begin multi-line input, and end with a `:}` (must be in a separate line)
 - Type `:load <filename>` to read and interpret a file statement-by-statement (equivalent to simply copy-pasting the whole file as multi-line input). You can find some examples in the `scripts` folder. 
   - `self.mu` contains equivalent definitions of the default syntax. Loading it will change the current syntax into default syntax, given that your current syntax correctly interprets its content (like the default syntax does. For example, this is the case when your current syntax is a superset of the default syntax).
-  - `prelude.mu` contains definitions for the extended syntax, along with a few utility functions. Loading it will allow you to write Haskell-looking, or more precisely, Lean-4-looking code in square brackets (which can be freely mixed with original, Lisp-looking code in parentheses).
-- Type `(add 2 2)` to add up two numbers. (I will write a documentation for the language later...)
+  - `prelude.mu` contains definitions for the extended syntax, along with a few utility functions. Loading it will allow you to write Lean-3-looking code in parentheses (which can be freely mixed with original, Lisp-looking code in square brackets).
+- Type `(add 2 2)` (`[add 2 2]` or `2 + 2;` for the extended syntax) to add up two numbers. (I will write a documentation for the language later...)
 
 You may also try executing `testcore`, which runs some tests for the experimental tableau prover. Currently it is rather inefficient, and does not support equational or higher-order reasoning. Nevertheless, it already proves some first-order propositions that Lean's `finish` tactic, or even myself, cannot quickly prove (though I know that both are already considered weak and outdated, and winning them does not indicate anything special...)
 

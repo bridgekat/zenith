@@ -39,8 +39,8 @@ namespace Elab::Procs {
 
   // Returns { VFree, skolem } applied to a number of meta-variables ("implicitly universally quantified" variables)
   inline Expr const* makeSkolem(uint64_t skolem, vector<uint64_t> const& metas, Allocator<Expr>& pool) {
-    Expr const* res = pool.emplaceBack(Expr::VFree, skolem);
-    for (uint64_t i: metas) res = pool.emplaceBack(res, pool.emplaceBack(Expr::VMeta, i));
+    Expr const* res = pool.emplace(Expr::VFree, skolem);
+    for (uint64_t i: metas) res = pool.emplace(res, pool.emplace(Expr::VMeta, i));
     return res;
   }
 

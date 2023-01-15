@@ -10,15 +10,15 @@ namespace Eval {
     return visit(
       Matcher{
         [&](Nil) { return nil; },
-        [&](Cons const& x) { return pool.emplaceBack(x.head->clone(pool, nil, unit), x.tail->clone(pool, nil, unit)); },
-        [&](Symbol const& x) { return pool.emplaceBack(x); },
-        [&](Prim const& x) { return pool.emplaceBack(x); },
-        [&](Nat64 const& x) { return pool.emplaceBack(x); },
-        [&](String const& x) { return pool.emplaceBack(x); },
-        [&](Bool const& x) { return pool.emplaceBack(x); },
+        [&](Cons const& x) { return pool.emplace(x.head->clone(pool, nil, unit), x.tail->clone(pool, nil, unit)); },
+        [&](Symbol const& x) { return pool.emplace(x); },
+        [&](Prim const& x) { return pool.emplace(x); },
+        [&](Nat64 const& x) { return pool.emplace(x); },
+        [&](String const& x) { return pool.emplace(x); },
+        [&](Bool const& x) { return pool.emplace(x); },
         [&](Unit const&) { return unit; },
         [&](Closure const&) -> Tree* { unimplemented; },
-        [&](Native const& x) { return pool.emplaceBack(x); },
+        [&](Native const& x) { return pool.emplace(x); },
       },
       *this
     );
