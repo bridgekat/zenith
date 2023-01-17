@@ -2,7 +2,8 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
-#include "core.hpp"
+#include "core/expr.hpp"
+#include "core/fol/fol.hpp"
 #include "elab/procs.hpp"
 #include "elab/tableau.hpp"
 
@@ -21,17 +22,15 @@ int main() {
   cout << sizeof(string) << endl;
   cout << sizeof(Expr) << endl;
 
-#define N(...) Expr::make(pool, __VA_ARGS__)
-
-#define fv(id)       N(VFree, id)
-#define bv(id)       N(VBound, id)
-#define uv(id)       N(VMeta, id)
-#define prop         N(SProp)
-#define type         N(SType)
+#define fv(id)       pool.emplace(VFree, id)
+#define bv(id)       pool.emplace(VBound, id)
+#define uv(id)       pool.emplace(VMeta, id)
+#define prop         pool.emplace(SProp)
+#define type         pool.emplace(SType)
 #define setvar       fv(SetVar)
-#define app(l, r)    N(l, r)
-#define lam(s, t, r) N(Expr::LLam, s, t, r)
-#define pi(s, t, r)  N(Expr::PPi, s, t, r)
+#define app(l, r)    pool.emplace(l, r)
+#define lam(s, t, r) pool.emplace(Expr::LLam, s, t, r)
+#define pi(s, t, r)  pool.emplace(Expr::PPi, s, t, r)
 
 #define tt             fv(True)
 #define ff             fv(False)
@@ -49,7 +48,8 @@ int main() {
 
     // The axiom schema of separation...
     auto const x = lam(
-      "phi", pi("", setvar, pi("", setvar, prop)),
+      "phi",
+      pi("", setvar, pi("", setvar, prop)),
       forall(
         "x",
         exists(
@@ -309,10 +309,12 @@ int main() {
     uint64_t Q = ctx.pushAssumption("Q", pi("x", setvar, prop));
 
     auto e = exists(
-      "y", bin(
-             bin(fv(x), lt, bv(0)), Implies,
-             forall("u", exists("v", bin(bin(fv(x), mul, bv(1)), lt, bin(bv(2), mul, bv(0)))))
-           )
+      "y",
+      bin(
+        bin(fv(x), lt, bv(0)),
+        Implies,
+        forall("u", exists("v", bin(bin(fv(x), mul, bv(1)), lt, bin(bv(2), mul, bv(0)))))
+      )
     );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
@@ -321,7 +323,8 @@ int main() {
     e = forall(
       "x",
       bin(
-        app(fv(P), bv(0)), Implies,
+        app(fv(P), bv(0)),
+        Implies,
         exists(
           "y",
           exists("z", bin(app(fv(Q), bv(1)), Or, un(Not, exists("z", bin(app(fv(P), bv(0)), And, app(fv(Q), bv(0)))))))
@@ -448,16 +451,21 @@ int main() {
     cout << "(Provable)" << endl;
     e = bin(
       exists(
-        "y", exists(
-               "z", forall(
-                      "x", bin(
-                             bin(app(fv(F), bv(0)), Implies, app(fv(G), bv(2))), And,
-                             bin(app(fv(G), bv(1)), Implies, app(fv(F), bv(0)))
-                           )
-                    )
-             )
+        "y",
+        exists(
+          "z",
+          forall(
+            "x",
+            bin(
+              bin(app(fv(F), bv(0)), Implies, app(fv(G), bv(2))),
+              And,
+              bin(app(fv(G), bv(1)), Implies, app(fv(F), bv(0)))
+            )
+          )
+        )
       ),
-      Implies, forall("x", exists("y", bin(app(fv(F), bv(1)), Iff, app(fv(G), bv(0)))))
+      Implies,
+      forall("x", exists("y", bin(app(fv(F), bv(1)), Iff, app(fv(G), bv(0)))))
     );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
@@ -475,21 +483,27 @@ int main() {
     auto exclusiveness = forall(
       "x",
       forall(
-        "y", bin(
-               app(app(fv(L), bv(1)), bv(0)), Implies,
-               forall("z", bin(un(Not, bin(bv(0), Equals, bv(1))), Implies, un(Not, app(app(fv(L), bv(2)), bv(0)))))
-             )
+        "y",
+        bin(
+          app(app(fv(L), bv(1)), bv(0)),
+          Implies,
+          forall("z", bin(un(Not, bin(bv(0), Equals, bv(1))), Implies, un(Not, app(app(fv(L), bv(2)), bv(0)))))
+        )
       )
     );
     auto preference = forall(
-      "x", forall(
-             "y", forall(
-                    "z", bin(
-                           app(app(app(fv(B), bv(2)), bv(1)), bv(0)), Implies,
-                           bin(app(app(fv(L), bv(2)), bv(0)), Implies, app(app(fv(L), bv(2)), bv(1)))
-                         )
-                  )
-           )
+      "x",
+      forall(
+        "y",
+        forall(
+          "z",
+          bin(
+            app(app(app(fv(B), bv(2)), bv(1)), bv(0)),
+            Implies,
+            bin(app(app(fv(L), bv(2)), bv(0)), Implies, app(app(fv(L), bv(2)), bv(1)))
+          )
+        )
+      )
     );
     auto shadowing =
       exists("y", bin(un(Not, bin(bv(0), Equals, fv(Q))), And, forall("x", app(app(app(fv(B), bv(0)), bv(1)), fv(Q)))));
@@ -555,7 +569,8 @@ int main() {
         "x",
         bin(
           bin(
-            app(fv(P), fv(a)), And,
+            app(fv(P), fv(a)),
+            And,
             bin(app(fv(P), bv(0)), Implies, exists("y", bin(app(fv(P), bv(0)), And, app(app(fv(rel), bv(1)), bv(0)))))
           ),
           Implies,
@@ -573,7 +588,8 @@ int main() {
         "x",
         bin(
           bin(
-            bin(un(Not, app(fv(P), fv(a))), Or, app(fv(P), bv(0))), Or,
+            bin(un(Not, app(fv(P), fv(a))), Or, app(fv(P), bv(0))),
+            Or,
             exists(
               "z",
               exists(
@@ -585,7 +601,8 @@ int main() {
           And,
           bin(
             bin(
-              un(Not, app(fv(P), fv(a))), Or,
+              un(Not, app(fv(P), fv(a))),
+              Or,
               un(Not, exists("y", bin(app(fv(P), bv(0)), And, app(app(fv(rel), bv(1)), bv(0)))))
             ),
             Or,
@@ -615,29 +632,38 @@ int main() {
     cout << "(Provable!)" << endl;
     e1 = forall("x", app(app(fv(le), bv(0)), bv(0)));
     e2 = forall(
-      "x", forall(
-             "y", forall(
-                    "z", bin(
-                           bin(app(app(fv(le), bv(2)), bv(1)), And, app(app(fv(le), bv(1)), bv(0))), Implies,
-                           app(app(fv(le), bv(2)), bv(0))
-                         )
-                  )
-           )
+      "x",
+      forall(
+        "y",
+        forall(
+          "z",
+          bin(
+            bin(app(app(fv(le), bv(2)), bv(1)), And, app(app(fv(le), bv(1)), bv(0))),
+            Implies,
+            app(app(fv(le), bv(2)), bv(0))
+          )
+        )
+      )
     );
     e3 = forall(
-      "x", forall("y", bin(app(app(fv(le), app(fv(f), bv(1))), bv(0)), Iff, app(app(fv(le), bv(1)), app(fv(g), bv(0)))))
+      "x",
+      forall("y", bin(app(app(fv(le), app(fv(f), bv(1))), bv(0)), Iff, app(app(fv(le), bv(1)), app(fv(g), bv(0)))))
     );
     goal = bin(
       forall(
-        "x", forall(
-               "y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(f), bv(1))), app(fv(f), bv(0))))
-             )
+        "x",
+        forall(
+          "y",
+          bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(f), bv(1))), app(fv(f), bv(0))))
+        )
       ),
       And,
       forall(
-        "x", forall(
-               "y", bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(g), bv(1))), app(fv(g), bv(0))))
-             )
+        "x",
+        forall(
+          "y",
+          bin(app(app(fv(le), bv(1)), bv(0)), Implies, app(app(fv(le), app(fv(g), bv(1))), app(fv(g), bv(0))))
+        )
       )
     );
     tableau.addAntecedent(e1);

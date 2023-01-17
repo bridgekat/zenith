@@ -1,6 +1,8 @@
-// ========================
-// Notations for meta-logic
-// ========================
+-- ========================
+-- Notations for meta-logic
+-- ========================
+
+-- TODO: update syntax.
 
 letrec context_names' = fun (n) =>
   if n == 0 then `()

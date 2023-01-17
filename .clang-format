@@ -47,6 +47,7 @@ AlwaysBreakAfterReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
 RequiresClausePosition: WithPreceding
+RequiresExpressionIndentation: OuterScope
 
 AttributeMacros: []
 StatementMacros: ['defineExpect']

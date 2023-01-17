@@ -3,24 +3,24 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include "core.hpp"
-#include "eval/exteval.hpp"
-#include "eval/tree.hpp"
+#include <core/expr.hpp>
+#include <core/fol/fol.hpp>
+#include <eval/extended_evaluator.hpp>
+#include <eval/tree.hpp>
 
 using std::string;
 using std::vector;
 using std::cin, std::cout, std::endl;
-using Core::Allocator;
 using Eval::ExtendedEvaluator, Eval::EvalError;
 
 // See: https://stackoverflow.com/questions/116038/how-do-i-read-an-entire-file-into-a-stdstring-in-c
-string readFile(std::ifstream&& in) {
+auto readFile(std::ifstream&& in) -> string {
   std::ostringstream sstr;
   sstr << in.rdbuf();
   return sstr.str();
 }
 
-int main(int argc, char** argv) {
+auto main(int argc, char** argv) -> int {
   ExtendedEvaluator evaluator;
   string in;
   for (int i = 1; i < argc; i++) in += readFile(std::ifstream(argv[i])) + "\n";

@@ -1,9 +1,10 @@
 // Eval :: ExtendedEvaluator
 
-#ifndef EXTEVAL_HPP_
-#define EXTEVAL_HPP_
+#ifndef EXTENDED_EVALUATOR_HPP_
+#define EXTENDED_EVALUATOR_HPP_
 
-#include <core.hpp>
+#include <core/expr.hpp>
+#include <core/fol/fol.hpp>
 #include "evaluator.hpp"
 
 namespace Eval {
@@ -15,7 +16,7 @@ namespace Eval {
 
   private:
     Core::FOLContext ctx;
-    Core::Allocator<Core::Expr> epool;
+    Allocator<Core::Expr> epool;
 
     Tree* exprTree(Core::Expr const* e);
     Core::Expr const* treeExpr(Tree* e);
@@ -23,4 +24,4 @@ namespace Eval {
 
 }
 
-#endif // EXTEVAL_HPP_
+#endif // EXTENDED_EVALUATOR_HPP_

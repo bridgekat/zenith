@@ -8,7 +8,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <core.hpp>
 #include "procs.hpp"
 
 namespace Elab {
@@ -25,7 +24,9 @@ namespace Elab {
     size_t hash;
 
     // `*e` should not be changed after this construction
-    explicit ExprHash(Expr const* e) noexcept: e(e), hash(e->hash()) {}
+    explicit ExprHash(Expr const* e) noexcept:
+      e(e),
+      hash(e->hash()) {}
     bool operator==(ExprHash const& r) const noexcept { return hash == r.hash && *e == *(r.e); }
     bool operator!=(ExprHash const& r) const noexcept { return hash != r.hash || *e != *(r.e); }
 
@@ -78,7 +79,14 @@ namespace Elab {
       bool operator==(Branch const& r) const noexcept = default;
     };
 
-    Tableau(Context const& ctx) noexcept: pools(), ctx(ctx), branch{}, cont(), numSkolem{}, maxDepth{}, maxTabDepth{} {}
+    Tableau(Context const& ctx) noexcept:
+      pools(),
+      ctx(ctx),
+      branch{},
+      cont(),
+      numSkolem{},
+      maxDepth{},
+      maxTabDepth{} {}
 
     void addAntecedent(Expr const* e) {
       auto it = branch.hashset[L].insert(ExprHash(e));

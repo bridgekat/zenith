@@ -1,7 +1,7 @@
 // Server :: Document, LanguageServer
 
-#ifndef LANGUAGESERVER_HPP_
-#define LANGUAGESERVER_HPP_
+#ifndef LANGUAGE_SERVER_HPP_
+#define LANGUAGE_SERVER_HPP_
 
 #include "jsonrpc2.hpp"
 
@@ -12,7 +12,14 @@ namespace Server {
   public:
     using Position = std::pair<size_t, size_t>;
 
-    Document(): eol(), content(), lines(), apos(), aindex() { process(); }
+    Document():
+      eol(),
+      content(),
+      lines(),
+      apos(),
+      aindex() {
+      process();
+    }
 
     size_t toIndex(const Position& pos) const { return aindex.at(pos.first).at(pos.second); }
     Position toPosition(size_t index) const { return apos.at(index); }
@@ -42,4 +49,4 @@ namespace Server {
 
 }
 
-#endif // LANGUAGESERVER_HPP_
+#endif // LANGUAGE_SERVER_HPP_

@@ -1,4 +1,4 @@
-#include "exteval.hpp"
+#include "extended_evaluator.hpp"
 
 namespace Eval {
 
@@ -6,7 +6,7 @@ namespace Eval {
   using std::vector;
   using std::pair;
   using std::optional;
-  using Core::Expr, Core::Allocator;
+  using Core::Expr;
 
 #define cons       pool.emplace
 #define nil        nil

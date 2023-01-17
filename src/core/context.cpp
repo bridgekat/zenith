@@ -6,7 +6,12 @@ namespace Core {
   using std::string;
   using std::vector;
 
-  Context::Context(): pools(), entries(), indices() { pools.emplace_back(); }
+  Context::Context():
+    pools(),
+    entries(),
+    indices() {
+    pools.emplace_back();
+  }
 
   size_t Context::addDefinition(string const& s, Expr const* e) {
     e->checkType(*this, temp());
@@ -33,7 +38,7 @@ namespace Core {
     auto const index = indices.back();
     auto const [s, x] = entries[index];
 
-#define expr(...) Expr::make(pool2, __VA_ARGS__)
+#define expr(...) pool2.emplace(__VA_ARGS__)
 
     // Add abstractions over the hypothesized variable, copying all expressions from `pool1` to `pool2`
     // Make bound + remap index

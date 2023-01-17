@@ -6,90 +6,91 @@
 (define patterns `(
 
   // Blank, line comment and block comment
-  (_ (_ 0) (star (char " \f\n\r\t\v")))
-  (_ (_ 0) (concat (word "--") (star (except "\n\r"))))
-  (_ (_ 0)
-    (concat (word "/-")
-            (star (concat (star (except "-"))
-                          (plus (char "-"))
-                          (except "/")))
-            (star (except "-"))
-            (plus (char "-"))
-            (char "/")))
+  (_ (star (char " \f\n\r\t\v")))
+  (_ (concat (word "--") (star (except "\n\r"))))
+  (_ (concat (word "/-")
+             (star (concat (star (except "-"))
+                           (plus (char "-"))
+                           (except "/")))
+             (star (except "-"))
+             (plus (char "-"))
+             (char "/")))
 
   // Identifiers
-  (symbol' (symbol 0)
+  (tok_symbol
     (concat (alt (range 97 122) (range 65 90) (char "_'") (utf8seg))
             (star (alt (range 97 122) (range 65 90) (range 48 57) (char "_'") (utf8seg)))))
 
   // Non-negative integers
-  (nat64' (nat64 0)
+  (tok_nat64
     (alt (plus (range 48 57))
-        (concat (char "0")
-                (char "xX")
-                (plus (alt (range 48 57) (range 97 102) (range 65 70))))))
+         (concat (char "0")
+                 (char "xX")
+                 (plus (alt (range 48 57) (range 97 102) (range 65 70))))))
 
   // Strings
-  (string' (string 0)
+  (tok_string
     (concat (char "\"")
             (star (alt (except "\\\"")
                       (concat (char "\\") (char "\\\"abfnrtv"))))
             (char "\"")))
 
   // Operators and keywords
-  (_ (op_left_paren 0) (word "("))
-  (_ (op_right_paren 0) (word ")"))
-  (_ (op_left_bracket 0) (word "["))
-  (_ (op_right_bracket 0) (word "]"))
-  (_ (op_period 0) (word "."))
-  (_ (op_quote 0) (word "`"))
-  (_ (op_comma 0) (word ","))
-  (_ (op_colon 0) (word ":"))
-  (_ (op_semicolon 0) (word ";"))
+  (op_left_paren (word "("))
+  (op_right_paren (word ")"))
+  (op_left_bracket (word "["))
+  (op_right_bracket (word "]"))
+  (op_period (word "."))
+  (op_quote (word "`"))
+  (op_comma (word ","))
+  (op_colon (word ":"))
+  (op_semicolon (word ";"))
 
-  (_ (op_double_colon_equals 0) (word "::="))
-  (_ (op_plus 0) (word "+"))
-  (_ (op_minus 0) (word "-"))
-  (_ (op_asterisk 0) (word "*"))
-  (_ (op_slash 0) (word "/"))
-  (_ (op_amp 0) (word "&"))
-  (_ (op_bar 0) (word "|"))
-  (_ (op_caret 0) (word "^"))
-  (_ (op_less_equals 0) (word "<="))
-  (_ (op_less 0) (word "<"))
-  (_ (op_greater_equals 0) (word ">="))
-  (_ (op_greater 0) (word ">"))
-  (_ (op_equals 0) (word "="))
-  (_ (op_double_equals 0) (word "=="))
-  (_ (op_bang_equals 0) (word "!="))
-  (_ (op_bang 0) (word "!"))
-  (_ (op_amp_amp 0) (word "&&"))
-  (_ (op_bar_bar 0) (word "||"))
-  (_ (op_left_arrow 0) (word "<-"))
-  (_ (op_right_arrow 0) (word "->"))
-  (_ (op_left_right_arrow 0) (word "<->"))
-  (_ (op_double_right_arrow 0) (word "=>"))
-  (_ (op_double_left_right_arrow 0) (word "<=>"))
+  (op_double_colon_equals (word "::="))
+  (op_plus (word "+"))
+  (op_minus (word "-"))
+  (op_asterisk (word "*"))
+  (op_slash (word "/"))
+  (op_amp (word "&"))
+  (op_bar (word "|"))
+  (op_caret (word "^"))
+  (op_less_equals (word "<="))
+  (op_less (word "<"))
+  (op_greater_equals (word ">="))
+  (op_greater (word ">"))
+  (op_equals (word "="))
+  (op_double_equals (word "=="))
+  (op_bang_equals (word "!="))
+  (op_bang (word "!"))
+  (op_amp_amp (word "&&"))
+  (op_bar_bar (word "||"))
+  (op_left_arrow (word "<-"))
+  (op_right_arrow (word "->"))
+  (op_left_right_arrow (word "<->"))
+  (op_double_right_arrow (word "=>"))
+  (op_double_left_right_arrow (word "<=>"))
 
-  (_ (kw_let 0) (word "let"))
-  (_ (kw_letrec 0) (word "letrec"))
-  (_ (kw_in 0) (word "in"))
-  (_ (kw_fun 0) (word "fun"))
-  (_ (kw_if 0) (word "if"))
-  (_ (kw_then 0) (word "then"))
-  (_ (kw_else 0) (word "else"))
-  (_ (kw_match 0) (word "match"))
-  (_ (kw_with 0) (word "with"))
-  (_ (kw_begin 0) (word "begin"))
-  (_ (kw_end 0) (word "end"))
+  (kw_let (word "let"))
+  (kw_letrec (word "letrec"))
+  (kw_in (word "in"))
+  (kw_fun (word "fun"))
+  (kw_if (word "if"))
+  (kw_then (word "then"))
+  (kw_else (word "else"))
+  (kw_match (word "match"))
+  (kw_with (word "with"))
+  (kw_begin (word "begin"))
+  (kw_end (word "end"))
 
 ))
 
 // Syntax rules
 (define rules `(
 
-  // Preserve default rules
-  // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#s-expressions
+  // Basic part
+  (symbol' (symbol 0) ((tok_symbol 0)))
+  (nat64' (nat64 0) ((tok_nat64 0)))
+  (string' (string 0) ((tok_string 0)))
   (id' (tree 0) ((symbol 0)))
   (id' (tree 0) ((nat64 0)))
   (id' (tree 0) ((string 0)))
@@ -107,7 +108,7 @@
   (syncat_ignored' (syncat 0) ((syncat 0) (op_asterisk 0))) // For use with `add_rule_auto` only
   (nil' (syncats 0) ())
   (cons' (syncats 0) ((syncat 0) (syncats 0)))
-  (pattern' (tree 0) ((op_left_bracket 0) (symbol 0) (syncat 0) (op_double_colon_equals 0) (tree 0) (op_right_bracket 0)))
+  (pattern' (tree 0) ((op_left_bracket 0) (symbol 0) (op_double_colon_equals 0) (tree 0) (op_right_bracket 0)))
   (rule' (tree 0) ((op_left_bracket 0) (symbol 0) (syncat 0) (op_double_colon_equals 0) (syncats 0) (op_right_bracket 0)))
 
   // A more natural way (with less parentheses) to write expressions
@@ -164,7 +165,7 @@
 (define_macro syncat_default' (lambda (_ x _) `(,x 0)))
 (define_macro syncat_prec' (lambda (_ l r _) `(,l ,r)))
 (define_macro syncat_ignored' (lambda (x _) `(,x)))
-(define_macro pattern' (lambda (_ m l _ r _) ``(,m ,l ,r)))
+(define_macro pattern' (lambda (_ l _ r _) ``(,l ,r)))
 (define_macro rule' (lambda (_ m l _ r _) ``(,m ,l ,r)))
 
 (define_macro list_init' (lambda (l r) (list l r)))
@@ -256,11 +257,11 @@ define add_rule_auto (fun [[func_name lhs rhs]] =>
       end));
 define_macro add_rule_auto' (fun [_ e] => add_rule_auto (eval e));
 
-add_pattern `[_ [kw_add_rule_auto 0] [word "add_rule_auto"]];
+add_pattern `[kw_add_rule_auto [word "add_rule_auto"]];
 add_rule `[add_rule_auto' [tree 0] [[kw_add_rule_auto 0] [tree 0]]];
 
 -- Additional operators
-add_pattern   [_ <op_double_plus> ::= [word "++"]];
-add_pattern   [_ <op_period_double_plus> ::= [word ".++"]];
+add_pattern   [op_double_plus ::= [word "++"]];
+add_pattern   [op_period_double_plus ::= [word ".++"]];
 add_rule_auto [concat <expr 70> ::= <expr 71> <op_double_plus>* <expr 70>];
 add_rule_auto [string_concat <expr 70> ::= <expr 71> <op_period_double_plus>* <expr 70>];

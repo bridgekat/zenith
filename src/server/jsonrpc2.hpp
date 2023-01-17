@@ -13,7 +13,7 @@
 #pragma GCC diagnostic ignored "-Wdeprecated"
 #include <nlohmann/json.hpp>
 #pragma GCC diagnostic pop
-#include <core/base.hpp>
+#include <common.hpp>
 #include "coroutine.hpp"
 
 namespace Server {
@@ -40,7 +40,9 @@ namespace Server {
       REQUEST_CANCELLED = -32800
     };
     ErrorCode code;
-    explicit JSONRPC2Exception(ErrorCode code, const string& s = ""): std::runtime_error(s), code(code) {}
+    explicit JSONRPC2Exception(ErrorCode code, const string& s = ""):
+      std::runtime_error(s),
+      code(code) {}
   };
   using ErrorCode = JSONRPC2Exception::ErrorCode;
   using enum ErrorCode;
@@ -51,7 +53,12 @@ namespace Server {
 
     // While `inThread` is running, other threads should not read/write the `in`/`out`/`log` streams...
     JSONRPC2Server(std::basic_istream<char>& in, std::basic_ostream<char>& out /*, std::basic_ostream<char>& log */):
-      in(in), out(out), /* log(log), */ inThread(), methods(), notifications(), nextid(0), requests() {}
+      in(in),
+      out(out), /* log(log), */ inThread(),
+      methods(),
+      notifications(),
+      nextid(0),
+      requests() {}
 
     // These functions should only be called when `inThread` is not running.
     // See: https://stackoverflow.com/questions/33943601/check-if-stdthread-is-still-running
@@ -75,7 +82,10 @@ namespace Server {
       std::exception_ptr exptr;
       json result;
 
-      RequestEntry(std::coroutine_handle<void> k = std::coroutine_handle<void>()): k(k), exptr(nullptr), result({}) {}
+      RequestEntry(std::coroutine_handle<void> k = std::coroutine_handle<void>()):
+        k(k),
+        exptr(nullptr),
+        result({}) {}
     };
 
     size_t numActiveRequests() const { return requests.size(); }

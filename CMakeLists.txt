@@ -42,7 +42,7 @@ add_executable (testeval
   src/parsing/parser.cpp
   src/eval/tree.cpp
   src/eval/evaluator.cpp
-  src/eval/exteval.cpp
+  src/eval/extended_evaluator.cpp
   src/testeval.cpp)
 target_default_compile_options  (testeval)
 target_include_directories      (testeval PRIVATE src)
@@ -54,7 +54,7 @@ target_include_directories      (testeval PRIVATE src)
 #   src/parsing/lexer.cpp
 #   src/parsing/parser.cpp
 #   src/server/jsonrpc2.cpp
-#   src/server/languageserver.cpp
+#   src/server/language_server.cpp
 #   src/server/lsp.cpp
 #   src/testserver.cpp)
 # target_default_compile_options  (testserver)
@@ -65,7 +65,7 @@ target_include_directories      (testeval PRIVATE src)
 enable_testing ()
 
 add_executable (testtest
-  test/testtest.cpp)
+  tests/testtest.cpp)
 target_default_compile_options  (testtest)
 target_include_directories      (testtest PRIVATE src)
 add_test                        (testtest testtest)

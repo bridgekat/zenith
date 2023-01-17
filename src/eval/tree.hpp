@@ -9,38 +9,30 @@
 #include <string>
 #include <utility>
 #include <variant>
-#include <core/base.hpp>
+#include <common.hpp>
 
 namespace Eval {
-
-  // See: https://en.cppreference.com/w/cpp/utility/variant/visit
-  template <typename... Ts>
-  struct Matcher: Ts... {
-    using Ts::operator()...;
-  };
-  template <typename... Ts>
-  Matcher(Ts...) -> Matcher<Ts...>;
 
   // clang-format off
   // Concrete atom types for Tree
   class Tree;
-  struct Symbol  { std::string val;           bool operator==(Symbol const&)   const noexcept = default; };
-  struct Prim    { size_t id;                 bool operator==(Prim const&)     const noexcept = default; };
-  struct Nat64   { uint64_t val;              bool operator==(Nat64 const&)    const noexcept = default; };
-  struct String  { std::string val;           bool operator==(String const&)   const noexcept = default; };
-  struct Bool    { bool val;                  bool operator==(Bool const&)     const noexcept = default; };
-  struct Unit    {                            bool operator==(Unit const&)     const noexcept = default; };
-  struct Closure { Tree* env, * formal, * es; bool operator==(Closure const&)  const noexcept = default; };
-  struct Native  { std::any val;              bool operator==(Native const& r) const noexcept { return &val == &r.val; } };
+  struct Symbol  { std::string val;           bool operator==(Symbol const&)   const = default; };
+  struct Prim    { size_t id;                 bool operator==(Prim const&)     const = default; };
+  struct Nat64   { uint64_t val;              bool operator==(Nat64 const&)    const = default; };
+  struct String  { std::string val;           bool operator==(String const&)   const = default; };
+  struct Bool    { bool val;                  bool operator==(Bool const&)     const = default; };
+  struct Unit    {                            bool operator==(Unit const&)     const = default; };
+  struct Closure { Tree* env, * formal, * es; bool operator==(Closure const&)  const = default; };
+  struct Native  { std::any val;              bool operator==(Native const& r) const { return &val == &r.val; } };
   // clang-format on
 
   struct Nil {
-    bool operator==(Nil const&) const noexcept = default;
+    bool operator==(Nil const&) const = default;
   };
 
   struct Cons {
     Tree *head, *tail;
-    bool operator==(Cons const& r) const noexcept;
+    bool operator==(Cons const& r) const;
   };
 
   // Main Tree type
@@ -56,7 +48,7 @@ namespace Eval {
     Tree(Tree* l, Tree* r):
       Super(Cons{l, r}) {}
 
-    Tree* clone(Core::Allocator<Tree>& pool, Tree* nil, Tree* unit) const;
+    Tree* clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const;
 
     std::string toString() const;
     std::pair<bool, std::string> toStringUntil(Tree const* p) const;
@@ -65,13 +57,13 @@ namespace Eval {
     static std::string unescapeString(std::string const& s);
   };
 
-  inline bool Cons::operator==(Cons const& r) const noexcept { return *head == *r.head && *tail == *r.tail; };
+  inline bool Cons::operator==(Cons const& r) const { return *head == *r.head && *tail == *r.tail; };
 
   /*
   // A thread-local temporary allocator instance for `Tree`
   // Should be cleared only by outermost level code
-  inline Core::Allocator<Tree>& temp() {
-    thread_local Core::Allocator<Tree> pool;
+  inline Allocator<Tree>& temp() {
+    thread_local Allocator<Tree> pool;
     return pool;
   }
   */

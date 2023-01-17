@@ -5,7 +5,7 @@
 
 #include <cstdint>
 #include <stdexcept>
-#include "base.hpp"
+#include <common.hpp>
 #include "context.hpp"
 
 namespace Core {
@@ -134,17 +134,17 @@ namespace Core {
         case App: {
           auto const l = app.l->updateVars(f, pool, n);
           auto const r = app.r->updateVars(f, pool, n);
-          return (l == app.l && r == app.r) ? this : make(pool, l, r);
+          return (l == app.l && r == app.r) ? this : pool.emplace(l, r);
         }
         case Lam: {
           auto const t = lam.t->updateVars(f, pool, n);
           auto const r = lam.r->updateVars(f, pool, n + 1);
-          return (t == lam.t && r == lam.r) ? this : make(pool, LLam, lam.s, t, r);
+          return (t == lam.t && r == lam.r) ? this : pool.emplace(LLam, lam.s, t, r);
         }
         case Pi: {
           auto const t = pi.t->updateVars(f, pool, n);
           auto const r = pi.r->updateVars(f, pool, n + 1);
-          return (t == pi.t && r == pi.r) ? this : make(pool, PPi, pi.s, t, r);
+          return (t == pi.t && r == pi.r) ? this : pool.emplace(PPi, pi.s, t, r);
         }
       }
       unreachable;
@@ -154,8 +154,8 @@ namespace Core {
     // Lifetime of the resulting expression is bounded by `this` and `pool`.
     Expr const* lift(uint64_t m, Allocator<Expr>& pool) const {
       return updateVars(
-        [m, &pool](uint64_t n, Expr const* x) {
-          if (x->var.tag == VBound && x->var.id >= n) return make(pool, VBound, x->var.id + m);
+        [m, &pool](uint64_t n, Expr const* x) -> Expr const* {
+          if (x->var.tag == VBound && x->var.id >= n) return pool.emplace(VBound, x->var.id + m);
           return x;
         },
         pool
@@ -166,9 +166,9 @@ namespace Core {
     // Lifetime of the resulting expression is bounded by `this`, `t` and `pool`.
     Expr const* makeReplace(Expr const* t, Allocator<Expr>& pool) const {
       return updateVars(
-        [t, &pool](uint64_t n, Expr const* x) {
+        [t, &pool](uint64_t n, Expr const* x) -> Expr const* {
           if (x->var.tag == VBound && x->var.id == n) return t->lift(n, pool);
-          if (x->var.tag == VBound && x->var.id > n) return make(pool, VBound, x->var.id - 1);
+          if (x->var.tag == VBound && x->var.id > n) return pool.emplace(VBound, x->var.id - 1);
           return x;
         },
         pool
@@ -194,12 +194,6 @@ namespace Core {
 
     // Check if the expression does not contain undetermined variables.
     bool isGround() const noexcept { return numMeta() == 0; }
-
-    // Convenient constructor.
-    template <typename... Ts>
-    inline static Expr const* make(Allocator<Expr>& pool, Ts&&... args) {
-      return pool.emplace(std::forward<Ts>(args)...);
-    }
   };
 
   // A thread-local temporary allocator instance for `Expr`

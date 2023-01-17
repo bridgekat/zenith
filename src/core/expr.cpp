@@ -8,11 +8,11 @@ namespace Core {
 
   Expr const* Expr::clone(Allocator<Expr>& pool) const {
     switch (tag) {
-      case Sort: return make(pool, sort.tag);
-      case Var: return make(pool, var.tag, var.id);
-      case App: return make(pool, app.l->clone(pool), app.r->clone(pool));
-      case Lam: return make(pool, LLam, lam.s, lam.t->clone(pool), lam.r->clone(pool));
-      case Pi: return make(pool, PPi, pi.s, pi.t->clone(pool), pi.r->clone(pool));
+      case Sort: return pool.emplace(sort.tag);
+      case Var: return pool.emplace(var.tag, var.id);
+      case App: return pool.emplace(app.l->clone(pool), app.r->clone(pool));
+      case Lam: return pool.emplace(LLam, lam.s, lam.t->clone(pool), lam.r->clone(pool));
+      case Pi: return pool.emplace(PPi, pi.s, pi.t->clone(pool), pi.r->clone(pool));
     }
     unreachable;
   }
@@ -31,34 +31,27 @@ namespace Core {
     unreachable;
   }
 
-  // Using: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
-  template <class T>
-  inline void hash_combine(size_t& seed, T const& v) noexcept {
-    std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
-  }
-
   size_t Expr::hash() const noexcept {
     auto res = static_cast<size_t>(tag);
     switch (tag) {
-      case Sort: hash_combine(res, static_cast<std::underlying_type_t<SortTag>>(sort.tag)); return res;
+      case Sort: res = hash_combine(res, static_cast<std::underlying_type_t<SortTag>>(sort.tag)); return res;
       case Var:
-        hash_combine(res, static_cast<std::underlying_type_t<VarTag>>(var.tag));
-        hash_combine(res, var.id);
+        res = hash_combine(res, static_cast<std::underlying_type_t<VarTag>>(var.tag));
+        res = hash_combine(res, var.id);
         return res;
       case App:
-        hash_combine(res, app.l->hash());
-        hash_combine(res, app.r->hash());
+        res = hash_combine(res, app.l->hash());
+        res = hash_combine(res, app.r->hash());
         return res;
       case Lam:
         // Ignore bound variable names
-        hash_combine(res, lam.t->hash());
-        hash_combine(res, lam.r->hash());
+        res = hash_combine(res, lam.t->hash());
+        res = hash_combine(res, lam.r->hash());
         return res;
       case Pi:
         // Ignore bound variable names
-        hash_combine(res, pi.t->hash());
-        hash_combine(res, pi.r->hash());
+        res = hash_combine(res, pi.t->hash());
+        res = hash_combine(res, pi.r->hash());
         return res;
     }
     unreachable;
@@ -127,14 +120,13 @@ namespace Core {
   // (2) Returns `Type` itself;
   // (3) Returns a well-formed, beta-reduced expression of type `Prop`, representing the proposition it proves;
   // (4) Returns `Prop` itself.
-  Expr const* Expr::checkType(
-    Context const& ctx, Allocator<Expr>& pool, vector<Expr const*>& stk, vector<string>& names
-  ) const {
+  Expr const*
+  Expr::checkType(Context const& ctx, Allocator<Expr>& pool, vector<Expr const*>& stk, vector<string>& names) const {
     switch (tag) {
       case Sort:
         switch (sort.tag) {
-          case SProp: return make(pool, SType);
-          case SType: return make(pool, SKind);
+          case SProp: return pool.emplace(SType);
+          case SType: return pool.emplace(SKind);
           case SKind: throw InvalidExpr("\"Kind\" does not have a type", ctx, this);
         }
         unreachable;
@@ -157,7 +149,8 @@ namespace Core {
         if (*tl->pi.t != *tr)
           throw InvalidExpr(
             "argument type mismatch, expected " + tl->pi.t->toString(ctx, names) + ", got " + tr->toString(ctx, names),
-            ctx, app.r
+            ctx,
+            app.r
           );
         return tl->pi.r->makeReplace(app.r, pool)->reduce(pool);
       }
@@ -170,7 +163,7 @@ namespace Core {
         auto const tr = lam.r->checkType(ctx, pool, stk, names);
         names.pop_back();
         stk.pop_back();
-        return make(pool, PPi, lam.s, lam.t->reduce(pool), tr);
+        return pool.emplace(PPi, lam.s, lam.t->reduce(pool), tr);
       }
       case Pi: { // Π-formation
         auto const tt = pi.t->checkType(ctx, pool, stk, names);
@@ -183,7 +176,7 @@ namespace Core {
           throw InvalidExpr("expected proposition or type, got " + tr->toString(ctx, names), ctx, pi.r);
         names.pop_back();
         stk.pop_back();
-        return make(pool, imax(tt->sort.tag, tr->sort.tag));
+        return pool.emplace(imax(tt->sort.tag, tr->sort.tag));
       }
     }
     unreachable;
@@ -198,17 +191,17 @@ namespace Core {
         auto const l = app.l->reduce(pool);
         auto const r = app.r->reduce(pool);
         if (l->tag == Lam) return l->lam.r->makeReplace(r, pool)->reduce(pool);
-        return (l == app.l && r == app.r) ? this : make(pool, l, r);
+        return (l == app.l && r == app.r) ? this : pool.emplace(l, r);
       }
       case Lam: {
         auto const t = lam.t->reduce(pool);
         auto const r = lam.r->reduce(pool);
-        return (t == lam.t && r == lam.r) ? this : make(pool, LLam, lam.s, t, r);
+        return (t == lam.t && r == lam.r) ? this : pool.emplace(LLam, lam.s, t, r);
       }
       case Pi: {
         auto const t = pi.t->reduce(pool);
         auto const r = pi.r->reduce(pool);
-        return (t == pi.t && r == pi.r) ? this : make(pool, PPi, pi.s, t, r);
+        return (t == pi.t && r == pi.r) ? this : pool.emplace(PPi, pi.s, t, r);
       }
     }
     unreachable;

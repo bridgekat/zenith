@@ -7,29 +7,27 @@ namespace Core {
   using std::vector;
   using std::pair;
 
-  FOLContext::FOLContext(): Context() {
-#define assert(expr) \
-  if (!(expr)) unreachable
-#define prop        Expr::make(pools.back(), Expr::SProp)
-#define type        Expr::make(pools.back(), Expr::SType)
-#define setvar      Expr::make(pools.back(), Expr::VFree, SetVar)
-#define pi(s, t, r) Expr::make(pools.back(), Expr::PPi, s, t, r)
+  FOLContext::FOLContext():
+    Context() {
+#define prop        pools.back().emplace(Expr::SProp)
+#define type        pools.back().emplace(Expr::SType)
+#define setvar      pools.back().emplace(Expr::VFree, SetVar)
+#define pi(s, t, r) pools.back().emplace(Expr::PPi, s, t, r)
 
-    assert(SetVar == addDefinition("setvar", type));
-    assert(Arbitrary == pushAssumption("arbitrary", setvar));
-    assert(Equals == pushAssumption("equals", pi("x", setvar, pi("y", setvar, prop))));
-    assert(True == pushAssumption("true", prop));
-    assert(False == pushAssumption("false", prop));
-    assert(Not == pushAssumption("not", pi("P", prop, prop)));
-    assert(And == pushAssumption("and", pi("P", prop, pi("Q", prop, prop))));
-    assert(Or == pushAssumption("or", pi("P", prop, pi("Q", prop, prop))));
-    assert(Implies == pushAssumption("implies", pi("P", prop, pi("Q", prop, prop))));
-    assert(Iff == pushAssumption("iff", pi("P", prop, pi("Q", prop, prop))));
-    assert(Forall == pushAssumption("forall", pi("P", pi("x", setvar, prop), prop)));
-    assert(Exists == pushAssumption("exists", pi("P", pi("x", setvar, prop), prop)));
-    assert(Unique == pushAssumption("unique", pi("P", pi("x", setvar, prop), prop)));
+    assert_always(SetVar == addDefinition("setvar", type));
+    assert_always(Arbitrary == pushAssumption("arbitrary", setvar));
+    assert_always(Equals == pushAssumption("equals", pi("x", setvar, pi("y", setvar, prop))));
+    assert_always(True == pushAssumption("true", prop));
+    assert_always(False == pushAssumption("false", prop));
+    assert_always(Not == pushAssumption("not", pi("P", prop, prop)));
+    assert_always(And == pushAssumption("and", pi("P", prop, pi("Q", prop, prop))));
+    assert_always(Or == pushAssumption("or", pi("P", prop, pi("Q", prop, prop))));
+    assert_always(Implies == pushAssumption("implies", pi("P", prop, pi("Q", prop, prop))));
+    assert_always(Iff == pushAssumption("iff", pi("P", prop, pi("Q", prop, prop))));
+    assert_always(Forall == pushAssumption("forall", pi("P", pi("x", setvar, prop), prop)));
+    assert_always(Exists == pushAssumption("exists", pi("P", pi("x", setvar, prop), prop)));
+    assert_always(Unique == pushAssumption("unique", pi("P", pi("x", setvar, prop), prop)));
 
-#undef assert
 #undef prop
 #undef type
 #undef setvar
@@ -72,7 +70,7 @@ namespace Core {
     return {Other, e};
   }
 
-#define expr(...) Expr::make(pool, __VA_ARGS__)
+#define expr(...) pool.emplace(__VA_ARGS__)
 
   Expr const* FOLForm::toExpr(Allocator<Expr>& pool) const {
     using Constant = FOLContext::Constant;

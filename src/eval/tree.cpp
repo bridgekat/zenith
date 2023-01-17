@@ -6,7 +6,7 @@ namespace Eval {
   using std::string, std::pair, std::make_pair;
   using std::get, std::get_if, std::visit;
 
-  Tree* Tree::clone(Core::Allocator<Tree>& pool, Tree* nil, Tree* unit) const {
+  Tree* Tree::clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const {
     return visit(
       Matcher{
         [&](Nil) { return nil; },

@@ -9,15 +9,14 @@ namespace Eval {
   using std::vector;
   using std::pair;
   using std::optional, std::visit, std::get_if;
-  using Core::Allocator;
-  using Parsing::Token, Parsing::NFALexer, Parsing::EarleyParser;
+  using Parsing::Char, Parsing::Token, Parsing::NFA, Parsing::EarleyParser;
 
-  bool Evaluator::parseNextStatement() {
-    return parser.nextSentence();
+  auto Evaluator::parseNextStatement() -> bool {
+    return parser.advance();
     // std::cout << parser.showStates(symbolNames) << std::endl;
   }
 
-  Tree* Evaluator::evalParsedStatement() {
+  auto Evaluator::evalParsedStatement() -> Tree* {
     auto e = resolve(); // std::cout << e->toString() << std::endl;
     e = expand(e);
     std::cout << e->toString() << std::endl;
@@ -25,10 +24,11 @@ namespace Eval {
     return e;
   }
 
-  vector<ParsingError> Evaluator::popParsingErrors() {
-    vector<ParsingError> res;
+  auto Evaluator::popParsingErrors() -> vector<ParsingError> {
+    auto res = vector<ParsingError>();
     // See:
     // https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
+    /*
     for (auto const& e: lexer.popErrors()) {
       res.emplace_back("Parsing error, unexpected characters: " + e.lexeme, e.startPos, e.endPos);
     }
@@ -39,13 +39,14 @@ namespace Eval {
       else s += "but reached the end of file";
       res.emplace_back(s, e.startPos, e.endPos);
     }
+    */
     return res;
   }
 
   // Match an Tree against another Tree (pattern)
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#syntax-forms
   // (Continuation, `__k`, `and`, `or`, `not` and `pred?` patterns are not implemented)
-  bool Evaluator::match(Tree* e, Tree* pat, Tree*& env, bool quoteMode) {
+  auto Evaluator::match(Tree* e, Tree* pat, Tree*& env, bool quoteMode) -> bool {
     if (auto const& sym = get_if<Symbol>(pat); sym && !quoteMode) {
       if (sym->val != "_") env = extend(env, sym->val, e);
       return true;
@@ -63,101 +64,99 @@ namespace Eval {
     return *e == *pat;
   }
 
-  vector<unsigned int> stringToCharVec(string const& s) {
-    vector<unsigned int> res;
-    for (char c: s) res.push_back(static_cast<unsigned int>(c));
+  auto stringToCharVec(string const& s) -> vector<Parsing::Char> {
+    auto res = vector<Parsing::Char>();
+    for (auto const c: s) res.push_back(static_cast<Parsing::Char>(c));
     return res;
   }
 
-  NFALexer::NFA Evaluator::treePattern(Tree* e) {
+  auto Evaluator::treePattern(Tree* e) -> NFA::Subgraph {
     auto const& [tag, t] = expect<Cons>(e);
-    string stag = expect<Symbol>(tag).val;
-    if (stag == "empty") return lexer.empty();
-    if (stag == "any") return lexer.any();
-    if (stag == "utf8seg") return lexer.utf8segment();
-    if (stag == "char") return lexer.chars(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
-    if (stag == "except") return lexer.except(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    auto const& stag = expect<Symbol>(tag).val;
+    if (stag == "empty") return nfa.empty();
+    if (stag == "any") return nfa.any();
+    if (stag == "utf8seg") return nfa.utf8segment();
+    if (stag == "char") return nfa.chars(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    if (stag == "except") return nfa.except(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
     if (stag == "range") {
       auto const& [lbound, u] = expect<Cons>(t);
       auto const& [ubound, _] = expect<Cons>(u);
-      return lexer.range(
-        static_cast<unsigned int>(expect<Nat64>(lbound).val),
-        static_cast<unsigned int>(expect<Nat64>(ubound).val)
+      return nfa.range(
+        static_cast<Parsing::Char>(expect<Nat64>(lbound).val),
+        static_cast<Parsing::Char>(expect<Nat64>(ubound).val)
       );
     }
-    if (stag == "word") return lexer.word(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
-    if (stag == "alt") return lexer.alt(listPatterns(t));
-    if (stag == "concat") return lexer.concat(listPatterns(t));
-    if (stag == "opt") return lexer.opt(treePattern(expect<Cons>(t).head));
-    if (stag == "star") return lexer.star(treePattern(expect<Cons>(t).head));
-    if (stag == "plus") return lexer.plus(treePattern(expect<Cons>(t).head));
+    if (stag == "word") return nfa.word(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    if (stag == "alt") return nfa.alt(listPatterns(t));
+    if (stag == "concat") return nfa.concat(listPatterns(t));
+    if (stag == "opt") return nfa.opt(treePattern(expect<Cons>(t).head));
+    if (stag == "star") return nfa.star(treePattern(expect<Cons>(t).head));
+    if (stag == "plus") return nfa.plus(treePattern(expect<Cons>(t).head));
     unimplemented;
   }
 
-  vector<NFALexer::NFA> Evaluator::listPatterns(Tree* e) {
-    vector<NFALexer::NFA> res;
+  auto Evaluator::listPatterns(Tree* e) -> vector<NFA::Subgraph> {
+    auto res = vector<NFA::Subgraph>();
     for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) { res.push_back(treePattern(it->head)); }
     return res;
   }
 
-  vector<pair<Parsing::Symbol, Parsing::Precedence>> Evaluator::listSymbols(Tree* e) {
-    vector<pair<Parsing::Symbol, Parsing::Precedence>> res;
+  auto Evaluator::listSymbols(Tree* e) -> vector<pair<Parsing::Symbol, Parsing::Precedence>> {
+    auto res = vector<pair<Parsing::Symbol, Parsing::Precedence>>();
     for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) {
       auto const& [sym, t] = expect<Cons>(it->head);
       auto const& [pre, _] = expect<Cons>(t);
-      res.emplace_back(getSymbol(expect<Symbol>(sym).val), expect<Nat64>(pre).val);
+      res.emplace_back(symbol(expect<Symbol>(sym).val), expect<Nat64>(pre).val);
     }
     return res;
   }
 
   // TODO: handle exceptions, refactor
-  void Evaluator::setSyntax(Tree* p, Tree* r) {
+  auto Evaluator::setSyntax(Tree* p, Tree* r) -> void {
+    nfa.clear();
+    cfg.clear();
+
     symbolNames.clear();
     nameSymbols.clear();
-    patternNames.clear();
     ruleNames.clear();
-    lexer.clearPatterns();
-    parser.clearPatterns();
-    parser.clearRules();
+    nameRules.clear();
 
     patterns = p;
     rules = r;
 
-    // Add ignored and starting symbols
+    // Add ignored and starting symbols.
     symbolNames.push_back("_");
-    parser.setIgnoredSymbol(IgnoredSymbol);
+    cfg.ignoredSymbol = ignoredSymbol;
     symbolNames.push_back("_");
-    parser.setStartSymbol(StartSymbol);
+    cfg.startSymbol = startSymbol;
 
-    // Add patterns
+    // Add patterns.
     for (auto it = get_if<Cons>(patterns); it; it = get_if<Cons>(it->tail)) {
-      auto const& [name, t] = expect<Cons>(it->head);
-      auto const& [lhs, u] = expect<Cons>(t);
-      auto const& [rhs, _1] = expect<Cons>(u);
-      auto const& [sym, v] = expect<Cons>(lhs);
-      auto const& [pre, _2] = expect<Cons>(v);
-      string sname = expect<Symbol>(sym).val;
-      size_t sid = (sname == "_") ? IgnoredSymbol : getSymbol(sname);
-      size_t pid = patternNames.size();
-      patternNames.push_back(expect<Symbol>(name).val);
-      if (lexer.addPattern(treePattern(rhs)) != pid) unreachable;
-      if (parser.addPattern(sid, static_cast<Parsing::Precedence>(expect<Nat64>(pre).val)) != pid) unreachable;
+      auto const& [lhs, t] = expect<Cons>(it->head);
+      auto const& [rhs, _] = expect<Cons>(t);
+      auto const& sname = expect<Symbol>(lhs).val;
+      auto const sid = sname == "_" ? ignoredSymbol : symbol(sname);
+      nfa.addPattern(sid, treePattern(rhs));
     }
 
-    // Add rules
+    // Add rules.
     for (auto it = get_if<Cons>(rules); it; it = get_if<Cons>(it->tail)) {
       auto const& [name, t] = expect<Cons>(it->head);
       auto const& [lhs, u] = expect<Cons>(t);
       auto const& [rhs, _1] = expect<Cons>(u);
       auto const& [sym, v] = expect<Cons>(lhs);
-      auto const& [pre, _2] = expect<Cons>(v);
-      string sname = expect<Symbol>(sym).val;
-      size_t sid = (sname == "_") ? StartSymbol : getSymbol(sname);
-      size_t rid = ruleNames.size();
-      ruleNames.push_back(expect<Symbol>(name).val);
-      if (parser.addRule(sid, static_cast<Parsing::Precedence>(expect<Nat64>(pre).val), listSymbols(rhs)) != rid)
-        unreachable;
+      auto const& [prec, _2] = expect<Cons>(v);
+      auto const& sname = expect<Symbol>(sym).val;
+      auto const& rname = expect<Symbol>(name).val;
+      auto const sid = sname == "_" ? startSymbol : symbol(sname);
+      auto const sprec = static_cast<Parsing::Precedence>(expect<Nat64>(prec).val);
+      assert_always(cfg.rules.size() == ruleNames.size());
+      cfg.rules.push_back({std::pair(sid, sprec), listSymbols(rhs)});
+      ruleNames.push_back(rname);
     }
+
+    // Finalise.
+    cfg.process();
   }
 
 #define cons       pool.emplace
@@ -169,33 +168,10 @@ namespace Eval {
 #define unit       unit
 #define list(...)  makeList({__VA_ARGS__})
 
-  Tree* Evaluator::makeList(std::initializer_list<Tree*> const& es) {
-    Tree* res = nil;
-    for (auto it = std::rbegin(es); it != std::rend(es); it++) res = cons(*it, res);
-    return res;
-  }
-
   // Initialize with built-in patterns, rules, forms and procedures
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#syntax-forms
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#Prim-functions
-  Evaluator::Evaluator():
-    pool(),
-    nil(pool.emplace(Nil{})),
-    unit(pool.emplace(Unit{})),
-    patterns(nil),
-    rules(nil),
-    symbolNames(),
-    nameSymbols(),
-    patternNames(),
-    ruleNames(),
-    lexer(),
-    parser(lexer),
-    globalEnv(nil),
-    macros(),
-    nameMacros(),
-    prims(),
-    namePrims() {
-
+  Evaluator::Evaluator() {
     // Commonly used constants
     // auto const& nzero  = pool.emplace(Nat64{ 0 });
     // auto const& sempty = pool.emplace(String{ "" });
@@ -206,28 +182,27 @@ namespace Eval {
     // Default syntax and macros
     // =========================
 
-#define symbol(s)               list(sym(s), nat(0))
-#define pattern(name, lhs, pat) list(sym(name), lhs, pat)
-#define rule(name, lhs, rhs)    list(sym(name), lhs, rhs)
-#define empty                   list(sym("empty"))
-#define any                     list(sym("any"))
-#define utf8seg                 list(sym("utf8seg"))
-#define chars(s)                list(sym("char"), str(s))
-#define except(s)               list(sym("except"), str(s))
-#define range(l, u)             list(sym("range"), nat(l), nat(u))
-#define word(s)                 list(sym("word"), str(s))
-#define alt(...)                list(sym("alt"), __VA_ARGS__)
-#define concat(...)             list(sym("concat"), __VA_ARGS__)
-#define opt(pat)                list(sym("opt"), pat)
-#define star(pat)               list(sym("star"), pat)
-#define plus(pat)               list(sym("plus"), pat)
+#define symbol(s)            list(sym(s), nat(0))
+#define pattern(lhs, pat)    list(sym(lhs), pat)
+#define rule(name, lhs, rhs) list(sym(name), lhs, rhs)
+#define empty                list(sym("empty"))
+#define any                  list(sym("any"))
+#define utf8seg              list(sym("utf8seg"))
+#define chars(s)             list(sym("char"), str(s))
+#define except(s)            list(sym("except"), str(s))
+#define range(l, u)          list(sym("range"), nat(l), nat(u))
+#define word(s)              list(sym("word"), str(s))
+#define alt(...)             list(sym("alt"), __VA_ARGS__)
+#define concat(...)          list(sym("concat"), __VA_ARGS__)
+#define opt(pat)             list(sym("opt"), pat)
+#define star(pat)            list(sym("star"), pat)
+#define plus(pat)            list(sym("plus"), pat)
 
     Tree* defaultPatterns = list(
-      pattern("_", symbol("_"), star(chars(" \f\n\r\t\v"))),               // Blank
-      pattern("_", symbol("_"), concat(word("//"), star(except("\n\r")))), // Line comment
-      pattern(                                                             // Block comment
+      pattern("_", star(chars(" \f\n\r\t\v"))),               // Blank
+      pattern("_", concat(word("//"), star(except("\n\r")))), // Line comment
+      pattern(                                                // Block comment
         "_",
-        symbol("_"),
         concat(
           word("/*"),
           star(concat(star(except("*")), plus(chars("*")), except("/"))),
@@ -237,34 +212,34 @@ namespace Eval {
         )
       ),
       pattern(
-        "symbol'",
-        symbol("tree"),
+        "symbol",
         concat(
           alt(range('a', 'z'), range('A', 'Z'), chars("_'"), utf8seg),
           star(alt(range('a', 'z'), range('A', 'Z'), range('0', '9'), chars("_'"), utf8seg))
         )
       ),
       pattern(
-        "nat64'",
-        symbol("tree"),
+        "nat64",
         alt(
           plus(range('0', '9')),
           concat(chars("0"), chars("xX"), plus(alt(range('0', '9'), range('a', 'f'), range('A', 'F'))))
         )
       ),
       pattern(
-        "string'",
-        symbol("tree"),
+        "string",
         concat(chars("\""), star(alt(except("\\\""), concat(chars("\\"), chars("\\\"abfnrtv")))), chars("\""))
       ),
-      pattern("_", symbol("left_paren"), word("(")),
-      pattern("_", symbol("right_paren"), word(")")),
-      pattern("_", symbol("period"), word(".")),
-      pattern("_", symbol("quote"), word("`")),
-      pattern("_", symbol("comma"), word(","))
+      pattern("left_paren", word("(")),
+      pattern("right_paren", word(")")),
+      pattern("period", word(".")),
+      pattern("quote", word("`")),
+      pattern("comma", word(","))
     );
 
     Tree* defaultRules = list(
+      rule("symbol'", symbol("tree"), list(symbol("symbol"))),
+      rule("nat64'", symbol("tree"), list(symbol("nat64"))),
+      rule("string'", symbol("tree"), list(symbol("string"))),
       rule("nil'", symbol("list"), list()),
       rule("cons'", symbol("list"), list(symbol("tree"), symbol("list"))),
       rule("period'", symbol("list"), list(symbol("tree"), symbol("period"), symbol("tree"))),
@@ -542,12 +517,12 @@ namespace Eval {
 #define unary(T, name, op)                                    \
   addPrimitive(name, true, [this](Tree*, Tree* e) -> Result { \
     auto const& [lhs, _] = expect<Cons>(e);                   \
-    return pool.emplace(T{op(expect<T>(lhs).val)});       \
+    return pool.emplace(T{op(expect<T>(lhs).val)});           \
   })
-#define binary(T, name, op)                                               \
-  addPrimitive(name, true, [this](Tree*, Tree* e) -> Result {             \
-    auto const& [lhs, t] = expect<Cons>(e);                               \
-    auto const& [rhs, _] = expect<Cons>(t);                               \
+#define binary(T, name, op)                                           \
+  addPrimitive(name, true, [this](Tree*, Tree* e) -> Result {         \
+    auto const& [lhs, t] = expect<Cons>(e);                           \
+    auto const& [rhs, _] = expect<Cons>(t);                           \
     return pool.emplace(T{expect<T>(lhs).val op expect<T>(rhs).val}); \
   })
 #define binpred(T, name, op)                                            \
@@ -616,62 +591,52 @@ namespace Eval {
     return nullptr;
   }
 
-  bool operator==(EarleyParser::Location const& a, EarleyParser::Location const& b) {
-    return a.pos == b.pos && a.index == b.index;
-  }
-
-  vector<Tree*> Evaluator::resolve(EarleyParser::Location loc, vector<Tree*> const& right, size_t maxDepth) {
+  auto Evaluator::resolve(Parsing::Node const* node, vector<Tree*> const& tails, size_t maxDepth) -> vector<Tree*> {
     if (maxDepth == 0) return {};
-    auto const& [state, links] = parser.forest()[loc.pos][loc.index];
-    vector<Tree*> res;
-
+    auto const& [state, links] = *node;
+    auto res = vector<Tree*>();
     if (state.progress == 0) {
-      // Whole rule completed
-      for (Tree* r: right) res.push_back(cons(sym(ruleNames[state.rule]), r));
-      return res;
-    }
-
-    // One step to left
-    for (auto const& [prevLink, childLink]: links) {
-      vector<Tree*> child;
-      if (childLink == EarleyParser::Leaf) {
-        auto const& tok = parser.sentence()[loc.pos - 1];
-        child = {cons(sym(patternNames[tok.pattern]), cons(str(tok.lexeme), nil))};
-      } else {
-        child = resolve(childLink, {nil}, maxDepth - 1);
+      // Whole rule completed.
+      for (auto const r: tails) res.push_back(cons(sym(ruleNames[state.rule]), r));
+    } else {
+      // One step to left.
+      for (auto const& [prevLink, childLink]: links) {
+        auto const child = std::visit(
+          Matcher{
+            [&](Parsing::Node const* node) { return resolve(node, {nil}, maxDepth - 1); },
+            [&](Parsing::Token const* tok) { return vector<Tree*>(1, str(std::string(tok->lexeme))); },
+          },
+          childLink
+        );
+        auto prod = vector<Tree*>();
+        for (auto const c: child)
+          for (auto const r: tails) prod.push_back(cons(c, r));
+        auto const& final = resolve(prevLink, prod, maxDepth);
+        for (auto const f: final) res.push_back(f);
       }
-      vector<Tree*> curr;
-      for (Tree* c: child)
-        for (Tree* r: right) curr.push_back(cons(c, r));
-      vector<Tree*> final = resolve(prevLink, curr, maxDepth);
-      for (Tree* f: final) res.push_back(f);
     }
-
     return res;
   }
 
   Tree* Evaluator::resolve(size_t maxDepth) {
     auto const& pos = parser.sentence().size();
     auto const& forest = parser.forest();
-    if (pos >= forest.size()) unreachable;
-    // Mid: pos < forest.size()
-
-    vector<Tree*> all;
-    for (size_t i = 0; i < forest[pos].size(); i++) {
-      auto const& [state, links] = forest[pos][i];
-      auto const& [lhs, rhs] = parser.rule(state.rule);
-      if (state.startPos == 0 && lhs.first == StartSymbol && state.progress == rhs.size()) {
-        vector<Tree*> final = resolve({pos, i}, {nil}, maxDepth);
-        for (Tree* f: final) all.push_back(f);
+    assert_always(pos < forest.size());
+    auto all = vector<Tree*>();
+    for (auto const& node: forest[pos]) {
+      auto const& [state, links] = node;
+      auto const& [lhs, rhs] = cfg.rules[state.rule];
+      if (state.startPos == 0 && lhs.first == startSymbol && state.progress == rhs.size()) {
+        auto const& final = resolve(&node, {nil}, maxDepth);
+        for (auto const f: final) all.push_back(f);
       }
     }
-
     if (all.empty()) {
-      // Failed to resolve (possibly due to excessive depth or infinite expansion)
+      // Failed to resolve (possibly due to excessive depth or infinite expansion).
       unimplemented;
     }
     if (all.size() > 1) {
-      // Ambiguous
+      // Ambiguous.
       for (auto const& parse: all) std::cout << parse->toString() << std::endl;
       unimplemented;
     }

@@ -8,7 +8,8 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <core.hpp>
+#include <core/expr.hpp>
+#include <core/fol/fol.hpp>
 
 // Some potentially useful syntactic operations
 namespace Elab::Procs {
@@ -53,9 +54,8 @@ namespace Elab::Procs {
   // `meta` and `skolem` denote the first available meta- and free-variable ID, respectively.
   // `metas` denotes the list of universally quantified variables currently in scope (will not be changed).
   // Negations are pushed in (by calling `nnf` as needed). Non-first-order formulas will not be changed.
-  Expr const* skolemize(
-    Expr const* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool
-  );
+  Expr const*
+  skolemize(Expr const* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool);
   // This variant uses 0 and `ctx.size()` as the first available meta- and free-variable ID (the most common choice).
   inline Expr const* skolemize(Expr const* e, Context const& ctx, Allocator<Expr>& pool) {
     uint64_t meta = 0, skolem = ctx.size();

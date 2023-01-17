@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <initializer_list>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -78,21 +79,24 @@ namespace Eval {
   public:
     Evaluator();
     Evaluator(Evaluator const&) = delete;
-    Evaluator& operator=(Evaluator const&) = delete;
+    auto operator=(Evaluator const&) -> Evaluator& = delete;
     virtual ~Evaluator() = default;
 
-    // Set the string of statements to be evaluated.
-    void setString(std::string const& s) { lexer.setString(s); }
+    auto setString(std::string const& string) -> void {
+      buffer = Parsing::CharBuffer(string);
+      lexer = Parsing::Lexer(&nfa, &buffer);
+      parser = Parsing::EarleyParser(&cfg, &lexer);
+    }
 
     // Parses next statement (results will be stored).
-    bool parseNextStatement();
+    auto parseNextStatement() -> bool;
 
     // Evaluates parsed statement and returns result.
     // This will store intermediate and final results on `this.pool`.
-    Tree* evalParsedStatement();
+    auto evalParsedStatement() -> Tree*;
 
-    // Returns and clears error log
-    std::vector<ParsingError> popParsingErrors();
+    // Returns and clears error log.
+    auto popParsingErrors() -> std::vector<ParsingError>;
 
   protected:
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
@@ -106,68 +110,82 @@ namespace Eval {
         e(e){};
     };
     using PrimitiveFunc = std::pair<bool, std::function<Result(Tree*, Tree*)>>;
-    static constexpr Parsing::Symbol IgnoredSymbol = 0;
-    static constexpr Parsing::Symbol StartSymbol = 1;
 
-    Core::Allocator<Tree> pool;
-    Eval::Tree *nil, *unit;
+    static constexpr Parsing::Symbol ignoredSymbol = 0;
+    static constexpr Parsing::Symbol startSymbol = 1;
 
-    Eval::Tree *patterns, *rules;
+    Allocator<Tree> pool;
+    Eval::Tree* const nil = pool.emplace(Nil{});
+    Eval::Tree* const unit = pool.emplace(Unit{});
+    Eval::Tree* patterns = nil;
+    Eval::Tree* rules = nil;
+    Eval::Tree* globalEnv = nil;
+
+    Parsing::NFA nfa;
+    Parsing::CFG cfg;
+    Parsing::CharBuffer buffer = Parsing::CharBuffer("");
+    Parsing::Lexer lexer = Parsing::Lexer(&nfa, &buffer);
+    Parsing::EarleyParser parser = Parsing::EarleyParser(&cfg, &lexer);
+
     std::vector<std::string> symbolNames;
-    std::unordered_map<std::string, Parsing::Symbol> nameSymbols;
-    std::vector<std::string> patternNames, ruleNames;
-    Parsing::NFALexer lexer;
-    Parsing::EarleyParser parser;
+    std::unordered_map<std::string, size_t> nameSymbols;
+    std::vector<std::string> ruleNames;
+    std::unordered_map<std::string, size_t> nameRules;
 
-    Eval::Tree* globalEnv;
     std::vector<Closure> macros;
     std::unordered_map<std::string, size_t> nameMacros;
     std::vector<PrimitiveFunc> prims;
     std::unordered_map<std::string, size_t> namePrims;
 
-    size_t getSymbol(std::string const& name) {
-      auto const it = nameSymbols.find(name);
-      if (it != nameSymbols.end()) return it->second;
-      size_t id = symbolNames.size();
-      symbolNames.push_back(name);
-      nameSymbols[name] = id;
-      return id;
+    auto makeList(std::initializer_list<Tree*> const& es) -> Tree* {
+      auto res = nil;
+      for (auto it = std::rbegin(es); it != std::rend(es); it++) res = pool.emplace(*it, res);
+      return res;
     }
 
-    Parsing::NFALexer::NFA treePattern(Tree* e);
-    std::vector<Parsing::NFALexer::NFA> listPatterns(Tree* e);
-    std::vector<std::pair<Parsing::Symbol, Parsing::Precedence>> listSymbols(Tree* e);
-    void setSyntax(Tree* p, Tree* r);
-    Tree* makeList(std::initializer_list<Tree*> const& es);
+    auto symbol(std::string const& name) -> Parsing::Symbol {
+      if (auto const it = nameSymbols.find(name); it != nameSymbols.end())
+        return static_cast<Parsing::Symbol>(it->second);
+      auto const id = symbolNames.size();
+      symbolNames.push_back(name);
+      nameSymbols[name] = id;
+      return static_cast<Parsing::Symbol>(id);
+    }
 
-    size_t addMacro(std::string const& name, Closure const& cl) {
-      size_t id = macros.size();
+    auto treePattern(Tree* e) -> Parsing::NFA::Subgraph;
+    auto listPatterns(Tree* e) -> std::vector<Parsing::NFA::Subgraph>;
+    auto listSymbols(Tree* e) -> std::vector<std::pair<Parsing::Symbol, Parsing::Precedence>>;
+    auto setSyntax(Tree* p, Tree* r) -> void;
+
+    auto addMacro(std::string const& name, Closure const& cl) -> size_t {
+      auto const id = macros.size();
       macros.push_back(cl);
       nameMacros[name] = id;
       return id;
     }
 
-    size_t addPrimitive(std::string const& name, bool evalParams, std::function<Result(Tree*, Tree*)> const& f) {
-      size_t id = prims.size();
+    auto addPrimitive(std::string const& name, bool evalParams, std::function<Result(Tree*, Tree*)> const& f)
+      -> size_t {
+      auto const id = prims.size();
       prims.emplace_back(evalParams, f);
       namePrims[name] = id;
       return id;
     }
 
-    bool match(Tree* e, Tree* pat, Tree*& env, bool quoteMode = false);
+    auto match(Tree* e, Tree* pat, Tree*& env, bool quoteMode = false) -> bool;
 
     // Far less efficient than hash tries (HAMTs), but should be enough for current purpose!
-    Tree* extend(Tree* env, std::string const& sym, Tree* e);
-    Tree* lookup(Tree* env, std::string const& sym);
+    auto extend(Tree* env, std::string const& sym, Tree* e) -> Tree*;
+    auto lookup(Tree* env, std::string const& sym) -> Tree*;
 
-    std::vector<Tree*> resolve(Parsing::EarleyParser::Location loc, std::vector<Tree*> const& right, size_t maxDepth);
-    Tree* resolve(size_t maxDepth = 4096);
-    Tree* expand(Tree* e);
-    Tree* expandList(Tree* e);
-    Tree* eval(Tree* env, Tree* e);
-    Tree* evalList(Tree* env, Tree* e);
-    Tree* beginList(Tree* env, Tree* e);
-    Tree* quasiquote(Tree* env, Tree* e);
+    auto resolve(Parsing::Node const* node, std::vector<Tree*> const& tails, size_t maxDepth) -> std::vector<Tree*>;
+    auto resolve(size_t maxDepth = 4096) -> Tree*;
+    auto expand(Tree* e) -> Tree*;
+    auto expandList(Tree* e) -> Tree*;
+    auto eval(Tree* env, Tree* e) -> Tree*;
+    auto evalList(Tree* env, Tree* e) -> Tree*;
+    auto beginList(Tree* env, Tree* e) -> Tree*;
+    auto quasiquote(Tree* env, Tree* e) -> Tree*;
   };
 
 }
