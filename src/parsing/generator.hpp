@@ -1,4 +1,4 @@
-// Parsing :: Char, Symbol, Precedence, Token, Generator, LookaheadBuffer...
+// Parsing :: Char, Symbol, Precedence, Generator...
 
 #ifndef GENERATOR_HPP_
 #define GENERATOR_HPP_
@@ -18,18 +18,11 @@ namespace Parsing {
 
   // Unified ID for terminal and nonterminal symbols.
   using Symbol = uint32_t;
+  constexpr auto SymbolMax = std::numeric_limits<Symbol>::max();
 
   // Operator precedence levels.
   using Precedence = uint16_t;
   constexpr auto PrecedenceMax = std::numeric_limits<Precedence>::max();
-
-  // A token emitted by a lexer.
-  struct Token {
-    Symbol id;               // Terminal symbol ID.
-    size_t startPos;         // Start index in original string.
-    size_t endPos;           // End index in original string.
-    std::string_view lexeme; // Lexeme. `lexeme.size() == endPos - startPos`.
-  };
 
   /*
   // `G` is a "revertable generator" of `T` if...
@@ -49,8 +42,8 @@ namespace Parsing {
   // A class is a "revertable generator" of `T` if...
   template <typename T>
   class Generator {
+    interface(Generator);
   public:
-    virtual ~Generator() {}
     // It allows checking if there are no more elements:
     virtual auto eof() const -> bool pure_virtual;
     // It allows generating the next element;
@@ -93,15 +86,15 @@ namespace Parsing {
   class LookaheadBuffer: public Generator<T> {
   public:
     // A `LookaheadBuffer` is constructed from a "revertable generator" of `T`.
-    explicit LookaheadBuffer(Generator<T>* generator):
-      _generator(generator) {}
+    // Given reference must be valid over the `LookaheadBuffer`'s lifetime.
+    explicit LookaheadBuffer(Generator<T>& generator):
+      _generator(generator),
+      _offset(generator.position()) {}
 
-    auto eof() const -> bool override { return _position == _elements.size() && _generator->eof(); }
+    auto eof() const -> bool override { return _position == _elements.size() && _generator.eof(); }
     auto advance() -> T override {
-      if (_position >= _elements.size()) {
-        assert_always(_position == _elements.size());
-        _elements.push_back(_generator->advance());
-      }
+      assert_always(_position <= _elements.size());
+      if (_position == _elements.size()) _elements.push_back(_generator.advance());
       // Mid: _position < _elements.size()
       return _elements[_position++];
     }
@@ -109,16 +102,21 @@ namespace Parsing {
     auto revert(size_t i) -> void override { assert_always(i <= _position), _position = i; }
 
     // Invalidates cache past the current position (inclusive).
-    auto invalidate() -> void { _elements.resize(_position); }
+    auto invalidate() -> void {
+      assert_always(_position <= _elements.size());
+      _generator.revert(_offset + _position);
+      _elements.resize(_position);
+    }
 
   private:
-    Generator<T>* _generator;
+    Generator<T>& _generator;
+    size_t _offset;
     size_t _position = 0;
     std::deque<T> _elements;
   };
 
   // inline auto example1 = CharBuffer("233");
-  // inline auto example2 = LookaheadBuffer(&example1);
+  // inline auto example2 = LookaheadBuffer(example1);
 }
 
 #endif // GENERATOR_HPP_

@@ -63,7 +63,7 @@ namespace Elab {
     // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ"
     // (existential). (TODO: "ε" (equational) and "φ" (second-order universal))
     enum Position : unsigned int { L, R };
-    enum Type : unsigned int { Iota, Alpha, Beta, Gamma, GammaRe, Delta, N };
+    enum Type : unsigned int { Iota, Alpha, Beta, Gamma, GammaRetry, Delta, N };
 
     struct Branch {
       vector<Expr const*> cedents[N][2];
@@ -134,8 +134,8 @@ namespace Elab {
       branch.numCedents = 0;
     }
 
-    bool search(size_t maxDepth, size_t maxTabDepth);
-    bool iterativeDeepening(size_t maxTabDepth, size_t step);
+    bool search(size_t setMaxDepth, size_t setMaxTabDepth);
+    bool iterativeDeepening(size_t setMaxTabDepth, size_t step);
     string printState();
     string printStateDebug();
     string printStats();

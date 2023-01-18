@@ -83,9 +83,11 @@ namespace Eval {
     virtual ~Evaluator() = default;
 
     auto setString(std::string const& string) -> void {
-      buffer = Parsing::CharBuffer(string);
-      lexer = Parsing::Lexer(&nfa, &buffer);
-      parser = Parsing::EarleyParser(&cfg, &lexer);
+      assert_always(automaton && grammar);
+      buffer = std::make_unique<Parsing::CharBuffer>(string);
+      lexer = std::make_unique<Parsing::Lexer>(*automaton, *buffer);
+      lookaheads = std::make_unique<Parsing::LookaheadBuffer<std::optional<Parsing::Token>>>(*lexer);
+      parser = std::make_unique<Parsing::Parser>(*grammar, *lookaheads);
     }
 
     // Parses next statement (results will be stored).
@@ -121,11 +123,12 @@ namespace Eval {
     Eval::Tree* rules = nil;
     Eval::Tree* globalEnv = nil;
 
-    Parsing::NFA nfa;
-    Parsing::CFG cfg;
-    Parsing::CharBuffer buffer = Parsing::CharBuffer("");
-    Parsing::Lexer lexer = Parsing::Lexer(&nfa, &buffer);
-    Parsing::EarleyParser parser = Parsing::EarleyParser(&cfg, &lexer);
+    std::unique_ptr<Parsing::Automaton const> automaton;
+    std::unique_ptr<Parsing::Grammar const> grammar;
+    std::unique_ptr<Parsing::CharBuffer> buffer;
+    std::unique_ptr<Parsing::Lexer> lexer;
+    std::unique_ptr<Parsing::LookaheadBuffer<std::optional<Parsing::Token>>> lookaheads;
+    std::unique_ptr<Parsing::Parser> parser;
 
     std::vector<std::string> symbolNames;
     std::unordered_map<std::string, size_t> nameSymbols;
@@ -152,8 +155,8 @@ namespace Eval {
       return static_cast<Parsing::Symbol>(id);
     }
 
-    auto treePattern(Tree* e) -> Parsing::NFA::Subgraph;
-    auto listPatterns(Tree* e) -> std::vector<Parsing::NFA::Subgraph>;
+    auto treePattern(Parsing::AutomatonBuilder& builder, Tree* e) -> Parsing::AutomatonBuilder::Subgraph;
+    auto listPatterns(Parsing::AutomatonBuilder& builder, Tree* e) -> std::vector<Parsing::AutomatonBuilder::Subgraph>;
     auto listSymbols(Tree* e) -> std::vector<std::pair<Parsing::Symbol, Parsing::Precedence>>;
     auto setSyntax(Tree* p, Tree* r) -> void;
 

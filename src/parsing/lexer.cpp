@@ -4,12 +4,14 @@
 
 namespace Parsing {
 
-  auto NFA::closure(std::vector<bool>& v, std::vector<size_t>& s) const -> void {
+  // Expands `s` to ε-closure.
+  // Pre: the indices where `v[]` is true must match the elements of `s`.
+  auto closure(NFA const& nfa, std::vector<bool>& v, std::vector<size_t>& s) -> void {
     auto stk = s;
     while (!stk.empty()) {
       auto const x = stk.back();
       stk.pop_back();
-      for (auto const& [c, u]: mTable[x].outs)
+      for (auto const& [c, u]: nfa.table[x].outs)
         if (c == 0 && !v[u]) {
           s.push_back(u);
           stk.push_back(u);
@@ -22,11 +24,11 @@ namespace Parsing {
     auto last = string.position();
     auto res = std::optional<Symbol>();
     auto s = std::vector<size_t>();
-    auto v = std::vector<bool>(mTable.size(), false);
+    auto v = std::vector<bool>(table.size(), false);
     // Initial states.
-    s.push_back(mInitial);
-    v[mInitial] = true;
-    closure(v, s);
+    s.push_back(initial);
+    v[initial] = true;
+    closure(*this, v, s);
     // Match greedily, until there are no further possibilities.
     while (!string.eof() && !s.empty()) {
       auto const c = string.advance();
@@ -35,17 +37,17 @@ namespace Parsing {
       // Move one step.
       auto t = std::vector<size_t>();
       for (auto const x: s)
-        for (auto const& [d, u]: mTable[x].outs)
+        for (auto const& [d, u]: table[x].outs)
           if (d == c && !v[u]) {
             t.push_back(u);
             v[u] = true;
           }
-      closure(v, t);
+      closure(*this, v, t);
       s.swap(t);
       // Update result if reaches accepting state.
       // Patterns with larger IDs have higher priority.
       auto curr = std::optional<Symbol>();
-      for (auto const x: s) curr = std::max(curr, mTable[x].mark);
+      for (auto const x: s) curr = std::max(curr, table[x].mark);
       if (curr) {
         last = string.position();
         res = *curr;
@@ -56,6 +58,108 @@ namespace Parsing {
     return res;
   }
 
+  auto DFA::match(Generator<Char>& string) const -> std::optional<Symbol> {
+    auto last = string.position();
+    auto res = std::optional<Symbol>();
+    auto s = initial;
+    // Match greedily, until there are no further possibilities.
+    while (!string.eof()) {
+      auto const c = string.advance();
+      if (!table[s].outs[c]) break;
+      s = *table[s].outs[c];
+      // Update longest match, if applicable.
+      if (auto const curr = table[s].mark) {
+        last = string.position();
+        res = *curr;
+      }
+    }
+    // Restore last valid position and return.
+    string.revert(last);
+    return res;
+  }
+
+  auto AutomatonBuilder::empty() -> Subgraph {
+    auto const s = _node(), t = _node();
+    _transition(s, 0, t);
+    return {s, t};
+  }
+  auto AutomatonBuilder::any() -> Subgraph { return range(1, CharMax); }
+  auto AutomatonBuilder::utf8segment() -> Subgraph { return range(128, CharMax); }
+  auto AutomatonBuilder::chars(std::vector<Char> const& ls) -> Subgraph {
+    auto const s = _node(), t = _node();
+    for (auto const c: ls) _transition(s, c, t);
+    return {s, t};
+  }
+  auto AutomatonBuilder::except(std::vector<Char> const& ls) -> Subgraph {
+    auto f = std::array<bool, CharMax + 1>{};
+    for (auto const c: ls) f[c] = true;
+    auto const s = _node(), t = _node();
+    for (auto i = 1_z; i <= CharMax; i++)
+      if (!f[i]) _transition(s, static_cast<Char>(i), t);
+    return {s, t};
+  }
+  auto AutomatonBuilder::range(Char a, Char b) -> Subgraph {
+    auto const s = _node(), t = _node();
+    for (auto i = size_t{a}; i <= b; i++) _transition(s, static_cast<Char>(i), t);
+    return {s, t};
+  }
+  auto AutomatonBuilder::word(std::vector<Char> const& word) -> Subgraph {
+    auto const s = _node();
+    auto t = s;
+    for (auto const c: word) {
+      auto const curr = _node();
+      _transition(t, c, curr);
+      t = curr;
+    }
+    return {s, t};
+  }
+  auto AutomatonBuilder::alt(std::vector<Subgraph> const& ls) -> Subgraph {
+    auto const s = _node(), t = _node();
+    for (auto const& a: ls) {
+      _transition(s, 0, a.first);
+      _transition(a.second, 0, t);
+    }
+    return {s, t};
+  }
+  auto AutomatonBuilder::concat(std::vector<Subgraph> const& ls) -> Subgraph {
+    assert_always(!ls.empty());
+    for (auto i = 0_z; i + 1 < ls.size(); i++) {
+      auto const a = ls[i], b = ls[i + 1];
+      for (auto const& [c, t]: _table[b.first].outs) _transition(a.second, c, t);
+    }
+    return {ls.front().first, ls.back().second};
+  }
+  auto AutomatonBuilder::opt(Subgraph a) -> Subgraph {
+    _transition(a.first, 0, a.second);
+    return {a.first, a.second};
+  }
+  auto AutomatonBuilder::star(Subgraph a) -> Subgraph {
+    auto const s = _node(), t = _node();
+    _transition(s, 0, a.first);
+    _transition(a.second, 0, t);
+    _transition(a.second, 0, a.first);
+    _transition(s, 0, t);
+    return {s, t};
+  }
+  auto AutomatonBuilder::plus(Subgraph a) -> Subgraph { return concat({a, star(a)}); }
+  auto AutomatonBuilder::withPattern(Symbol sym, Subgraph a) -> AutomatonBuilder& {
+    _transition(_initial, 0, a.first);
+    _table[a.second].mark = sym;
+    return *this;
+  }
+
+  // Allocates a node and returns its ID.
+  auto AutomatonBuilder::_node() -> size_t {
+    auto const res = _table.size();
+    _table.emplace_back();
+    return res;
+  }
+
+  // Adds a transition from node `s` to node `t` with character `c`.
+  auto AutomatonBuilder::_transition(size_t s, Char c, size_t t) -> void { _table[s].outs.emplace_back(c, t); }
+
+  // The powerset construction algorithm.
+  // See: https://en.wikipedia.org/wiki/Powerset_construction
   class PowersetConstruction {
   public:
     NFA const& nfa;
@@ -67,36 +171,47 @@ namespace Parsing {
       nfa(nfa),
       dfa(dfa) {}
 
+    // Allocates a node on DFA and returns its ID. Also updates `map`.
+    auto node(std::vector<bool> const& key) -> size_t {
+      auto const res = dfa.table.size();
+      dfa.table.emplace_back();
+      return map[key] = res;
+    }
+
+    // Adds a transition from node `s` to node `t` with character `c` on DFA.
+    auto transition(size_t s, Char c, size_t t) -> void { dfa.table[s].outs[c] = t; }
+
     // Pre: all bits of `v[]` are cleared.
     auto dfs(size_t dx, std::vector<size_t> const& s) -> void {
       // Check if `s` contains accepting states.
       // Patterns with larger IDs have higher priority.
       auto curr = std::optional<Symbol>();
-      for (auto const x: s) curr = std::max(curr, nfa.mTable[x].mark);
-      dfa.mTable[dx].mark = curr;
+      for (auto const x: s) curr = std::max(curr, nfa.table[x].mark);
+      dfa.table[dx].mark = curr;
       // Compute transitions.
       // Invariant: all elements of `v` are false at the end of the loop.
-      for (auto c = 1_z; c <= CharMax; c++) {
+      for (auto i = 1_z; i <= CharMax; i++) {
+        auto const c = static_cast<Char>(i);
         // Compute new state.
         auto t = std::vector<size_t>();
         for (auto const x: s)
-          for (auto const& [d, u]: nfa.mTable[x].outs)
+          for (auto const& [d, u]: nfa.table[x].outs)
             if (d == c && !v[u]) {
               t.push_back(u);
               v[u] = true;
             }
         if (t.empty()) continue; // No need to clear `v`: `t` is empty.
-        nfa.closure(v, t);
+        closure(nfa, v, t);
         // Look at the new state:
         auto const it = map.find(v);
         if (it != map.end()) {
           // Already seen.
-          dfa.transition(dx, c, it->second);
+          transition(dx, c, it->second);
           for (auto const x: t) v[x] = false; // Clears all bits of `v`.
         } else {
           // Have not seen before, create new DFA node and recurse.
-          auto const du = map[v] = dfa.node();
-          dfa.transition(dx, c, du);
+          auto const du = node(v);
+          transition(dx, c, du);
           for (auto const x: t) v[x] = false; // Clears all bits of `v`.
           dfs(du, t);
         }
@@ -107,21 +222,19 @@ namespace Parsing {
     auto operator()() -> void {
       auto s = std::vector<size_t>();
       v.clear();
-      v.resize(nfa.mTable.size());
+      v.resize(nfa.table.size());
       map.clear();
       // Initial states.
-      s.push_back(nfa.mInitial);
-      v[nfa.mInitial] = true;
-      nfa.closure(v, s);
-      dfa.mInitial = map[v] = dfa.node();
+      s.push_back(nfa.initial);
+      v[nfa.initial] = true;
+      closure(nfa, v, s);
+      dfa.initial = node(v);
       for (auto const x: s) v[x] = false; // Clears all bits of v.
-      dfs(dfa.mInitial, s);
+      dfs(dfa.initial, s);
     }
   };
 
-  DFA::DFA(NFA const& nfa) { PowersetConstruction(nfa, *this)(); }
-
-  // Function object for the DFA state minimisation.
+  // The Hopcroft's state minimisation algorithm.
   // - See: https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm
   // - See: https://en.wikipedia.org/wiki/Partition_refinement
   class PartitionRefinement {
@@ -150,7 +263,7 @@ namespace Parsing {
     std::vector<Class> cls;                                // Classes (size, head, is used as distinguisher).
     std::vector<size_t> dists;                             // Indices of classes used as distinguisher sets.
     std::array<std::vector<size_t>, CharMax + 1> srcs;     // Character -> source set.
-    std::vector<std::vector<size_t>> intersecting;         // Class index -> list of intersecting states.
+    std::vector<std::vector<size_t>> intersection;         // Class index -> list of intersecting states.
 
     explicit PartitionRefinement(DFA& dfa):
       dfa(dfa) {}
@@ -175,10 +288,10 @@ namespace Parsing {
 
     // Allocates new class and returns its ID (always equal to `partition.size() - 1`, just for convenience).
     auto newClass() -> size_t {
-      auto const head = pool.add(List{nullptr, nullptr, 0});
+      auto const head = pool.add(List{nullptr, nullptr, 0_z});
       head->l = head->r = head;
       auto const index = cls.size();
-      cls.push_back(Class{0, head, false});
+      cls.push_back(Class{0_z, head, false});
       return index;
     }
 
@@ -187,15 +300,15 @@ namespace Parsing {
     auto initialPartition() -> std::pair<std::unordered_map<Symbol, size_t>, size_t> {
       auto res = std::unordered_map<Symbol, size_t>();
       auto cnt = 1_z; // 0 is reserved for nodes that are not marked as accepting states.
-      for (auto const& entry: dfa.mTable)
+      for (auto const& entry: dfa.table)
         if (entry.mark && !res.contains(*entry.mark)) res[*entry.mark] = cnt++;
       return {res, cnt};
     }
 
     // Main function.
     auto operator()() -> void {
-      auto& table = dfa.mTable;
-      auto& initial = dfa.mInitial;
+      auto& table = dfa.table;
+      auto& initial = dfa.initial;
 
       // Add the dead state.
       auto const dead = table.size();
@@ -223,7 +336,7 @@ namespace Parsing {
       info.resize(n);
       for (auto i = 0_z; i < n; i++) {
         if (table[i].mark) add(i, map.at(*table[i].mark));
-        else add(i, 0);
+        else add(i, 0_z);
       }
 
       // All initial classes except Class 0 (just not needed) are used as candidate distinguisher sets.
@@ -234,7 +347,7 @@ namespace Parsing {
       }
 
       // Partition refinement.
-      intersecting.clear();
+      intersection.clear();
       while (!dists.empty()) {
         auto const curr = dists.back();
         dists.pop_back();
@@ -250,33 +363,33 @@ namespace Parsing {
 
         for (auto c = 1_z; c <= CharMax; c++) {
           // Inner loop time complexity should be O(size of `srcs[c]`).
-          // Mid: all elements of `intersecting[]` are empty.
-          intersecting.resize(cls.size());
-          for (auto const x: srcs[c]) intersecting[info[x].cid].push_back(x);
+          // Mid: all elements of `intersection[]` are empty.
+          intersection.resize(cls.size());
+          for (auto const x: srcs[c]) intersection[info[x].cid].push_back(x);
 
-          // Now the total size of elements of `intersecting[]` equals to the size of `srcs[c]`.
+          // Now the total size of elements of `intersection[]` equals to the size of `srcs[c]`.
           for (auto const x: srcs[c]) {
             auto const i = info[x].cid;
 
             // If intersection is empty or has been processed before...
-            if (intersecting[i].empty()) continue;
+            if (i >= intersection.size() || intersection[i].empty()) continue;
             // If difference is empty...
-            if (intersecting[i].size() == cls[i].size) {
+            if (intersection[i].size() == cls[i].size) {
               // Avoid processing multiple times, also does the clearing.
-              intersecting[i].clear();
+              intersection[i].clear();
               continue;
             }
 
             // Create a new class for the "intersection".
             auto const j = newClass();
             // Add elements into it...
-            for (auto const y: intersecting[i]) {
+            for (auto const y: intersection[i]) {
               remove(y);
               add(y, j);
             }
             // The original class (with ID = `i`) now becomes the set difference!
             // Avoid processing multiple times, also does the clearing.
-            intersecting[i].clear();
+            intersection[i].clear();
 
             // See which splits will be used as distinguisher sets.
             if (cls[i].inDists || cls[j].size <= cls[i].size) {
@@ -287,7 +400,7 @@ namespace Parsing {
               cls[i].inDists = true;
             }
           }
-          // Mid: all elements of `intersecting[]` are empty.
+          // Mid: all elements of `intersection[]` are empty.
         }
       }
 
@@ -367,26 +480,23 @@ namespace Parsing {
     }
   };
 
-  auto DFA::minimise() -> void { PartitionRefinement (*this)(); }
-
-  auto DFA::match(Generator<Char>& string) const -> std::optional<Symbol> {
-    auto last = string.position();
-    auto res = std::optional<Symbol>();
-    auto s = mInitial;
-    // Match greedily, until there are no further possibilities.
-    while (!string.eof()) {
-      auto const c = string.advance();
-      if (!mTable[s].outs[c]) break;
-      s = *mTable[s].outs[c];
-      // Update longest match, if applicable.
-      if (auto const curr = mTable[s].mark) {
-        last = string.position();
-        res = *curr;
-      }
-    }
-    // Restore last valid position and return.
-    string.revert(last);
+  auto AutomatonBuilder::makeNFA() -> NFA const {
+    auto res = NFA();
+    res.initial = _initial;
+    res.table = _table;
     return res;
+  }
+
+  auto AutomatonBuilder::makeDFA(bool minimise) -> DFA const {
+    auto nfa = makeNFA();
+    auto dfa = DFA();
+    auto construct = PowersetConstruction(nfa, dfa);
+    construct();
+    if (minimise) {
+      auto refine = PartitionRefinement(dfa);
+      refine();
+    }
+    return dfa;
   }
 
   // Skips the next UTF-8 code point.
@@ -405,17 +515,17 @@ namespace Parsing {
   }
 
   auto Lexer::advance() -> std::optional<Token> {
-    auto const last = mString->position();
-    if (auto const opt = mAutomaton->match(*mString)) {
+    auto const last = _string.position();
+    if (auto const opt = _automaton.match(_string)) {
       // Success.
-      auto const curr = mString->position();
-      mPositions.push_back(curr);
-      return Token{*opt, last, curr, mString->slice(last, curr)};
+      auto const curr = _string.position();
+      _offsets.push_back(curr);
+      return Token{*opt, last, curr, _string.slice(last, curr)};
     } else {
       // Failure (or reached EOF).
-      skipCodePoint(*mString);
-      auto const curr = mString->position();
-      mPositions.push_back(curr);
+      skipCodePoint(_string);
+      auto const curr = _string.position();
+      _offsets.push_back(curr);
       return std::nullopt;
     }
   }

@@ -36,7 +36,7 @@ namespace Elab {
       case Beta: return "β";
       case Gamma: return "γ";
       case Delta: return "δ";
-      case GammaRe: return "γre";
+      case GammaRetry: return "γre";
     }
     return "?";
   }
@@ -84,16 +84,16 @@ namespace Elab {
   // Apply `subs` to all of `cont`
   void Tableau::applySubs(Subs const& subs, [[maybe_unused]] bool assertNoChange) {
     for (size_t ind = 0; ind < cont.size(); ind++) {
-      auto& branch = cont[ind];
-      branch.hashset[L].clear();
-      branch.hashset[R].clear();
+      auto& br = cont[ind];
+      br.hashset[L].clear();
+      br.hashset[R].clear();
       for (unsigned int i = 0; i < N; i++) {
-        for (auto& e: branch.cedents[i][L]) {
+        for (auto& e: br.cedents[i][L]) {
           Expr const* newe = Procs::applySubs(e, subs, pools.back());
 #ifdef CHECK_INVARIANTS
           if (assertNoChange && *e != *newe) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
-            std::cout << "Branch has numUniversal = " << branch.numUniversal << std::endl;
+            std::cout << "Branch has numUniversal = " << br.numUniversal << std::endl;
             std::cout << "But formula in L (" << typeToString(i) << ") is modified:" << std::endl;
             std::cout << "Old: " << e->toString(ctx) << std::endl;
             std::cout << "New: " << newe->toString(ctx) << std::endl;
@@ -102,15 +102,15 @@ namespace Elab {
           }
 #endif
           e = newe;
-          branch.numUniversal = std::max(branch.numUniversal, e->numMeta());
-          branch.hashset[L].insert(ExprHash(e));
+          br.numUniversal = std::max(br.numUniversal, e->numMeta());
+          br.hashset[L].insert(ExprHash(e));
         }
-        for (auto& e: branch.cedents[i][R]) {
+        for (auto& e: br.cedents[i][R]) {
           Expr const* newe = Procs::applySubs(e, subs, pools.back());
 #ifdef CHECK_INVARIANTS
           if (assertNoChange && *e != *newe) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
-            std::cout << "Branch has numUniversal = " << branch.numUniversal << std::endl;
+            std::cout << "Branch has numUniversal = " << br.numUniversal << std::endl;
             std::cout << "But formula in R (" << typeToString(i) << ") is modified:" << std::endl;
             std::cout << "Old: " << e->toString(ctx) << std::endl;
             std::cout << "New: " << newe->toString(ctx) << std::endl;
@@ -119,8 +119,8 @@ namespace Elab {
           }
 #endif
           e = newe;
-          branch.numUniversal = std::max(branch.numUniversal, e->numMeta());
-          branch.hashset[R].insert(ExprHash(e));
+          br.numUniversal = std::max(br.numUniversal, e->numMeta());
+          br.hashset[R].insert(ExprHash(e));
         }
       }
     }
@@ -139,7 +139,11 @@ namespace Elab {
   public:
     T* const p;
     T const prev;
-    WithValue(T* p, T const& value): p(p), prev(*p) { *p = value; }
+    WithValue(T* p, T const& value):
+      p(p),
+      prev(*p) {
+      *p = value;
+    }
     WithValue(WithValue const&) = delete;
     WithValue& operator=(WithValue const&) = delete;
     ~WithValue() { *p = prev; }
@@ -155,8 +159,13 @@ namespace Elab {
     bool inserted, reAdd;
 
     WithCedent(Tableau* p, Expr const* e, Tableau::Position pos, bool* closed, bool reAdd = false):
-      p(p), i(Tableau::classify(pos, e)), pos(pos), ehash(ExprHash(e)), inserted(false), reAdd(reAdd) {
-      if (reAdd) i = Tableau::Type::GammaRe;
+      p(p),
+      i(Tableau::classify(pos, e)),
+      pos(pos),
+      ehash(ExprHash(e)),
+      inserted(false),
+      reAdd(reAdd) {
+      if (reAdd) i = Tableau::Type::GammaRetry;
       inserted = p->branch.hashset[pos].insert(ehash).second;
       if (p->branch.hashset[Tableau::invert(pos)].contains(ehash)) *closed = true;
       if (inserted || reAdd) {
@@ -362,7 +371,7 @@ namespace Elab {
       if (antei < ante.size()) {
         Expr const* e = ante[antei];
         WithValue gi(&antei, antei + 1);
-        if (!(classify(L, e) == i || (classify(L, e) == Gamma && i == GammaRe))) unreachable;
+        if (!(classify(L, e) == i || (classify(L, e) == Gamma && i == GammaRetry))) unreachable;
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Other: return iota(L, e);
@@ -391,7 +400,7 @@ namespace Elab {
       if (succi < succ.size()) {
         Expr const* e = succ[succi];
         WithValue gi(&succi, succi + 1);
-        if (!(classify(R, e) == i || (classify(R, e) == Gamma && i == GammaRe))) unreachable;
+        if (!(classify(R, e) == i || (classify(R, e) == Gamma && i == GammaRetry))) unreachable;
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Other: return iota(R, e);
@@ -462,7 +471,7 @@ namespace Elab {
 
     // The relative order of γ's are unimportant, so we could proceed with the insertion order
     if (branch.depth < maxTabDepth) {
-      unsigned int i = GammaRe;
+      unsigned int i = GammaRetry;
       auto &ante = branch.cedents[i][L], &succ = branch.cedents[i][R];
       size_t &antei = branch.indices[i][L], &succi = branch.indices[i][R];
       for (size_t ii = antei; ii < ante.size(); ii++) {
@@ -495,7 +504,7 @@ namespace Elab {
     return false;
   }
 
-  bool Tableau::search(size_t maxDepth, size_t maxTabDepth) {
+  bool Tableau::search(size_t setMaxDepth, size_t setMaxTabDepth) {
     pools.clear();
     pools.emplace_back();
     cont.clear();
@@ -510,23 +519,23 @@ namespace Elab {
     invocations = 0;
     branches = 1;
     backtrackPoints = 0;
-    this->maxDepth = maxDepth;
-    this->maxTabDepth = maxTabDepth;
+    maxDepth = setMaxDepth;
+    maxTabDepth = setMaxTabDepth;
     return dfs(0);
   }
 
-  bool Tableau::iterativeDeepening(size_t maxTabDepth, size_t step) {
+  bool Tableau::iterativeDeepening(size_t setMaxTabDepth, size_t step) {
     // Try with smaller depths
-    size_t maxDepth = 2;
-    for (size_t i = 1; i < maxTabDepth; i += step, maxDepth += step * 4) {
-      std::cout << "** Current tableau depth: " << i << ", search depth: " << maxDepth << ", ";
-      bool res = search(maxDepth, i);
+    size_t currMaxDepth = 2;
+    for (size_t i = 1; i < setMaxTabDepth; i += step, currMaxDepth += step * 4) {
+      std::cout << "** Current tableau depth: " << i << ", search depth: " << currMaxDepth << ", ";
+      bool res = search(currMaxDepth, i);
       std::cout << "DFS invocations: " << invocations << std::endl;
       if (res) return true;
     }
     // Try with maximum depth
-    std::cout << "** Current tableau depth: " << maxTabDepth << ", search depth: " << maxDepth << ", ";
-    bool res = search(maxDepth, maxTabDepth);
+    std::cout << "** Current tableau depth: " << setMaxTabDepth << ", search depth: " << currMaxDepth << ", ";
+    bool res = search(currMaxDepth, setMaxTabDepth);
     std::cout << "DFS invocations: " << invocations << std::endl;
     return res;
   }

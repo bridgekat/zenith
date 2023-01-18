@@ -9,7 +9,7 @@ project (
 )
 
 list (PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/extern/prelude/cmake")
-include (Prelude)
+include (Prelude NO_POLICY_SCOPE)
 
 # ===== Dependencies =====
 # See: https://stackoverflow.com/questions/49768454/whats-the-differences-between-pthread-and-pthread-options-in-cmake

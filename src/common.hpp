@@ -8,9 +8,6 @@
 #include <utility>
 #include <vector>
 
-// Syntax "enhancements".
-#define pure_virtual = 0
-
 // Make sure to put these into the global scope.
 using std::int8_t;
 using std::int16_t;
@@ -23,9 +20,6 @@ using std::uint16_t;
 using std::uint32_t;
 using std::uint64_t;
 using std::size_t;
-
-// See: https://en.cppreference.com/w/cpp/language/user_literal
-constexpr auto operator"" _z(unsigned long long n) -> size_t { return n; }
 
 // "Unreachable" mark.
 [[noreturn]] inline auto unreachable(char const* file, int line, char const* func) -> void {
@@ -50,6 +44,23 @@ inline auto assert_always(bool expr, char const* name, char const* file, int lin
 #define unreachable         unreachable(__FILE__, __LINE__, static_cast<char const*>(__func__))
 #define unimplemented       unimplemented(__FILE__, __LINE__, static_cast<char const*>(__func__))
 #define assert_always(expr) assert_always(expr, #expr, __FILE__, __LINE__, static_cast<char const*>(__func__))
+
+// Syntax "enhancements".
+#define pure_virtual = 0
+
+// See: https://softwareengineering.stackexchange.com/questions/235674/what-is-the-pattern-for-a-safe-interface-in-c
+#define interface(T)                                 \
+protected:                                           \
+  T() noexcept = default;                            \
+  T(T const&) noexcept = default;                    \
+  T(T&&) noexcept = default;                         \
+  auto operator=(T const&) noexcept -> T& = default; \
+  auto operator=(T&&) noexcept -> T& = default;      \
+public:                                              \
+  virtual ~T() = default
+
+// See: https://en.cppreference.com/w/cpp/language/user_literal
+constexpr auto operator"" _z(unsigned long long n) -> size_t { return n; }
 
 // See: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
 template <class T>

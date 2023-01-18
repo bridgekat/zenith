@@ -9,11 +9,12 @@ namespace Eval {
   using std::vector;
   using std::pair;
   using std::optional, std::visit, std::get_if;
-  using Parsing::Char, Parsing::Token, Parsing::NFA, Parsing::EarleyParser;
+  using Parsing::AutomatonBuilder, Parsing::GrammarBuilder;
 
   auto Evaluator::parseNextStatement() -> bool {
-    return parser.advance();
-    // std::cout << parser.showStates(symbolNames) << std::endl;
+    assert_always(bool(parser));
+    return parser->advance();
+    // std::cout << parser->showStates(symbolNames) << std::endl;
   }
 
   auto Evaluator::evalParsedStatement() -> Tree* {
@@ -34,7 +35,7 @@ namespace Eval {
     }
     for (auto const& e: parser.popErrors()) {
       string s = "Parsing error, expected one of: ";
-      for (Parsing::Symbol sym: e.expected) s += "<" + symbolNames[sym] + ">, ";
+      for (Symbol sym: e.expected) s += "<" + symbolNames[sym] + ">, ";
       if (e.got) s += "got token <" + symbolNames[*e.got] + ">";
       else s += "but reached the end of file";
       res.emplace_back(s, e.startPos, e.endPos);
@@ -70,34 +71,34 @@ namespace Eval {
     return res;
   }
 
-  auto Evaluator::treePattern(Tree* e) -> NFA::Subgraph {
+  auto Evaluator::treePattern(AutomatonBuilder& builder, Tree* e) -> AutomatonBuilder::Subgraph {
     auto const& [tag, t] = expect<Cons>(e);
     auto const& stag = expect<Symbol>(tag).val;
-    if (stag == "empty") return nfa.empty();
-    if (stag == "any") return nfa.any();
-    if (stag == "utf8seg") return nfa.utf8segment();
-    if (stag == "char") return nfa.chars(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
-    if (stag == "except") return nfa.except(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    if (stag == "empty") return builder.empty();
+    if (stag == "any") return builder.any();
+    if (stag == "utf8seg") return builder.utf8segment();
+    if (stag == "char") return builder.chars(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    if (stag == "except") return builder.except(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
     if (stag == "range") {
       auto const& [lbound, u] = expect<Cons>(t);
       auto const& [ubound, _] = expect<Cons>(u);
-      return nfa.range(
+      return builder.range(
         static_cast<Parsing::Char>(expect<Nat64>(lbound).val),
         static_cast<Parsing::Char>(expect<Nat64>(ubound).val)
       );
     }
-    if (stag == "word") return nfa.word(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
-    if (stag == "alt") return nfa.alt(listPatterns(t));
-    if (stag == "concat") return nfa.concat(listPatterns(t));
-    if (stag == "opt") return nfa.opt(treePattern(expect<Cons>(t).head));
-    if (stag == "star") return nfa.star(treePattern(expect<Cons>(t).head));
-    if (stag == "plus") return nfa.plus(treePattern(expect<Cons>(t).head));
+    if (stag == "word") return builder.word(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    if (stag == "alt") return builder.alt(listPatterns(builder, t));
+    if (stag == "concat") return builder.concat(listPatterns(builder, t));
+    if (stag == "opt") return builder.opt(treePattern(builder, expect<Cons>(t).head));
+    if (stag == "star") return builder.star(treePattern(builder, expect<Cons>(t).head));
+    if (stag == "plus") return builder.plus(treePattern(builder, expect<Cons>(t).head));
     unimplemented;
   }
 
-  auto Evaluator::listPatterns(Tree* e) -> vector<NFA::Subgraph> {
-    auto res = vector<NFA::Subgraph>();
-    for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) { res.push_back(treePattern(it->head)); }
+  auto Evaluator::listPatterns(AutomatonBuilder& builder, Tree* e) -> vector<AutomatonBuilder::Subgraph> {
+    auto res = vector<AutomatonBuilder::Subgraph>();
+    for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) { res.push_back(treePattern(builder, it->head)); }
     return res;
   }
 
@@ -105,16 +106,16 @@ namespace Eval {
     auto res = vector<pair<Parsing::Symbol, Parsing::Precedence>>();
     for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) {
       auto const& [sym, t] = expect<Cons>(it->head);
-      auto const& [pre, _] = expect<Cons>(t);
-      res.emplace_back(symbol(expect<Symbol>(sym).val), expect<Nat64>(pre).val);
+      auto const& [prec, _] = expect<Cons>(t);
+      res.emplace_back(symbol(expect<Symbol>(sym).val), static_cast<Parsing::Precedence>(expect<Nat64>(prec).val));
     }
     return res;
   }
 
   // TODO: handle exceptions, refactor
   auto Evaluator::setSyntax(Tree* p, Tree* r) -> void {
-    nfa.clear();
-    cfg.clear();
+    auto automatonBuilder = AutomatonBuilder();
+    auto grammarBuilder = GrammarBuilder();
 
     symbolNames.clear();
     nameSymbols.clear();
@@ -126,9 +127,9 @@ namespace Eval {
 
     // Add ignored and starting symbols.
     symbolNames.push_back("_");
-    cfg.ignoredSymbol = ignoredSymbol;
+    grammarBuilder.withIgnoredSymbol(ignoredSymbol);
     symbolNames.push_back("_");
-    cfg.startSymbol = startSymbol;
+    grammarBuilder.withStartSymbol(startSymbol);
 
     // Add patterns.
     for (auto it = get_if<Cons>(patterns); it; it = get_if<Cons>(it->tail)) {
@@ -136,7 +137,7 @@ namespace Eval {
       auto const& [rhs, _] = expect<Cons>(t);
       auto const& sname = expect<Symbol>(lhs).val;
       auto const sid = sname == "_" ? ignoredSymbol : symbol(sname);
-      nfa.addPattern(sid, treePattern(rhs));
+      automatonBuilder.withPattern(sid, treePattern(automatonBuilder, rhs));
     }
 
     // Add rules.
@@ -150,13 +151,26 @@ namespace Eval {
       auto const& rname = expect<Symbol>(name).val;
       auto const sid = sname == "_" ? startSymbol : symbol(sname);
       auto const sprec = static_cast<Parsing::Precedence>(expect<Nat64>(prec).val);
-      assert_always(cfg.rules.size() == ruleNames.size());
-      cfg.rules.push_back({std::pair(sid, sprec), listSymbols(rhs)});
+      grammarBuilder.withRule(std::pair(sid, sprec), listSymbols(rhs));
       ruleNames.push_back(rname);
     }
 
     // Finalise.
-    cfg.process();
+    automaton = std::make_unique<Parsing::DFA const>(automatonBuilder.makeDFA(true));
+    grammar = std::make_unique<Parsing::Grammar const>(grammarBuilder.make());
+    // Rebuild dependents if needed.
+    if (lexer || parser) {
+      if (lookaheads) lookaheads->invalidate();
+      if (buffer) {
+        lexer = std::make_unique<Parsing::Lexer>(*automaton, *buffer);
+        lookaheads = std::make_unique<Parsing::LookaheadBuffer<std::optional<Parsing::Token>>>(*lexer);
+        parser = std::make_unique<Parsing::Parser>(*grammar, *lookaheads);
+      } else {
+        lexer.reset();
+        lookaheads.reset();
+        parser.reset();
+      }
+    }
   }
 
 #define cons       pool.emplace
@@ -330,13 +344,13 @@ namespace Eval {
     // [√] Elimination rule for sealed `Tree`
     addPrimitive("match", false, [this](Tree* env, Tree* e) -> Result {
       auto const& [head, t] = expect<Cons>(e);
-      auto const& [clauses, _] = expect<Cons>(t);
+      auto const& [clauses, _1] = expect<Cons>(t);
       auto const& target = eval(env, head);
       for (auto it = get_if<Cons>(clauses); it; it = get_if<Cons>(it->tail)) {
         auto const& [pat, u] = expect<Cons>(it->head);
         Tree* newEnv = env;
         if (match(target, pat, newEnv)) {
-          auto const& [expr, _] = expect<Cons>(u);
+          auto const& [expr, _2] = expect<Cons>(u);
           return {newEnv, expr};
         }
       }
@@ -344,7 +358,7 @@ namespace Eval {
       string msg = "nonexhaustive patterns: { ";
       bool first = true;
       for (auto it = get_if<Cons>(clauses); it; it = get_if<Cons>(it->tail)) {
-        auto const& [pat, _] = expect<Cons>(it->head);
+        auto const& [pat, _2] = expect<Cons>(it->head);
         if (!first) msg += ", ";
         first = false;
         msg += pat->toString();
@@ -407,20 +421,15 @@ namespace Eval {
     addPrimitive("set", false, [this](Tree* env, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
-      auto const& val = eval(env, rhs);
-      string s = expect<Symbol>(lhs).val;
-      for (auto it = get_if<Cons>(env); it; it = get_if<Cons>(it->tail)) {
-        if (auto const& curr = get_if<Cons>(it->head)) {
-          auto& lhs = curr->head;
-          if (auto const& t = get_if<Cons>(curr->tail)) {
-            auto& rhs = t->head;
-            if (auto const& sym = get_if<Symbol>(lhs); sym && sym->val == s) {
-              rhs = val;
+      auto const& value = eval(env, rhs);
+      auto const s = expect<Symbol>(lhs).val;
+      for (auto it = get_if<Cons>(env); it; it = get_if<Cons>(it->tail))
+        if (auto const& u = get_if<Cons>(it->head))
+          if (auto const& v = get_if<Cons>(u->tail))
+            if (auto const& sym = get_if<Symbol>(u->head); sym && sym->val == s) {
+              v->head = value;
               return unit;
             }
-          }
-        }
-      }
       // Not found, throw exception
       throw PartialEvalError("unbound symbol \"" + s + "\"", lhs);
     });
@@ -619,13 +628,14 @@ namespace Eval {
   }
 
   Tree* Evaluator::resolve(size_t maxDepth) {
-    auto const& pos = parser.sentence().size();
-    auto const& forest = parser.forest();
+    assert_always(grammar && parser);
+    auto const& pos = parser->sentence().size();
+    auto const& forest = parser->forest();
     assert_always(pos < forest.size());
     auto all = vector<Tree*>();
     for (auto const& node: forest[pos]) {
       auto const& [state, links] = node;
-      auto const& [lhs, rhs] = cfg.rules[state.rule];
+      auto const& [lhs, rhs] = grammar->rules[state.rule];
       if (state.startPos == 0 && lhs.first == startSymbol && state.progress == rhs.size()) {
         auto const& final = resolve(&node, {nil}, maxDepth);
         for (auto const f: final) all.push_back(f);
