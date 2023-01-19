@@ -8,7 +8,8 @@
 #include "elab/tableau.hpp"
 
 using std::string;
-using std::cin, std::cout, std::endl;
+using std::cout, std::endl;
+
 using namespace Core;
 using enum Expr::Tag;
 using enum Expr::SortTag;
@@ -246,7 +247,7 @@ int main() {
     auto snf = Procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
     cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
-    Elab::Procs::foreachValuation({p, q, r, s}, [&e, &snf](vector<bool> const& fvmap) {
+    Elab::Procs::foreachValuation({p, q, r, s}, [&e, &snf](std::vector<bool> const& fvmap) {
       cout << Elab::Procs::propValue(e, fvmap);
       cout << !Elab::Procs::propValue(snf, fvmap);
     });

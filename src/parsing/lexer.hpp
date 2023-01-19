@@ -18,7 +18,7 @@ namespace Parsing {
     // It allows matching a prefix of a string, which:
     // Returns the matching pattern ID and advances `string` on success;
     // Returns `std::nullopt` and leaves `string` in its original position on failure.
-    virtual auto match(Generator<Char>& string) const -> std::optional<Symbol> pure_virtual;
+    virtual auto match(Generator<Char>& string) const -> std::optional<Symbol> required;
   };
 
   // Nondeterministic finite automaton with ε-transitions.
@@ -39,7 +39,7 @@ namespace Parsing {
   class DFA: public Automaton {
   public:
     struct Entry {
-      std::array<std::optional<size_t>, CharMax + 1> outs; // Char -> out edge (if valid).
+      std::array<std::optional<size_t>, CharMax + 1> outs; // Char -> out edge (if present).
       std::optional<Symbol> mark;                          // Is an accepting state?
     };
     std::vector<Entry> table; // The transition & accepting state table.
@@ -72,10 +72,10 @@ namespace Parsing {
     // Input subgraph must be newly constructed in full. No "parts" can be reused.
     auto withPattern(Symbol sym, Subgraph a) -> AutomatonBuilder&;
 
-    // Constructs a well-formed `NFA`.
+    // Constructs a well-formed NFA.
     auto makeNFA() -> NFA const;
 
-    // Constructs a well-formed `DFA`.
+    // Constructs a well-formed DFA, optionally minimised.
     auto makeDFA(bool minimise) -> DFA const;
 
   private:
@@ -89,9 +89,9 @@ namespace Parsing {
   // A token emitted by a lexer.
   struct Token {
     Symbol id;               // Terminal symbol ID.
-    size_t startPos;         // Start index in original string.
-    size_t endPos;           // End index in original string.
-    std::string_view lexeme; // Lexeme. `lexeme.size() == endPos - startPos`.
+    size_t begin;            // Start index in original string.
+    size_t end;              // End index in original string.
+    std::string_view lexeme; // Lexeme. `lexeme.size() == end - begin`.
   };
 
   // A lexer is a "revertable generator" of `std::optional<Token>`.
@@ -109,7 +109,7 @@ namespace Parsing {
     auto advance() -> std::optional<Token> override;
     auto position() const -> size_t override { return _offsets.size(); }
     auto revert(size_t i) -> void override {
-      assert_always(i <= _offsets.size());
+      assert(i <= _offsets.size());
       _offsets.resize(i);
       _string.revert(_offsets.empty() ? _offset : _offsets.back());
     }
@@ -120,7 +120,6 @@ namespace Parsing {
     size_t _offset;               // Starting position in the input `Char` stream.
     std::vector<size_t> _offsets; // End positions in the input `Char` stream.
   };
-
 }
 
 #endif // LEXER_HPP_

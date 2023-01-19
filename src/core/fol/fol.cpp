@@ -1,11 +1,11 @@
 #include "fol.hpp"
 #include <type_traits>
 
-namespace Core {
+using std::string;
+using std::vector;
+using std::pair;
 
-  using std::string;
-  using std::vector;
-  using std::pair;
+namespace Core {
 
   FOLContext::FOLContext():
     Context() {
@@ -14,19 +14,19 @@ namespace Core {
 #define setvar      pools.back().emplace(Expr::VFree, SetVar)
 #define pi(s, t, r) pools.back().emplace(Expr::PPi, s, t, r)
 
-    assert_always(SetVar == addDefinition("setvar", type));
-    assert_always(Arbitrary == pushAssumption("arbitrary", setvar));
-    assert_always(Equals == pushAssumption("equals", pi("x", setvar, pi("y", setvar, prop))));
-    assert_always(True == pushAssumption("true", prop));
-    assert_always(False == pushAssumption("false", prop));
-    assert_always(Not == pushAssumption("not", pi("P", prop, prop)));
-    assert_always(And == pushAssumption("and", pi("P", prop, pi("Q", prop, prop))));
-    assert_always(Or == pushAssumption("or", pi("P", prop, pi("Q", prop, prop))));
-    assert_always(Implies == pushAssumption("implies", pi("P", prop, pi("Q", prop, prop))));
-    assert_always(Iff == pushAssumption("iff", pi("P", prop, pi("Q", prop, prop))));
-    assert_always(Forall == pushAssumption("forall", pi("P", pi("x", setvar, prop), prop)));
-    assert_always(Exists == pushAssumption("exists", pi("P", pi("x", setvar, prop), prop)));
-    assert_always(Unique == pushAssumption("unique", pi("P", pi("x", setvar, prop), prop)));
+    assert(SetVar == addDefinition("setvar", type));
+    assert(Arbitrary == pushAssumption("arbitrary", setvar));
+    assert(Equals == pushAssumption("equals", pi("x", setvar, pi("y", setvar, prop))));
+    assert(True == pushAssumption("true", prop));
+    assert(False == pushAssumption("false", prop));
+    assert(Not == pushAssumption("not", pi("P", prop, prop)));
+    assert(And == pushAssumption("and", pi("P", prop, pi("Q", prop, prop))));
+    assert(Or == pushAssumption("or", pi("P", prop, pi("Q", prop, prop))));
+    assert(Implies == pushAssumption("implies", pi("P", prop, pi("Q", prop, prop))));
+    assert(Iff == pushAssumption("iff", pi("P", prop, pi("Q", prop, prop))));
+    assert(Forall == pushAssumption("forall", pi("P", pi("x", setvar, prop), prop)));
+    assert(Exists == pushAssumption("exists", pi("P", pi("x", setvar, prop), prop)));
+    assert(Unique == pushAssumption("unique", pi("P", pi("x", setvar, prop), prop)));
 
 #undef prop
 #undef type

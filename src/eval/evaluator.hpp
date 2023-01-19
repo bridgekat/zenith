@@ -18,11 +18,11 @@ namespace Eval {
 
   // Parsing error exception
   struct ParsingError: public std::runtime_error {
-    size_t startPos, endPos;
-    ParsingError(std::string const& s, size_t startPos, size_t endPos):
+    size_t begin, end;
+    ParsingError(std::string const& s, size_t begin, size_t end):
       std::runtime_error(s),
-      startPos(startPos),
-      endPos(endPos) {}
+      begin(begin),
+      end(end) {}
   };
 
   // Evaluation error exception
@@ -83,7 +83,7 @@ namespace Eval {
     virtual ~Evaluator() = default;
 
     auto setString(std::string const& string) -> void {
-      assert_always(automaton && grammar);
+      assert(automaton && grammar);
       buffer = std::make_unique<Parsing::CharBuffer>(string);
       lexer = std::make_unique<Parsing::Lexer>(*automaton, *buffer);
       lookaheads = std::make_unique<Parsing::LookaheadBuffer<std::optional<Parsing::Token>>>(*lexer);

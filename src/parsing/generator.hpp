@@ -45,13 +45,13 @@ namespace Parsing {
     interface(Generator);
   public:
     // It allows checking if there are no more elements:
-    virtual auto eof() const -> bool pure_virtual;
+    virtual auto eof() const -> bool required;
     // It allows generating the next element;
-    virtual auto advance() -> T pure_virtual;
+    virtual auto advance() -> T required;
     // It allows obtaining the current position (which must be zero initially):
-    virtual auto position() const -> size_t pure_virtual;
+    virtual auto position() const -> size_t required;
     // It allows reverting to a previous position (i.e. `0 <= i <= position()`):
-    virtual auto revert(size_t i) -> void pure_virtual;
+    virtual auto revert(size_t i) -> void required;
   };
 
   // Simple wrapper around a `std::string`.
@@ -64,14 +64,14 @@ namespace Parsing {
     auto eof() const -> bool override { return _position == _string.size(); }
     auto advance() -> Char override { return _position < _string.size() ? static_cast<Char>(_string[_position++]) : 0; }
     auto position() const -> size_t override { return _position; }
-    auto revert(size_t i) -> void override { assert_always(i <= _position), _position = i; }
+    auto revert(size_t i) -> void override { assert(i <= _position), _position = i; }
 
     // Returns whole string.
     auto string() -> std::string_view { return _string; }
 
     // Returns a substring.
     auto slice(size_t start, size_t end) -> std::string_view {
-      assert_always(start <= end && end <= _position);
+      assert(start <= end && end <= _position);
       return std::string_view(_string).substr(start, end - start);
     }
 
@@ -93,17 +93,17 @@ namespace Parsing {
 
     auto eof() const -> bool override { return _position == _elements.size() && _generator.eof(); }
     auto advance() -> T override {
-      assert_always(_position <= _elements.size());
+      assert(_position <= _elements.size());
       if (_position == _elements.size()) _elements.push_back(_generator.advance());
       // Mid: _position < _elements.size()
       return _elements[_position++];
     }
     auto position() const -> size_t override { return _position; }
-    auto revert(size_t i) -> void override { assert_always(i <= _position), _position = i; }
+    auto revert(size_t i) -> void override { assert(i <= _position), _position = i; }
 
     // Invalidates cache past the current position (inclusive).
     auto invalidate() -> void {
-      assert_always(_position <= _elements.size());
+      assert(_position <= _elements.size());
       _generator.revert(_offset + _position);
       _elements.resize(_position);
     }

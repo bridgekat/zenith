@@ -122,7 +122,7 @@ namespace Parsing {
     return {s, t};
   }
   auto AutomatonBuilder::concat(std::vector<Subgraph> const& ls) -> Subgraph {
-    assert_always(!ls.empty());
+    assert(!ls.empty());
     for (auto i = 0_z; i + 1 < ls.size(); i++) {
       auto const a = ls[i], b = ls[i + 1];
       for (auto const& [c, t]: _table[b.first].outs) _transition(a.second, c, t);
@@ -258,12 +258,12 @@ namespace Parsing {
     DFA& dfa;
 
     // Ephemeral states.
-    std::vector<std::vector<std::pair<Char, size_t>>> rev; // Reverse edges.
-    std::vector<Info> info;                                // Identities (class index, pointer to list).
-    std::vector<Class> cls;                                // Classes (size, head, is used as distinguisher).
-    std::vector<size_t> dists;                             // Indices of classes used as distinguisher sets.
-    std::array<std::vector<size_t>, CharMax + 1> srcs;     // Character -> source set.
-    std::vector<std::vector<size_t>> intersection;         // Class index -> list of intersecting states.
+    std::vector<std::vector<std::pair<size_t, size_t>>> rev; // Reverse edges.
+    std::vector<Info> info;                                  // Identities (class index, pointer to list).
+    std::vector<Class> cls;                                  // Classes (size, head, is used as distinguisher).
+    std::vector<size_t> dists;                               // Indices of classes used as distinguisher sets.
+    std::array<std::vector<size_t>, CharMax + 1> srcs;       // Character -> source set.
+    std::vector<std::vector<size_t>> intersection;           // Class index -> list of intersecting states.
 
     explicit PartitionRefinement(DFA& dfa):
       dfa(dfa) {}
@@ -314,9 +314,7 @@ namespace Parsing {
       auto const dead = table.size();
       table.emplace_back();
       auto const n = table.size();
-
-      // Add transitions to dead state.
-      // The dead state will have all its out edges pointing to itself.
+      // Add transitions to dead state. The dead state will have all its out edges pointing to itself.
       for (auto i = 0_z; i < n; i++)
         for (auto c = 1_z; c <= CharMax; c++)
           if (!table[i].outs[c]) table[i].outs[c] = dead;
@@ -355,11 +353,11 @@ namespace Parsing {
 
         // Calculate the source sets for all `c`s.
         for (auto c = 1_z; c <= CharMax; c++) srcs[c].clear();
-        for (auto p = cls[curr].head->r; p != cls[curr].head; p = p->r) {
-          // "Examine transitions" - this occurs a limited number of times, see the long comment.
-          // Note that the total size of `srcs[]` equals to this number.
+
+        // "Examine transitions" - this occurs a limited number of times, see the long comment.
+        // Note that the total size of `srcs[]` equals to this number.
+        for (auto p = cls[curr].head->r; p != cls[curr].head; p = p->r)
           for (auto const& [c, src]: rev[p->x]) srcs[c].push_back(src);
-        }
 
         for (auto c = 1_z; c <= CharMax; c++) {
           // Inner loop time complexity should be O(size of `srcs[c]`).
@@ -420,13 +418,13 @@ namespace Parsing {
         }
         // Mark accepting state.
         // Also check that a class does not contain different marks.
-        assert_always(!newTable[src].mark || newTable[src].mark == table[i].mark);
+        assert(!newTable[src].mark || newTable[src].mark == table[i].mark);
         newTable[src].mark = table[i].mark;
       }
       table.swap(newTable);
       // DFA should be nonempty.
       initial = info[initial].cid;
-      assert_always(initial != newDead);
+      assert(initial != newDead);
       if (initial > newDead) initial--;
 
       /*

@@ -1,10 +1,20 @@
 #include "procs.hpp"
+#include <optional>
+#include <tuple>
+
+using std::string;
+using std::vector;
+using std::tuple;
+using std::pair;
+using std::optional;
+using enum Core::Expr::Tag;
+using enum Core::Expr::VarTag;
+using enum Elab::Procs::FOLForm::Tag;
 
 namespace Elab::Procs {
 
-  bool propValue(Expr const* e, vector<bool> const& fvmap) noexcept {
-    using enum FOLForm::Tag;
-    auto fof = FOLForm::fromExpr(e);
+  auto propValue(Expr const* e, vector<bool> const& fvmap) -> bool {
+    auto const fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
       case Other:
         if (e->tag != Expr::Var || e->var.tag != Expr::VFree) unreachable;
@@ -24,9 +34,8 @@ namespace Elab::Procs {
     unreachable;
   }
 
-  Expr const* nnf(Expr const* e, Allocator<Expr>& pool, bool f) {
-    using enum FOLForm::Tag;
-    auto fof = FOLForm::fromExpr(e);
+  auto nnf(Expr const* e, Allocator<Expr>& pool, bool f) -> Expr const* {
+    auto const fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
       case Other: return f ? FOLForm(Not, e).toExpr(pool) : e;
       case Equals: return f ? FOLForm(Not, e).toExpr(pool) : e;
@@ -50,18 +59,16 @@ namespace Elab::Procs {
     unreachable;
   }
 
-  Expr const*
-  skolemize(Expr const* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool) {
-    using enum Expr::VarTag;
-    using enum FOLForm::Tag;
-    auto fof = FOLForm::fromExpr(e);
+  auto skolemize(Expr const* e, uint64_t& meta, uint64_t& skolem, vector<uint64_t>& metas, Allocator<Expr>& pool)
+    -> Expr const* {
+    auto const fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
       case Other: return e;
       case Equals: return e;
       case True: return e;
       case False: return e;
       case Not: {
-        auto tag = FOLForm::fromExpr(fof.unary.e).tag;
+        auto const tag = FOLForm::fromExpr(fof.unary.e).tag;
         if (tag == Other || tag == Equals) return e; // Irreducible literal
         return skolemize(nnf(e, pool), meta, skolem, metas, pool);
       }
@@ -94,24 +101,22 @@ namespace Elab::Procs {
   }
 
   template <typename T>
-  vector<T> concat(vector<T> a, vector<T> const& b) {
+  auto concat(vector<T> a, vector<T> const& b) -> vector<T> {
     for (auto const& x: b) a.push_back(x);
     return a;
   }
 
   template <typename T>
-  vector<vector<T>> distrib(vector<vector<T>> const& a, vector<vector<T>> const& b) {
-    vector<vector<T>> res;
+  auto distrib(vector<vector<T>> const& a, vector<vector<T>> const& b) -> vector<vector<T>> {
+    auto res = vector<vector<T>>();
     for (auto const& x: a)
       for (auto const& y: b) res.push_back(concat(x, y));
     return res;
   }
 
   // TODO: simplification of clauses
-  vector<vector<Expr const*>> cnf(Expr const* e, Allocator<Expr>& pool) {
-    using enum Expr::VarTag;
-    using enum FOLForm::Tag;
-    auto fof = FOLForm::fromExpr(e);
+  auto cnf(Expr const* e, Allocator<Expr>& pool) -> vector<vector<Expr const*>> {
+    auto const fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
       case Other: return {{e}};
       case Equals: return {{e}};
@@ -129,15 +134,15 @@ namespace Elab::Procs {
     unreachable;
   }
 
-  string showClauses(vector<vector<Expr const*>> const& cs, Context const& ctx) {
-    string res = "{";
-    bool f = true;
+  auto showClauses(vector<vector<Expr const*>> const& cs, Context const& ctx) -> string {
+    auto res = string("{");
+    auto f = true;
     for (auto const& c: cs) {
       res += f ? "\n  " : "\n  "; // res += f? " " : ", ";
       f = false;
       res += "{";
-      bool g = true;
-      for (Expr const* lit: c) {
+      auto g = true;
+      for (auto const lit: c) {
         res += g ? " " : ", ";
         g = false;
         res += FOLForm::fromExpr(lit).toString(ctx);
@@ -150,7 +155,6 @@ namespace Elab::Procs {
 
   /*
   Expr const* collectClauses(vector<vector<Expr const*>> const& cs, Allocator<Expr>& pool) {
-    using enum FOLForm::Tag;
     // Construct conjunction of disjunctions
     Expr const* res = nullptr;
     for (auto const& c: cs) {
@@ -172,17 +176,14 @@ namespace Elab::Procs {
   }
   */
 
-  string showSubs(Subs const& subs, Context const& ctx) {
-    using enum Expr::VarTag;
-    string res;
-    for (size_t i = 0; i < subs.size(); i++)
+  auto showSubs(Subs const& subs, Context const& ctx) -> string {
+    auto res = string();
+    for (auto i = 0_z; i < subs.size(); i++)
       if (subs[i]) { res += Expr(VMeta, i).toString(ctx) + " => " + subs[i]->toString(ctx) + "\n"; }
     return res;
   }
 
-  bool equalAfterSubs(Expr const* lhs, Expr const* rhs, Subs const& subs) noexcept {
-    using enum Expr::Tag;
-    using enum Expr::VarTag;
+  auto equalAfterSubs(Expr const* lhs, Expr const* rhs, Subs const& subs) -> bool {
     // Check if an undetermined variable has been replaced
     if (lhs->tag == Var && lhs->var.tag == VMeta && lhs->var.id < subs.size() && subs[lhs->var.id])
       return equalAfterSubs(subs[lhs->var.id], rhs, subs);
@@ -212,11 +213,10 @@ namespace Elab::Procs {
       ls(),
       rs() {}
 
-    Expr const* dfs(Expr const* lhs, Expr const* rhs) {
-      using enum Expr::Tag;
+    auto dfs(Expr const* lhs, Expr const* rhs) -> Expr const* {
       // If roots are different, return this
       auto different = [this, lhs, rhs]() {
-        uint64_t id = ls.size();
+        auto const id = ls.size();
         ls.push_back(lhs);
         rs.push_back(rhs);
         return pool.emplace(Expr::VMeta, id);
@@ -245,34 +245,34 @@ namespace Elab::Procs {
       unreachable;
     }
 
-    tuple<Expr const*, Subs, Subs> operator()(Expr const* lhs, Expr const* rhs) {
+    auto operator()(Expr const* lhs, Expr const* rhs) -> tuple<Expr const*, Subs, Subs> {
       ls.clear();
       rs.clear();
-      Expr const* c = dfs(lhs, rhs);
+      auto const c = dfs(lhs, rhs);
       return {c, ls, rs};
     }
   };
 
-  tuple<Expr const*, Subs, Subs> antiunify(Expr const* lhs, Expr const* rhs, Allocator<Expr>& pool) {
+  auto antiunify(Expr const* lhs, Expr const* rhs, Allocator<Expr>& pool) -> tuple<Expr const*, Subs, Subs> {
     return Antiunifier(pool)(lhs, rhs);
   }
 
   // The Robinson's unification algorithm (could take exponential time for certain cases).
   // See: https://en.wikipedia.org/wiki/Unification_(computer_science)#A_unification_algorithm
-  optional<Subs> unify(vector<pair<Expr const*, Expr const*>> a, Allocator<Expr>& pool) {
+  auto unify(vector<pair<Expr const*, Expr const*>> a, Allocator<Expr>& pool) -> optional<Subs> {
     using enum Expr::Tag;
     using enum Expr::VarTag;
-    Subs res;
+    auto res = Subs();
 
     // Add a new substitution to `res`, then update the rest of `a` to eliminate the variable with id `id`.
-    auto putsubs = [&res, &pool, &a](uint64_t id, Expr const* e, size_t i0) {
+    auto putsubs = [&res, &pool, &a](uint64_t id, Expr const* e, size_t i0) -> void {
       // Make enough space
       while (id >= res.size()) res.push_back(nullptr);
       // id < res.size()
       res[id] = e;
       // Update the rest of `a`
       auto f = [id, e](uint64_t, Expr const* x) { return (x->var.tag == VMeta && x->var.id == id) ? e : x; };
-      for (size_t i = i0; i < a.size(); i++) {
+      for (auto i = i0; i < a.size(); i++) {
         a[i].first = a[i].first->updateVars(f, pool);
         a[i].second = a[i].second->updateVars(f, pool);
       }
@@ -280,30 +280,30 @@ namespace Elab::Procs {
 
     // Each step transforms `a` into an equivalent set of equations
     // (in `a` and `res`; the latter contains equations in triangular/solved form.)
-    for (size_t i = 0; i < a.size(); i++) {
-      Expr const *lhs = a[i].first, *rhs = a[i].second;
+    for (auto i = 0_z; i < a.size(); i++) {
+      auto const lhs = a[i].first, rhs = a[i].second;
       if (lhs->tag == Var && lhs->var.tag == VMeta) {
         if (*lhs != *rhs) {
           // Variable elimination on the left.
-          if (rhs->occurs(VMeta, lhs->var.id)) return nullopt;
+          if (rhs->occurs(VMeta, lhs->var.id)) return {};
           else putsubs(lhs->var.id, rhs, i + 1);
         }
       } else if (rhs->tag == Var && rhs->var.tag == VMeta) {
         if (*lhs != *rhs) {
           // Variable elimination on the right.
-          if (lhs->occurs(VMeta, rhs->var.id)) return nullopt;
+          if (lhs->occurs(VMeta, rhs->var.id)) return {};
           else putsubs(rhs->var.id, lhs, i + 1);
         }
       } else {
         // Try term reduction.
-        if (lhs->tag != rhs->tag) return nullopt;
+        if (lhs->tag != rhs->tag) return {};
         // lhs->tag == rhs->tag
         switch (lhs->tag) {
           case Sort:
-            if (lhs->sort.tag != rhs->sort.tag) return nullopt;
+            if (lhs->sort.tag != rhs->sort.tag) return {};
             break;
           case Var:
-            if (lhs->var.tag != rhs->var.tag || lhs->var.id != rhs->var.id) return nullopt;
+            if (lhs->var.tag != rhs->var.tag || lhs->var.id != rhs->var.id) return {};
             break;
           case App:
             a.emplace_back(lhs->app.l, rhs->app.l);
@@ -320,7 +320,6 @@ namespace Elab::Procs {
         }
       }
     }
-
     return res;
   }
 

@@ -77,9 +77,9 @@ void analyzeDocument(JSONRPC2Server* srv, const DocumentUri& uri) {
   mu.analyze(s);
   e.result = mu.popResults();
 
-  for (const auto& ex: mu.popParsingErrors()) res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.what(), DiagnosticSeverity::WARNING);
-  for (const auto& ex: e.result.info) res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.info, DiagnosticSeverity::INFORMATION);
-  for (const auto& ex: e.result.errors) res.emplace_back(fromIndices(doc, ex.startPos, ex.endPos), ex.what(), DiagnosticSeverity::ERROR);
+  for (const auto& ex: mu.popParsingErrors()) res.emplace_back(fromIndices(doc, ex.begin, ex.end), ex.what(), DiagnosticSeverity::WARNING);
+  for (const auto& ex: e.result.info) res.emplace_back(fromIndices(doc, ex.begin, ex.end), ex.info, DiagnosticSeverity::INFORMATION);
+  for (const auto& ex: e.result.errors) res.emplace_back(fromIndices(doc, ex.begin, ex.end), ex.what(), DiagnosticSeverity::ERROR);
   for (auto& diag: res) diag.source = "Mu analyzer";
 
   srv->callNotification("textDocument/publishDiagnostics", {
@@ -233,12 +233,12 @@ Coroutine<json> hover(JSONRPC2Server* srv, const json& params) {
   const Entry& e = docs[doc.uri];
   size_t index = toIndex(e.doc, pos);
   auto& hovers = e.result.hovers;
-  for (const auto& hover: hovers) if (hover.startPos <= index && hover.endPos >= index) {
+  for (const auto& hover: hovers) if (hover.begin <= index && hover.end >= index) {
     json c = { hover.info, MarkedString{ "apimu", hover.code } };
     if (hover.info.empty()) c = c[1]; else if (hover.code.empty()) c = c[0];
     co_return {
       {"contents", c},
-      {"range", fromIndices(e.doc, hover.startPos, hover.endPos)}
+      {"range", fromIndices(e.doc, hover.begin, hover.end)}
     };
   }
   co_return {};
@@ -252,7 +252,7 @@ Coroutine<json> definition(JSONRPC2Server* srv, const json& params) {
   const Entry& e = docs[doc.uri];
   size_t index = toIndex(e.doc, pos);
   auto& tokens = e.result.tokens;
-  for (const auto& token: tokens) if (token.startPos <= index && token.endPos >= index) {
+  for (const auto& token: tokens) if (token.begin <= index && token.end >= index) {
     if (!token.defPos) continue;
     co_return Location{ doc.uri, fromIndices(e.doc, token.defPos->first, token.defPos->second) };
   }

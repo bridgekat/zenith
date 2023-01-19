@@ -9,9 +9,7 @@
 #include <eval/tree.hpp>
 
 using std::string;
-using std::vector;
 using std::cin, std::cout, std::endl;
-using Eval::ExtendedEvaluator, Eval::EvalError;
 
 // See: https://stackoverflow.com/questions/116038/how-do-i-read-an-entire-file-into-a-stdstring-in-c
 auto readFile(std::ifstream&& in) -> string {
@@ -21,7 +19,7 @@ auto readFile(std::ifstream&& in) -> string {
 }
 
 auto main(int argc, char** argv) -> int {
-  ExtendedEvaluator evaluator;
+  Eval::ExtendedEvaluator evaluator;
   string in;
   for (int i = 1; i < argc; i++) in += readFile(std::ifstream(argv[i])) + "\n";
 
@@ -62,7 +60,7 @@ auto main(int argc, char** argv) -> int {
         cout << "× " << ex.what() << endl;
         cout << "| " << endl;
         cout << "| " << in << endl;
-        cout << "| " << std::string(ex.startPos, ' ') << std::string(ex.endPos - ex.startPos, '~') << endl;
+        cout << "| " << std::string(ex.begin, ' ') << std::string(ex.end - ex.begin, '~') << endl;
         cout << endl;
         break;
       }

@@ -34,24 +34,24 @@ namespace Core {
   size_t Expr::hash() const noexcept {
     auto res = static_cast<size_t>(tag);
     switch (tag) {
-      case Sort: res = hash_combine(res, static_cast<std::underlying_type_t<SortTag>>(sort.tag)); return res;
+      case Sort: res = hashCombine(res, static_cast<std::underlying_type_t<SortTag>>(sort.tag)); return res;
       case Var:
-        res = hash_combine(res, static_cast<std::underlying_type_t<VarTag>>(var.tag));
-        res = hash_combine(res, var.id);
+        res = hashCombine(res, static_cast<std::underlying_type_t<VarTag>>(var.tag));
+        res = hashCombine(res, var.id);
         return res;
       case App:
-        res = hash_combine(res, app.l->hash());
-        res = hash_combine(res, app.r->hash());
+        res = hashCombine(res, app.l->hash());
+        res = hashCombine(res, app.r->hash());
         return res;
       case Lam:
         // Ignore bound variable names
-        res = hash_combine(res, lam.t->hash());
-        res = hash_combine(res, lam.r->hash());
+        res = hashCombine(res, lam.t->hash());
+        res = hashCombine(res, lam.r->hash());
         return res;
       case Pi:
         // Ignore bound variable names
-        res = hash_combine(res, pi.t->hash());
-        res = hash_combine(res, pi.r->hash());
+        res = hashCombine(res, pi.t->hash());
+        res = hashCombine(res, pi.r->hash());
         return res;
     }
     unreachable;

@@ -3,16 +3,16 @@
 #include <fstream>
 #include <iostream>
 
+using std::string;
+using std::vector;
+using std::pair;
+using std::optional, std::get_if;
+using Parsing::AutomatonBuilder, Parsing::GrammarBuilder;
+
 namespace Eval {
 
-  using std::string;
-  using std::vector;
-  using std::pair;
-  using std::optional, std::visit, std::get_if;
-  using Parsing::AutomatonBuilder, Parsing::GrammarBuilder;
-
   auto Evaluator::parseNextStatement() -> bool {
-    assert_always(bool(parser));
+    assert(bool(parser));
     return parser->advance();
     // std::cout << parser->showStates(symbolNames) << std::endl;
   }
@@ -31,14 +31,14 @@ namespace Eval {
     // https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
     /*
     for (auto const& e: lexer.popErrors()) {
-      res.emplace_back("Parsing error, unexpected characters: " + e.lexeme, e.startPos, e.endPos);
+      res.emplace_back("Parsing error, unexpected characters: " + e.lexeme, e.begin, e.end);
     }
     for (auto const& e: parser.popErrors()) {
       string s = "Parsing error, expected one of: ";
       for (Symbol sym: e.expected) s += "<" + symbolNames[sym] + ">, ";
       if (e.got) s += "got token <" + symbolNames[*e.got] + ">";
       else s += "but reached the end of file";
-      res.emplace_back(s, e.startPos, e.endPos);
+      res.emplace_back(s, e.begin, e.end);
     }
     */
     return res;
@@ -541,7 +541,7 @@ namespace Eval {
     return (expect<T>(lhs).val op expect<T>(rhs).val) ? btrue : bfalse; \
   })
 
-    unary(Nat64, "minus", -);
+    unary(Nat64, "minus", 0 -);
     binary(Nat64, "add", +);
     binary(Nat64, "sub", -);
     binary(Nat64, "mul", *);
@@ -602,7 +602,7 @@ namespace Eval {
 
   auto Evaluator::resolve(Parsing::Node const* node, vector<Tree*> const& tails, size_t maxDepth) -> vector<Tree*> {
     if (maxDepth == 0) return {};
-    auto const& [state, links] = *node;
+    auto const& [state, _, links] = *node;
     auto res = vector<Tree*>();
     if (state.progress == 0) {
       // Whole rule completed.
@@ -628,15 +628,15 @@ namespace Eval {
   }
 
   Tree* Evaluator::resolve(size_t maxDepth) {
-    assert_always(grammar && parser);
-    auto const& pos = parser->sentence().size();
-    auto const& forest = parser->forest();
-    assert_always(pos < forest.size());
+    assert(grammar && parser);
+    auto const& pos = parser->tokens().size();
+    auto const& nodes = parser->nodes();
+    assert(pos < nodes.size());
     auto all = vector<Tree*>();
-    for (auto const& node: forest[pos]) {
-      auto const& [state, links] = node;
+    for (auto const& node: nodes[pos]) {
+      auto const& [state, _, links] = node;
       auto const& [lhs, rhs] = grammar->rules[state.rule];
-      if (state.startPos == 0 && lhs.first == startSymbol && state.progress == rhs.size()) {
+      if (state.begin == 0 && lhs.first == startSymbol && state.progress == rhs.size()) {
         auto const& final = resolve(&node, {nil}, maxDepth);
         for (auto const f: final) all.push_back(f);
       }

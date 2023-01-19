@@ -12,10 +12,6 @@
 
 namespace Elab {
 
-  using std::string;
-  using std::vector;
-  using std::pair, std::make_pair;
-  using std::unordered_set;
   using namespace Core;
 
   // "Expression with hash" (a wrapper for `Expr const*` that overloads the `==` operator)
@@ -66,15 +62,15 @@ namespace Elab {
     enum Type : unsigned int { Iota, Alpha, Beta, Gamma, GammaRetry, Delta, N };
 
     struct Branch {
-      vector<Expr const*> cedents[N][2];
-      unordered_set<ExprHash, ExprHash::GetHash> hashset[2];
+      std::vector<Expr const*> cedents[N][2];
+      std::unordered_set<ExprHash, ExprHash::GetHash> hashset[2];
       size_t indices[N][2];
-      vector<bool> betaUsed[2];
+      std::vector<bool> betaUsed[2];
       size_t depth, numUniversal;
 
-      size_t numCedents;                  // DEBUG CODE
-      vector<size_t> timestamps[N][2];    // DEBUG CODE
-      vector<size_t> numUniversals[N][2]; // DEBUG CODE
+      size_t numCedents;                       // DEBUG CODE
+      std::vector<size_t> timestamps[N][2];    // DEBUG CODE
+      std::vector<size_t> numUniversals[N][2]; // DEBUG CODE
 
       bool operator==(Branch const& r) const noexcept = default;
     };
@@ -136,18 +132,18 @@ namespace Elab {
 
     bool search(size_t setMaxDepth, size_t setMaxTabDepth);
     bool iterativeDeepening(size_t setMaxTabDepth, size_t step);
-    string printState();
-    string printStateDebug();
-    string printStats();
+    std::string printState();
+    std::string printStateDebug();
+    std::string printStats();
 
   private:
-    vector<Allocator<Expr>> pools;
+    std::vector<Allocator<Expr>> pools;
     Context const& ctx;
 
     Branch branch; // Current branch
 
     // Ephemeral states
-    vector<Branch> cont; // Other branches (to the right of current)
+    std::vector<Branch> cont; // Other branches (to the right of current)
     size_t numSkolem, maxDepth, maxTabDepth;
 
     // Statistics
@@ -162,7 +158,7 @@ namespace Elab {
 
     void checkBranch(Branch const& b);
     void check();
-    void debughtml(string const& filename);
+    void debughtml(std::string const& filename);
   };
 
 }

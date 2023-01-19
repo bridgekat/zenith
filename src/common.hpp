@@ -33,20 +33,22 @@ using std::size_t;
   std::terminate();
 }
 
-// Assertion that remain present under non-debug configurations.
-inline auto assert_always(bool expr, char const* name, char const* file, int line, char const* func) -> void {
+#undef assert
+
+// Assertion that remains present under non-debug configurations.
+inline auto assert(bool expr, char const* name, char const* file, int line, char const* func) -> void {
   if (!expr) {
     std::cerr << "Assertion failed: " << name << std::endl;
     unreachable(file, line, func);
   }
 }
 
-#define unreachable         unreachable(__FILE__, __LINE__, static_cast<char const*>(__func__))
-#define unimplemented       unimplemented(__FILE__, __LINE__, static_cast<char const*>(__func__))
-#define assert_always(expr) assert_always(expr, #expr, __FILE__, __LINE__, static_cast<char const*>(__func__))
+#define unreachable   unreachable(__FILE__, __LINE__, static_cast<char const*>(__func__))
+#define unimplemented unimplemented(__FILE__, __LINE__, static_cast<char const*>(__func__))
+#define assert(expr)  assert(expr, #expr, __FILE__, __LINE__, static_cast<char const*>(__func__))
 
 // Syntax "enhancements".
-#define pure_virtual = 0
+#define required = 0
 
 // See: https://softwareengineering.stackexchange.com/questions/235674/what-is-the-pattern-for-a-safe-interface-in-c
 #define interface(T)                                 \
@@ -59,23 +61,40 @@ protected:                                           \
 public:                                              \
   virtual ~T() = default
 
+// Compiler & tools support for literal suffix `uz` (in C++23) is still incomplete...
 // See: https://en.cppreference.com/w/cpp/language/user_literal
 constexpr auto operator"" _z(unsigned long long n) -> size_t { return n; }
 
+// A binary hash function.
 // See: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
-template <class T>
-inline auto hash_combine(size_t seed, T const& v) -> size_t {
+template <typename T>
+inline auto hashCombine(size_t seed, T const& v) -> size_t {
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
   return seed ^ (std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2));
 }
 
-// See: https://www.techiedelight.com/use-std-pair-key-std-unordered_map-cpp/
+// Recursively combines hashes.
+inline auto hashRecursive(size_t acc) -> size_t { return acc; }
+template <typename T, typename... Ts>
+inline auto hashRecursive(size_t acc, T const& v, Ts... args) -> size_t {
+  return hashRecursive(hashCombine(acc, v), args...);
+}
+
+// Uses 0 as initial seed.
+template <typename... Ts>
+inline auto hashAll(Ts... args) -> size_t {
+  return hashRecursive(0, args...);
+}
+
+// Hash function for `std::pair`.
 struct PairHasher {
-  template <class S, class T>
-  auto operator()(std::pair<S, T> const& pair) const -> size_t {
-    return std::hash<S>()(pair.first) ^ std::hash<T>()(pair.second);
+  template <typename S, typename T>
+  auto operator()(std::pair<S, T> const& p) const -> size_t {
+    return hashAll(p.first, p.second);
   }
 };
 
+// "Pattern matching" on `std::variant`.
 // See: https://en.cppreference.com/w/cpp/utility/variant/visit
 template <typename... Ts>
 struct Matcher: Ts... {
@@ -84,7 +103,7 @@ struct Matcher: Ts... {
 template <typename... Ts>
 Matcher(Ts...) -> Matcher<Ts...>;
 
-// A simple region-based memory allocator: https://news.ycombinator.com/item?id=26433654
+// A simple region-based memory allocator (uses larger blocks than `std::deque`).
 // This ensures that objects stay in the same place.
 template <typename T>
 class Allocator {
@@ -94,12 +113,16 @@ public:
   Allocator(size_t _blockSize = defaultBlockSize):
     _blockSize(_blockSize) {}
 
-  Allocator(Allocator&& r):
+  ~Allocator() noexcept { _deallocateBlocks(); }
+
+  Allocator(Allocator const&) = delete;
+  Allocator(Allocator&& r) noexcept:
     _blockSize(r._blockSize),
     _alloc(r._alloc),
     _blocks(std::move(r._blocks)),
     _next(r._next) {}
 
+  auto operator=(Allocator const&) -> Allocator& = delete;
   auto operator=(Allocator&& r) noexcept -> Allocator& {
     swap(*this, r);
     return *this;
@@ -112,8 +135,6 @@ public:
     swap(l._blocks, r._blocks);
     swap(l._next, r._next);
   }
-
-  ~Allocator() noexcept { _deallocateBlocks(); }
 
   auto reset() -> void {
     _deallocateBlocks();

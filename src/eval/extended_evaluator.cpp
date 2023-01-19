@@ -1,12 +1,9 @@
 #include "extended_evaluator.hpp"
 
-namespace Eval {
+using std::string;
+using Core::Expr;
 
-  using std::string;
-  using std::vector;
-  using std::pair;
-  using std::optional;
-  using Core::Expr;
+namespace Eval {
 
 #define cons       pool.emplace
 #define nil        nil

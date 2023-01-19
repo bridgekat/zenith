@@ -56,11 +56,11 @@ namespace Parsing {
         for (auto const& r: rhs)
           if (!emptyRule[r.first]) nonNullable = true;
         // Confirm that no other rules are nullable.
-        assert_always(nonNullable);
+        assert(nonNullable);
       }
     }
     // Nullable start symbol can cause infinite loop.
-    assert_always(!emptyRule[startSymbol]);
+    assert(!emptyRule[startSymbol]);
 
     // Sort all non-empty (non-nullable) rules by symbol ID (for faster access).
     // Also accumulate the lengths of RHS (plus one) of the production rules (for better hashing).
@@ -101,26 +101,26 @@ namespace Parsing {
       auto const found = run();
       if (found) {
         // Successful parse.
-        if (_sentence.empty()) unimplemented;
+        if (_tokens.empty()) unimplemented;
         if (error) mErrors.push_back(*error);
         return true;
       }
       if (!nextToken) {
         // EOF.
-        if (!_sentence.empty()) {
+        if (!_tokens.empty()) {
           // EOF with incomplete sentence.
-          if (!error) error = lastError(_sentence.back().endPos, _sentence.back().endPos, std::nullopt);
-          else error->endPos = _sentence.back().endPos;
+          if (!error) error = lastError(_tokens.back().end, _tokens.back().end, std::nullopt);
+          else error->end = _tokens.back().end;
         }
         if (error) mErrors.push_back(*error);
         return false;
       }
       // Mid: !index && nextToken
       // Error.
-      if (!error) error = lastError(nextToken->startPos, nextToken->endPos, mPatterns.at(nextToken->id).sym.first);
-      else error->endPos = nextToken->endPos;
+      if (!error) error = lastError(nextToken->begin, nextToken->end, mPatterns.at(nextToken->id).sym.first);
+      else error->end = nextToken->end;
       // Skip at least one token to avoid infinite loops.
-      if (_sentence.empty()) {
+      if (_tokens.empty()) {
         auto tok = mLexer->advance();
         while (tok && mPatterns.at(tok->id).sym.first == mIgnoredSymbol) tok = mLexer->advance();
       }
@@ -128,10 +128,10 @@ namespace Parsing {
     */
   }
 
-  auto Parser::showState(Node const& ls, std::vector<std::string> const& names) const -> std::string {
+  auto Parser::showState(Node const& node, std::vector<std::string> const& names) const -> std::string {
     auto const& rules = _grammar.rules;
-    auto const& [s, links] = ls;
-    auto res = std::to_string(s.startPos) + ", <" + names.at(rules[s.rule].lhs.first) + "> ::= ";
+    auto const& s = node.state;
+    auto res = std::to_string(s.begin) + ", <" + names.at(rules[s.rule].lhs.first) + "> ::= ";
     for (auto i = 0_z; i < rules[s.rule].rhs.size(); i++) {
       if (i == s.progress) res += "|";
       res += "<" + names.at(rules[s.rule].rhs[i].first) + ">";
@@ -142,48 +142,52 @@ namespace Parsing {
   }
 
   auto Parser::showStates(std::vector<std::string> const& names) const -> std::string {
-    assert_always(_forest.size() == _sentence.size() + 1);
+    assert(_nodes.size() == _tokens.size() + 1);
     auto res = std::string();
-    for (auto pos = 0_z; pos <= _sentence.size(); pos++) {
+    for (auto pos = 0_z; pos <= _tokens.size(); pos++) {
       res += "States at position " + std::to_string(pos) + ":\n";
-      for (auto const& ls: _forest[pos]) res += showState(ls, names);
+      for (auto const& mode: _nodes[pos]) res += showState(mode, names);
       res += "\n";
-      if (pos < _sentence.size()) res += "Next token: <" + names.at(_sentence[pos].id) + ">\n";
+      if (pos < _tokens.size()) res += "Next token: <" + names.at(_tokens[pos].id) + ">\n";
     }
     return res;
   }
 
   // Returns next non-ignored token, or `std::nullopt` if reaches EOF.
   auto Parser::_nextToken() -> std::optional<Token> {
-    while (!_generator.eof()) {
-      auto const token = _generator.advance();
+    while (!_lexer.eof()) {
+      auto const token = _lexer.advance();
       if (token && token->id != _grammar.ignoredSymbol) return token;
     }
-    return std::nullopt;
+    return {};
   }
 
-  // Adds a state `s` to `_forest` while registering it in `_map`.
-  // If state is already added, returns a pointer to it.
-  auto Parser::_add(size_t pos, Node::State s) -> Node* {
-    assert_always(pos == s.endPos);
-    if (auto const it = _map.find(s); it != _map.end()) {
-      assert_always(it->second->state == s);
-      return it->second;
-    }
-    _forest[pos].push_back(Node{s, {}});
-    return _map[s] = &_forest[pos].back();
+  // Adds a node with state `state` to `_nodes` while registering it in `_map`.
+  // If a node with the given state is already added, returns a pointer to it.
+  auto Parser::_node(size_t begin, size_t end, size_t rule, size_t progress) -> Node* {
+    auto const state = Node::State{begin, end, rule, progress};
+    if (auto const it = _map.find(state); it != _map.end()) return it->second;
+    _nodes[end].push_back(Node{state, {}, {}});
+    return _map[state] = &_nodes[end].back();
+  }
+
+  // Adds a transition from `prev` to `next` which goes through `child`.
+  // This adds both forward and backward links.
+  auto Parser::_transition(Node* prev, std::variant<Node*, Token*> child, Node* next) -> void {
+    prev->next.emplace_back(next, child);
+    next->prev.emplace_back(prev, child);
   }
 
   // Earley's parsing algorithm.
   // See: https://en.wikipedia.org/wiki/Earley_parser#The_algorithm for an overview.
   // See: https://loup-vaillant.fr/tutorials/earley-parsing/ for a possible way to deal with empty rules.
   // Other related information:
-  // - https://github.com/jeffreykegler/kollos/blob/master/notes/misc/leo2.md
+  // - https://github.com/jeffreykegler/old_kollos/blob/master/notes/misc/leo2.md (TODO)
   // - https://jeffreykegler.github.io/Marpa-web-site/
   // - https://arxiv.org/pdf/1910.08129.pdf
   //
-  // Pre: `_grammar` has been preprocessed.
-  // Returns `true` on success. In this case `_sentence` and `_forest` will contain the parsing result.
+  // Pre: `_grammar` is well-formed.
+  // Returns `true` on success. In this case `_tokens` and `_nodes` will contain the parsing result.
   auto Parser::_run() -> bool {
     auto const& rules = _grammar.rules;
     auto const startSymbol = _grammar.startSymbol;
@@ -192,87 +196,80 @@ namespace Parsing {
     auto const& sorted = _grammar.sorted;
     auto const& firstRule = _grammar.firstRule;
 
-    auto last = _generator.position();
+    auto last = _lexer.position();
     auto lastIndex = 0_z;
     auto res = false;
 
-    _sentence.clear();
-    _forest.clear();
+    _tokens.clear();
+    _nodes.clear();
     _map.clear();
     _completions.clear();
 
-    // Minor optimization: avoid looking up rules multiple times (see below).
+    // Minor optimisation: avoid looking up rules multiple times (see below).
     auto addedSym = std::vector<Symbol>();
     auto symAdded = std::vector<bool>(numSymbols);
 
     // Initial states.
-    _forest.emplace_back();
-    for (auto i = firstRule[startSymbol]; i < sorted.size() && rules[sorted[i]].lhs.first == startSymbol; i++) {
-      auto const s = Node::State{0, 0, sorted[i], 0};
-      _forest[0].push_back(Node{s, {}});
-      _map[s] = &_forest[0].back();
-    }
+    _nodes.emplace_back();
+    for (auto k = firstRule[startSymbol]; k < sorted.size() && rules[sorted[k]].lhs.first == startSymbol; k++)
+      _node(0, 0, sorted[k], 0);
 
     // Parse greedily, until there are no further possibilities.
     // Inv: `map` maps all `State`s of items to the items' addresses.
-    for (auto pos = 0_z; !_forest[pos].empty(); pos++) {
+    for (auto i = 0_z; !_nodes[i].empty(); i++) {
 
       // "Prediction/completion" stage.
-      for (auto i = 0_z; i < _forest[pos].size(); i++) {
+      for (auto j = 0_z; j < _nodes[i].size(); j++) {
         // Note that `std::deque::push_back()` invalidates iterators, but not references.
         // See: https://en.cppreference.com/w/cpp/container/deque/push_back
-        auto& ls = _forest[pos][i];
-        auto const& s = ls.state;
+        auto& sref = _nodes[i][j];
+        auto const& s = sref.state;
         auto const& [sl, sr] = rules[s.rule];
+
         if (s.progress < sr.size()) {
           // Perform nonempty prediction.
           auto const& [sym, prec] = sr[s.progress];
           if (!symAdded[sym]) {
             symAdded[sym] = true;
             addedSym.push_back(sym);
-            for (auto j = firstRule[sym]; j < sorted.size() && rules[sorted[j]].lhs.first == sym; j++) {
-              auto const u = Node::State{pos, pos, sorted[j], 0};
-              _add(pos, u);
-            }
+            for (auto k = firstRule[sym]; k < sorted.size() && rules[sorted[k]].lhs.first == sym; k++)
+              _node(i, i, sorted[k], 0);
           }
+
           // Add to completion candidates.
-          _completions.emplace(std::pair(pos, sr[s.progress].first), &ls);
+          _completions.emplace(std::pair(i, sr[s.progress].first), &sref);
+
           // Perform empty prediction + completion (if `sym` is nullable, we could skip it).
-          if (auto const emp = emptyRule[sym]; emp && prec <= rules[*emp].lhs.second) {
-            auto const t = Node::State{pos, pos, *emp, 0};
-            auto const u = Node::State{s.startPos, pos, s.rule, s.progress + 1};
-            _add(pos, u)->links.push_back({&ls, _add(pos, t)});
-          }
-        } else if (s.startPos < pos) {
+          if (auto const emp = emptyRule[sym]; emp && prec <= rules[*emp].lhs.second)
+            _transition(&sref, _node(i, i, *emp, 0), _node(s.begin, i, s.rule, s.progress + 1));
+
+        } else if (s.begin < i) {
           // Perform nonempty completion.
           auto const& [sym, prec] = sl;
-          auto const& [begin, end] = _completions.equal_range(std::pair(s.startPos, sym));
+          auto const& [begin, end] = _completions.equal_range(std::pair(s.begin, sym));
           for (auto it = begin; it != end; it++) {
-            auto& lt = *it->second;
-            auto const& t = lt.state;
+            auto& tref = *it->second;
+            auto const& t = tref.state;
             auto const& [tl, tr] = rules[t.rule];
-            assert_always(t.progress < tr.size() && tr[t.progress].first == sym);
-            if (tr[t.progress].second <= prec) {
-              auto const u = Node::State{t.startPos, pos, t.rule, t.progress + 1};
-              _add(pos, u)->links.push_back({&lt, &ls});
-            }
+            if (t.progress < tr.size() && tr[t.progress].first == sym && tr[t.progress].second <= prec)
+              _transition(&tref, &sref, _node(t.begin, i, t.rule, t.progress + 1));
           }
         }
       }
       // Clear flags.
-      for (auto const i: addedSym) symAdded[i] = false;
+      for (auto const sym: addedSym) symAdded[sym] = false;
       addedSym.clear();
 
       // Check if the start symbol completes and update result.
       auto found = false;
-      for (auto i = 0_z; i < _forest[pos].size(); i++) {
-        auto const& s = _forest[pos][i].state;
-        auto const& [lhs, rhs] = rules[s.rule];
-        if (lhs.first == startSymbol && s.startPos == 0 && s.progress == rhs.size()) found = true;
+      for (auto& sref: _nodes[i]) {
+        auto const& s = sref.state;
+        auto const& [sl, sr] = rules[s.rule];
+        if (sl.first == startSymbol && s.begin == 0 && s.progress == sr.size()) found = true;
       }
       if (found) {
-        last = _generator.position();
-        lastIndex = pos;
+        last = _lexer.position();
+        lastIndex = i;
         res = true;
       }
 
@@ -281,25 +278,23 @@ namespace Parsing {
       if (!token) break; // EOF.
 
       // "Scanning" stage.
-      _sentence.push_back(*token);
-      _forest.emplace_back();
+      _tokens.push_back(*token);
+      _nodes.emplace_back();
       _map.clear();
       auto const& [sym, prec] = std::pair(token->id, PrecedenceMax);
-      for (auto& ls: _forest[pos]) {
-        auto const& s = ls.state;
+      for (auto& sref: _nodes[i]) {
+        // Perform single-token shift.
+        auto const& s = sref.state;
         auto const& [sl, sr] = rules[s.rule];
-        if (s.progress < sr.size() && sr[s.progress].first == sym && sr[s.progress].second <= prec) {
-          // Perform single-token shift.
-          auto const u = Node::State{s.startPos, pos + 1, s.rule, s.progress + 1};
-          _add(pos + 1, u)->links.push_back({&ls, &_sentence.back()});
-        }
+        if (s.progress < sr.size() && sr[s.progress].first == sym && sr[s.progress].second <= prec)
+          _transition(&sref, &_tokens.back(), _node(s.begin, i + 1, s.rule, s.progress + 1));
       }
     }
 
     // Restore last valid position and return.
-    _generator.revert(last);
-    _sentence.resize(lastIndex);
-    _forest.resize(lastIndex + 1);
+    _lexer.revert(last);
+    _tokens.resize(lastIndex);
+    _nodes.resize(lastIndex + 1);
     return res;
 
     /*
@@ -338,18 +333,18 @@ namespace Parsing {
 
   // For use in `nextSentence()` only.
   /*
-  auto Parser::lastError(size_t startPos, size_t endPos, std::optional<Symbol> const& got) const -> ParserError {
-    assert_always(_forest.size() == _sentence.size() + 1);
-    auto pos = _sentence.size();
+  auto Parser::lastError(size_t begin, size_t end, std::optional<Symbol> const& got) const -> ParserError {
+    assert(_nodes.size() == _tokens.size() + 1);
+    auto pos = _tokens.size();
     auto expected = std::vector<Symbol>();
-    for (auto const& ls: mDP[pos]) {
-      auto const& s = ls.state;
+    for (auto const& node: mDP[pos]) {
+      auto const& s = node.state;
       auto const& [lhs, rhs] = rules[s.rule];
       if (s.progress < rhs.size()) expected.push_back(rhs[s.progress].first);
     }
     std::sort(expected.begin(), expected.end());
     expected.resize(static_cast<size_t>(std::unique(expected.begin(), expected.end()) - expected.begin()));
-    return {startPos, endPos, expected, got};
+    return {begin, end, expected, got};
   }
   */
 

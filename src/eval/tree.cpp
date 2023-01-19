@@ -1,10 +1,10 @@
 #include "tree.hpp"
 #include <sstream>
 
-namespace Eval {
+using std::string, std::pair, std::make_pair;
+using std::get_if, std::visit;
 
-  using std::string, std::pair, std::make_pair;
-  using std::get, std::get_if, std::visit;
+namespace Eval {
 
   Tree* Tree::clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const {
     return visit(

@@ -28,7 +28,6 @@ IndentGotoLabels: false
 IndentPPDirectives: AfterHash
 IndentWrappedFunctionNames: false
 IndentRequiresClause: false
-RequiresExpressionIndentation: OuterScope
 
 # Line break points
 BreakBeforeBinaryOperators: NonAssignment
@@ -47,7 +46,6 @@ AlwaysBreakAfterReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
 RequiresClausePosition: WithPreceding
-RequiresExpressionIndentation: OuterScope
 
 AttributeMacros: []
 StatementMacros: ['defineExpect']

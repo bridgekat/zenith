@@ -4,13 +4,15 @@
 #include <iostream>
 #include <sstream>
 
+using std::string;
+using std::vector;
+using Elab::Procs::Subs;
+
 #define SEMANTIC_BRANCHING
 // #define CHECK_INVARIANTS
 // #define DEBUG_TRACE
 
 namespace Elab {
-
-  using Procs::Subs;
 
   // std::random_device rd;
   // std::mt19937 e{ rd() };
@@ -577,7 +579,7 @@ namespace Elab {
   }
 
   void Tableau::checkBranch(Branch const& b) {
-    unordered_set<ExprHash, ExprHash::GetHash> ths[2] = {b.hashset[0], b.hashset[1]};
+    std::unordered_set<ExprHash, ExprHash::GetHash> ths[2] = {b.hashset[0], b.hashset[1]};
     for (unsigned int i = 0; i < N; i++) {
       for (unsigned int pos = 0; pos < 2; pos++) {
         for (Expr const* e: b.cedents[i][pos]) {

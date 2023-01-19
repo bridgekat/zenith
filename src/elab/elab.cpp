@@ -1,20 +1,20 @@
 #include "elab.hpp"
 
+// clang-format off
+/*
+using std::vector;
+using std::string;
+using std::pair;
+using namespace Core;
+
+using enum Expr::Tag;
+using enum Expr::SortTag;
+using enum Expr::VarTag;
+using enum Expr::LamTag;
+using enum Expr::PiTag;
+
 namespace Elab {
 
-  using std::vector;
-  using std::string;
-  using std::pair;
-  using namespace Core;
-
-  using enum Expr::Tag;
-  using enum Expr::SortTag;
-  using enum Expr::VarTag;
-  using enum Expr::LamTag;
-  using enum Expr::PiTag;
-
-  // clang-format off
-  /*
   pair<Expr const*, Expr const*> inferHoles(Expr const* e, Context const& ctx, Allocator<Expr>& pool, vector<Expr const*>& stk, vector<string>& names) {
     switch (e->tag) {
       case Sort: {
@@ -66,6 +66,6 @@ namespace Elab {
       }
     } unreachable;
   }
-  */
 
 }
+*/

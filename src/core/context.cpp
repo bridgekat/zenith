@@ -1,10 +1,9 @@
 #include "context.hpp"
 #include "expr.hpp"
 
-namespace Core {
+using std::string;
 
-  using std::string;
-  using std::vector;
+namespace Core {
 
   Context::Context():
     pools(),

@@ -10,7 +10,7 @@
 
 namespace Server {
 
-  using std::optional, std::nullopt;
+  using std::optional;
   using std::shared_ptr;
 
   // Awaitable (chained) coroutines, for single-thread use only
@@ -95,10 +95,13 @@ namespace Server {
 
     // `Coroutine` objects must be constructed from `get_return_object()`!
     Coroutine(
-      shared_ptr<optional<T>> result, shared_ptr<std::exception_ptr> exptr, std::coroutine_handle<promise_type>&& handle
+      shared_ptr<optional<T>> result,
+      shared_ptr<std::exception_ptr> exptr,
+      std::coroutine_handle<promise_type>&& handle
     ):
       result(result),
-      exptr(exptr), handle(handle) {}
+      exptr(exptr),
+      handle(handle) {}
   };
 
   // We have to write these all over again, as using templates to select between
@@ -150,10 +153,13 @@ namespace Server {
     std::coroutine_handle<promise_type> handle;
 
     Coroutine(
-      shared_ptr<bool> completed, shared_ptr<std::exception_ptr> exptr, std::coroutine_handle<promise_type>&& handle
+      shared_ptr<bool> completed,
+      shared_ptr<std::exception_ptr> exptr,
+      std::coroutine_handle<promise_type>&& handle
     ):
       completed(completed),
-      exptr(exptr), handle(handle) {}
+      exptr(exptr),
+      handle(handle) {}
   };
 
 }
