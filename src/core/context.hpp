@@ -21,21 +21,21 @@ namespace Core {
     Context();
 
     // Add variable unconditionally (for axioms/definitions)
-    size_t addDefinition(std::string const& s, Expr const* e);
+    auto addDefinition(std::string const& s, Expr const* e) -> size_t;
 
     // Add variable as assumption
-    size_t pushAssumption(std::string const& s, Expr const* e);
+    auto pushAssumption(std::string const& s, Expr const* e) -> size_t;
 
     // Pops last assumption, performing appropriate changes to all variables in the top layer.
     // Returns false if there is no assumptions left.
-    bool pop();
+    auto pop() -> bool;
 
-    size_t size() const { return entries.size(); }
-    Expr const* operator[](size_t index) const { return entries.at(index).second; }
-    std::string identifier(size_t index) const { return entries.at(index).first; }
+    auto size() const -> size_t { return entries.size(); }
+    auto operator[](size_t index) const -> Expr const* { return entries.at(index).second; }
+    auto identifier(size_t index) const -> std::string { return entries.at(index).first; }
 
     // Look up by literal name (slow, not commonly used)
-    std::optional<size_t> lookup(std::string const& s) const {
+    auto lookup(std::string const& s) const -> std::optional<size_t> {
       // Unsigned count down: https://nachtimwald.com/2019/06/02/unsigned-count-down/
       for (size_t i = entries.size(); i-- > 0;)
         if (entries[i].first == s) return i;

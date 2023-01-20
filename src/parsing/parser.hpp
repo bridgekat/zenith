@@ -17,16 +17,19 @@ namespace Parsing {
   // Preprocessed context-free grammar for use by `Parser`.
   struct Grammar {
     struct Rule {
-      std::pair<Symbol, Precedence> lhs;
-      std::vector<std::pair<Symbol, Precedence>> rhs;
+      std::pair<Symbol, Precedence> lhs;              // LHS symbol.
+      std::vector<std::pair<Symbol, Precedence>> rhs; // RHS symbols.
     };
-    Symbol numSymbols;                            // Number of symbols = (Maximum symbol ID occured in rules) + 1.
-    Symbol startSymbol;                           // Starting symbol ID.
-    Symbol ignoredSymbol;                         // Ignored symbol ID.
-    std::vector<Rule> rules;                      // Rule ID -> (LHS symbol, RHS symbols).
-    std::vector<std::optional<size_t>> emptyRule; // LHS symbol ID -> empty rule ID.
-    std::vector<size_t> sorted;                   // Indices of non-empty rules, sorted by LHS symbol.
-    std::vector<size_t> firstRule;                // LHS symbol ID -> index in `sorted`.
+    struct IndexRange {
+      size_t begin; // Index of the first rule that corresponds to this symbol.
+      size_t end;   // Index of the last rule that corresponds to this symbol + 1.
+    };
+    Symbol numSymbols;              // Number of symbols = (maximum symbol ID occured in rules) + 1.
+    Symbol startSymbol;             // Starting symbol ID.
+    Symbol ignoredSymbol;           // Ignored symbol ID.
+    std::vector<Rule> rules;        // Rule ID -> (LHS symbol, RHS symbols).
+    std::vector<size_t> sorted;     // Indices of non-nullable rules, sorted by LHS symbol.
+    std::vector<IndexRange> ranges; // LHS symbol ID -> rule index ranges in `sorted`.
   };
 
   // Grammar preprocessor.
@@ -54,9 +57,7 @@ namespace Parsing {
       size_t end;      // End index in sentence.
       size_t rule;     // Production rule ID.
       size_t progress; // Index in production rule.
-      // Required since `State`s are used as keys to `std::unordered_map`.
-      auto operator==(State const&) const -> bool = default;
-      // Required since `State`s are used as keys to `std::unordered_map`.
+      friend auto operator==(State const&, State const&) -> bool = default;
       struct Hasher {
         auto operator()(State const& s) const -> size_t { return hashAll(s.begin, s.end, s.rule, s.progress); }
       };
@@ -77,7 +78,8 @@ namespace Parsing {
   */
 
   // Earley parser!
-  // This is more suitable for left-recursive grammars than right-recursive ones.
+  // Without the "(G)LR optimisation", this is more suitable for left-recursive rules (linear complexity)
+  // than right-recursive ones (quadratic time and space complexity w.r.t. length of the sentence).
   class Parser {
   public:
     // Given references must be valid over the `Parser`'s lifetime.
@@ -104,8 +106,10 @@ namespace Parsing {
 
     // Map for state deduplication: state -> node.
     std::unordered_map<Node::State, Node*, Node::State::Hasher> _map;
-    // Map of nonempty completion candidates: (end position, next symbol) -> node.
+    // Map of completion candidates: (end position, next symbol) -> node.
     std::unordered_multimap<std::pair<size_t, Symbol>, Node*, PairHasher> _completions;
+    // Map of null-completed nodes: (start and end position, symbol) -> node.
+    std::unordered_multimap<std::pair<size_t, Symbol>, Node*, PairHasher> _completed;
 
     auto _nextToken() -> std::optional<Token>;
     auto _node(size_t begin, size_t end, size_t rule, size_t progress) -> Node*;

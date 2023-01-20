@@ -6,7 +6,7 @@ using std::get_if, std::visit;
 
 namespace Eval {
 
-  Tree* Tree::clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const {
+  auto Tree::clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const -> Tree* {
     return visit(
       Matcher{
         [&](Nil) { return nil; },
@@ -24,19 +24,19 @@ namespace Eval {
     );
   }
 
-  string Tree::toString() const { return toStringUntil(nullptr).second; }
+  auto Tree::toString() const -> string { return toStringUntil(nullptr).second; }
 
-  pair<bool, string> Tree::toStringUntil(Tree const* p) const {
+  auto Tree::toStringUntil(Tree const* p) const -> pair<bool, string> {
     if (this == p) return make_pair(true, "");
     return visit(
       Matcher{
         [](Nil) { return make_pair(false, string("()")); },
         [p](Cons const& x) {
-          string res = "(";
+          auto res = string("(");
           auto const& [f0, s0] = x.head->toStringUntil(p);
           res += s0;
           if (f0) return make_pair(true, res);
-          auto const* q = x.tail;
+          auto q = x.tail;
           while (auto cons = get_if<Cons>(q)) {
             auto const& [hd, tl] = *cons;
             res += " ";
@@ -66,7 +66,7 @@ namespace Eval {
           return make_pair(false, "#<closure params: " + x.formal->toString() + ", body: " + x.es->toString() + "...>");
         },
         [](Native const& x) {
-          std::stringstream addr;
+          auto addr = std::stringstream();
           addr << &x.val;
           return make_pair(false, "#<native type: " + string(x.val.type().name()) + ", addr: " + addr.str() + ">");
         },
@@ -75,8 +75,8 @@ namespace Eval {
     );
   }
 
-  string Tree::escapeString(string const& s) {
-    string res;
+  auto Tree::escapeString(string const& s) -> string {
+    auto res = string();
     for (char c: s) {
       switch (c) {
         case '"': res += "\\\""; break;
@@ -94,9 +94,9 @@ namespace Eval {
     return res;
   }
 
-  string Tree::unescapeString(string const& s) {
-    string res;
-    for (size_t i = 0; i < s.size(); i++) {
+  auto Tree::unescapeString(string const& s) -> string {
+    auto res = string();
+    for (auto i = 0_z; i < s.size(); i++) {
       if (s[i] == '\\' && i + 1 < s.size()) {
         char c = s[i + 1];
         switch (c) {

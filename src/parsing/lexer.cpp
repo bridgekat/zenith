@@ -78,13 +78,16 @@ namespace Parsing {
     return res;
   }
 
+  // See: https://en.wikipedia.org/wiki/UTF-8#Encoding
+  constexpr auto CharMultiMin = Char{128};
+
   auto AutomatonBuilder::empty() -> Subgraph {
     auto const s = _node(), t = _node();
     _transition(s, 0, t);
     return {s, t};
   }
   auto AutomatonBuilder::any() -> Subgraph { return range(1, CharMax); }
-  auto AutomatonBuilder::utf8segment() -> Subgraph { return range(128, CharMax); }
+  auto AutomatonBuilder::utf8segment() -> Subgraph { return range(CharMultiMin, CharMax); }
   auto AutomatonBuilder::chars(std::vector<Char> const& ls) -> Subgraph {
     auto const s = _node(), t = _node();
     for (auto const c: ls) _transition(s, c, t);

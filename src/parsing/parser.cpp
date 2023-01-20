@@ -29,9 +29,11 @@ namespace Parsing {
     auto& startSymbol = res.startSymbol = _startSymbol;
     auto& ignoredSymbol = res.ignoredSymbol = _ignoredSymbol;
     auto& rules = res.rules = _rules;
-    auto& emptyRule = res.emptyRule;
     auto& sorted = res.sorted;
-    auto& firstRule = res.firstRule;
+    auto& ranges = res.ranges;
+
+    // Number of rules.
+    auto const n = rules.size();
 
     // Count the number of symbols involved.
     numSymbols = std::max(startSymbol, ignoredSymbol);
@@ -41,43 +43,18 @@ namespace Parsing {
     }
     numSymbols++;
 
-    // Find all empty rules, and confirm that no other rules are nullable.
-    // It is quite possible to support arbitrary nullable rules, but that would make things significantly messier
-    // (just think about ambiguous empty derivations...)
-    emptyRule = std::vector<std::optional<size_t>>(numSymbols);
-    for (auto i = 0_z; i < rules.size(); i++) {
-      auto const& [lhs, rhs] = rules[i];
-      if (rhs.empty()) emptyRule[lhs.first] = i;
-    }
-    for (auto i = 0_z; i < rules.size(); i++) {
-      auto const& [lhs, rhs] = rules[i];
-      if (emptyRule[lhs.first] != i) {
-        auto nonNullable = false;
-        for (auto const& r: rhs)
-          if (!emptyRule[r.first]) nonNullable = true;
-        // Confirm that no other rules are nullable.
-        assert(nonNullable);
-      }
-    }
-    // Nullable start symbol can cause infinite loop.
-    assert(!emptyRule[startSymbol]);
-
-    // Sort all non-empty (non-nullable) rules by symbol ID (for faster access).
-    // Also accumulate the lengths of RHS (plus one) of the production rules (for better hashing).
+    // Sort all rules by LHS symbol ID (for faster access).
     sorted.clear();
-    for (auto i = 0_z; i < rules.size(); i++) {
-      auto const& [lhs, rhs] = rules[i];
-      if (emptyRule[lhs.first] != i) sorted.push_back(i);
-    }
+    for (auto i = 0_z; i < n; i++) sorted.push_back(i);
     std::sort(sorted.begin(), sorted.end(), [&rules](size_t i, size_t j) { return rules[i].lhs < rules[j].lhs; });
-    auto const n = sorted.size();
 
-    // For each symbol find the index of its first production rule (for faster access).
-    // If none then set to `n`.
-    firstRule = std::vector<size_t>(numSymbols, n);
+    // For each symbol ID find the index range of its production rules in `sorted` (for faster access).
+    // If none then all set to n.
+    ranges = std::vector<Grammar::IndexRange>(numSymbols, {n, n});
     for (auto i = 0_z; i < n; i++) {
-      auto const& [lhs, rhs] = rules[sorted[i]];
-      if (firstRule[lhs.first] == n) firstRule[lhs.first] = i;
+      auto const& curr = rules[sorted[i]].lhs.first;
+      if (i == 0 || rules[sorted[i - 1]].lhs.first != curr) ranges[curr].begin = i;
+      if (i == n - 1 || rules[sorted[i + 1]].lhs.first != curr) ranges[curr].end = i + 1;
     }
     return res;
   }
@@ -180,7 +157,7 @@ namespace Parsing {
 
   // Earley's parsing algorithm.
   // See: https://en.wikipedia.org/wiki/Earley_parser#The_algorithm for an overview.
-  // See: https://loup-vaillant.fr/tutorials/earley-parsing/ for a possible way to deal with empty rules.
+  // See: https://loup-vaillant.fr/tutorials/earley-parsing
   // Other related information:
   // - https://github.com/jeffreykegler/old_kollos/blob/master/notes/misc/leo2.md (TODO)
   // - https://jeffreykegler.github.io/Marpa-web-site/
@@ -190,11 +167,10 @@ namespace Parsing {
   // Returns `true` on success. In this case `_tokens` and `_nodes` will contain the parsing result.
   auto Parser::_run() -> bool {
     auto const& rules = _grammar.rules;
-    auto const startSymbol = _grammar.startSymbol;
-    auto const numSymbols = _grammar.numSymbols;
-    auto const& emptyRule = _grammar.emptyRule;
+    auto const& startSymbol = _grammar.startSymbol;
+    auto const& numSymbols = _grammar.numSymbols;
     auto const& sorted = _grammar.sorted;
-    auto const& firstRule = _grammar.firstRule;
+    auto const& ranges = _grammar.ranges;
 
     auto last = _lexer.position();
     auto lastIndex = 0_z;
@@ -204,15 +180,15 @@ namespace Parsing {
     _nodes.clear();
     _map.clear();
     _completions.clear();
+    _completed.clear();
 
-    // Minor optimisation: avoid looking up rules multiple times (see below).
+    // Avoid looking up the same rule multiple times in the prediction stage (see below).
     auto addedSym = std::vector<Symbol>();
     auto symAdded = std::vector<bool>(numSymbols);
 
     // Initial states.
     _nodes.emplace_back();
-    for (auto k = firstRule[startSymbol]; k < sorted.size() && rules[sorted[k]].lhs.first == startSymbol; k++)
-      _node(0, 0, sorted[k], 0);
+    for (auto k = ranges[startSymbol].begin; k < ranges[startSymbol].end; k++) _node(0, 0, sorted[k], 0);
 
     // Parse greedily, until there are no further possibilities.
     // Inv: `map` maps all `State`s of items to the items' addresses.
@@ -225,35 +201,38 @@ namespace Parsing {
         auto& sref = _nodes[i][j];
         auto const& s = sref.state;
         auto const& [sl, sr] = rules[s.rule];
-
         if (s.progress < sr.size()) {
-          // Perform nonempty prediction.
+          // Perform prediction.
           auto const& [sym, prec] = sr[s.progress];
           if (!symAdded[sym]) {
             symAdded[sym] = true;
             addedSym.push_back(sym);
-            for (auto k = firstRule[sym]; k < sorted.size() && rules[sorted[k]].lhs.first == sym; k++)
-              _node(i, i, sorted[k], 0);
+            for (auto k = ranges[sym].begin; k < ranges[sym].end; k++) _node(i, i, sorted[k], 0);
           }
-
           // Add to completion candidates.
-          _completions.emplace(std::pair(i, sr[s.progress].first), &sref);
-
-          // Perform empty prediction + completion (if `sym` is nullable, we could skip it).
-          if (auto const emp = emptyRule[sym]; emp && prec <= rules[*emp].lhs.second)
-            _transition(&sref, _node(i, i, *emp, 0), _node(s.begin, i, s.rule, s.progress + 1));
-
-        } else if (s.begin < i) {
-          // Perform nonempty completion.
+          _completions.emplace(std::pair(i, sym), &sref);
+          // Special null-completion (if `sym` is already null-completed, we are late, so we have to complete here).
+          auto const& [begin, end] = _completed.equal_range(std::pair(i, sym));
+          for (auto it = begin; it != end; it++) {
+            auto& tref = *it->second;
+            auto const& t = tref.state;
+            auto const& [tl, tr] = rules[t.rule];
+            assert(t.progress == tr.size() && tl.first == sym);
+            if (prec <= tl.second) _transition(&sref, &tref, _node(s.begin, i, s.rule, s.progress + 1));
+          }
+        } else {
+          // Perform completion.
           auto const& [sym, prec] = sl;
           auto const& [begin, end] = _completions.equal_range(std::pair(s.begin, sym));
           for (auto it = begin; it != end; it++) {
             auto& tref = *it->second;
             auto const& t = tref.state;
             auto const& [tl, tr] = rules[t.rule];
-            if (t.progress < tr.size() && tr[t.progress].first == sym && tr[t.progress].second <= prec)
-              _transition(&tref, &sref, _node(t.begin, i, t.rule, t.progress + 1));
+            assert(t.progress < tr.size() && tr[t.progress].first == sym);
+            if (tr[t.progress].second <= prec) _transition(&tref, &sref, _node(t.begin, i, t.rule, t.progress + 1));
           }
+          // If null, add to known null-completions.
+          if (s.begin == i) _completed.emplace(std::pair(i, sym), &sref);
         }
       }
       // Clear flags.

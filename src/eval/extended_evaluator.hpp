@@ -12,14 +12,13 @@ namespace Eval {
   class ExtendedEvaluator: public Evaluator {
   public:
     ExtendedEvaluator();
-    ~ExtendedEvaluator() override = default;
 
   private:
     Core::FOLContext ctx;
     Allocator<Core::Expr> epool;
 
-    Tree* exprTree(Core::Expr const* e);
-    Core::Expr const* treeExpr(Tree* e);
+    auto exprTree(Core::Expr const* e) -> Tree*;
+    auto treeExpr(Tree* e) -> Core::Expr const*;
   };
 
 }

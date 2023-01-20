@@ -62,7 +62,7 @@ namespace Core {
     constexpr size_t Letters = 26;
     string res = "__";
     do {
-      res.push_back('a' + static_cast<char>(i % Letters));
+      res.push_back(static_cast<char>('a' + i % Letters));
       i /= Letters;
     } while (i > 0);
     return res;

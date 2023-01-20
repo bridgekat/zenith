@@ -16,23 +16,23 @@ namespace Eval {
   // clang-format off
   // Concrete atom types for Tree
   class Tree;
-  struct Symbol  { std::string val;           bool operator==(Symbol const&)   const = default; };
-  struct Prim    { size_t id;                 bool operator==(Prim const&)     const = default; };
-  struct Nat64   { uint64_t val;              bool operator==(Nat64 const&)    const = default; };
-  struct String  { std::string val;           bool operator==(String const&)   const = default; };
-  struct Bool    { bool val;                  bool operator==(Bool const&)     const = default; };
-  struct Unit    {                            bool operator==(Unit const&)     const = default; };
-  struct Closure { Tree* env, * formal, * es; bool operator==(Closure const&)  const = default; };
-  struct Native  { std::any val;              bool operator==(Native const& r) const { return &val == &r.val; } };
+  struct Symbol  { std::string val;           auto operator==(Symbol const&)   const -> bool = default; };
+  struct Prim    { size_t id;                 auto operator==(Prim const&)     const -> bool = default; };
+  struct Nat64   { uint64_t val;              auto operator==(Nat64 const&)    const -> bool = default; };
+  struct String  { std::string val;           auto operator==(String const&)   const -> bool = default; };
+  struct Bool    { bool val;                  auto operator==(Bool const&)     const -> bool = default; };
+  struct Unit    {                            auto operator==(Unit const&)     const -> bool = default; };
+  struct Closure { Tree* env, * formal, * es; auto operator==(Closure const&)  const -> bool = default; };
+  struct Native  { std::any val;              auto operator==(Native const& r) const -> bool { return &val == &r.val; } };
   // clang-format on
 
   struct Nil {
-    bool operator==(Nil const&) const = default;
+    auto operator==(Nil const&) const -> bool = default;
   };
 
   struct Cons {
     Tree *head, *tail;
-    bool operator==(Cons const& r) const;
+    auto operator==(Cons const& r) const -> bool;
   };
 
   // Main Tree type
@@ -48,16 +48,16 @@ namespace Eval {
     Tree(Tree* l, Tree* r):
       Super(Cons{l, r}) {}
 
-    Tree* clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const;
+    auto clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const -> Tree*;
 
-    std::string toString() const;
-    std::pair<bool, std::string> toStringUntil(Tree const* p) const;
+    auto toString() const -> std::string;
+    auto toStringUntil(Tree const* p) const -> std::pair<bool, std::string>;
 
-    static std::string escapeString(std::string const& s);
-    static std::string unescapeString(std::string const& s);
+    static auto escapeString(std::string const& s) -> std::string;
+    static auto unescapeString(std::string const& s) -> std::string;
   };
 
-  inline bool Cons::operator==(Cons const& r) const { return *head == *r.head && *tail == *r.tail; };
+  inline auto Cons::operator==(Cons const& r) const -> bool { return *head == *r.head && *tail == *r.tail; };
 
   /*
   // A thread-local temporary allocator instance for `Tree`

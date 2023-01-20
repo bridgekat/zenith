@@ -2,6 +2,7 @@
 // TEMP CODE?
 #include <fstream>
 #include <iostream>
+#include <limits>
 
 using std::string;
 using std::vector;
@@ -126,9 +127,9 @@ namespace Eval {
     rules = r;
 
     // Add ignored and starting symbols.
-    symbolNames.push_back("_");
+    symbolNames.emplace_back("_");
     grammarBuilder.withIgnoredSymbol(ignoredSymbol);
-    symbolNames.push_back("_");
+    symbolNames.emplace_back("_");
     grammarBuilder.withStartSymbol(startSymbol);
 
     // Add patterns.
@@ -348,15 +349,15 @@ namespace Eval {
       auto const& target = eval(env, head);
       for (auto it = get_if<Cons>(clauses); it; it = get_if<Cons>(it->tail)) {
         auto const& [pat, u] = expect<Cons>(it->head);
-        Tree* newEnv = env;
+        auto newEnv = env;
         if (match(target, pat, newEnv)) {
           auto const& [expr, _2] = expect<Cons>(u);
           return {newEnv, expr};
         }
       }
       // All failed, throw exception
-      string msg = "nonexhaustive patterns: { ";
-      bool first = true;
+      auto msg = string("nonexhaustive patterns: { ");
+      auto first = true;
       for (auto it = get_if<Cons>(clauses); it; it = get_if<Cons>(it->tail)) {
         auto const& [pat, _2] = expect<Cons>(it->head);
         if (!first) msg += ", ";
@@ -381,16 +382,16 @@ namespace Eval {
     // [√] Currently we don't have a `letrec`, and this is just a synonym of `letrec*`...
     addPrimitive("letrec", false, [this](Tree* env, Tree* e) -> Result {
       auto const& [defs, es] = expect<Cons>(e);
-      // Add #unit (placeholder) bindings
-      vector<Tree**> refs;
+      // Add #unit (placeholder) bindings.
+      auto refs = vector<Tree**>();
       for (auto it = get_if<Cons>(defs); it; it = get_if<Cons>(it->tail)) {
         auto const& [lhs, _] = expect<Cons>(it->head);
         env = extend(env, expect<Symbol>(lhs).val, unit);
         // Will always succeed due to the recent `extend`.
         refs.push_back(&get_if<Cons>(get_if<Cons>(get_if<Cons>(env)->head)->tail)->head);
       }
-      // Sequentially evaluate and assign
-      size_t i = 0;
+      // Sequentially evaluate and assign.
+      auto i = 0_z;
       for (auto it = get_if<Cons>(defs); it; it = get_if<Cons>(it->tail)) {
         auto const& [lhs, t] = expect<Cons>(it->head);
         auto const& [rhs, _] = expect<Cons>(t);
@@ -421,7 +422,7 @@ namespace Eval {
     addPrimitive("set", false, [this](Tree* env, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
-      auto const& value = eval(env, rhs);
+      auto const value = eval(env, rhs);
       auto const s = expect<Symbol>(lhs).val;
       for (auto it = get_if<Cons>(env); it; it = get_if<Cons>(it->tail))
         if (auto const& u = get_if<Cons>(it->head))
@@ -492,14 +493,15 @@ namespace Eval {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
       auto const& sv = expect<String>(lhs).val;
-      size_t iv = expect<Nat64>(rhs).val;
+      auto const iv = expect<Nat64>(rhs).val;
       if (iv >= sv.size()) throw PartialEvalError("Index " + std::to_string(iv) + " out of range", rhs);
       return nat(static_cast<unsigned char>(sv[iv]));
     });
     addPrimitive("char_string", true, [this](Tree*, Tree* e) -> Result {
       auto const& [chr, _] = expect<Cons>(e);
-      uint64_t cv = expect<Nat64>(chr).val;
-      if (cv >= 256) throw PartialEvalError("Character code " + std::to_string(cv) + " out of range", chr);
+      auto const cv = expect<Nat64>(chr).val;
+      if (cv > std::numeric_limits<unsigned char>::max())
+        throw PartialEvalError("Character code " + std::to_string(cv) + " out of range", chr);
       return str(string(1, static_cast<char>(cv)));
     });
     addPrimitive("string_concat", true, [this](Tree*, Tree* e) -> Result {
@@ -512,7 +514,7 @@ namespace Eval {
       auto const& [pos, u] = expect<Cons>(t);
       auto const& [len, _] = expect<Cons>(u);
       auto const& sv = expect<String>(s).val;
-      size_t posv = expect<Nat64>(pos).val;
+      auto posv = expect<Nat64>(pos).val;
       if (posv > sv.size()) posv = sv.size();
       return str(sv.substr(posv, expect<Nat64>(len).val));
     });
@@ -577,7 +579,7 @@ namespace Eval {
     addPrimitive("debug_save_file", true, [this](Tree*, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
-      std::ofstream out(expect<String>(lhs).val);
+      auto out = std::ofstream(expect<String>(lhs).val);
       if (!out.is_open()) throw PartialEvalError("Could not open file", lhs);
       out << expect<String>(rhs).val << std::endl;
       return unit;
@@ -585,9 +587,11 @@ namespace Eval {
   }
 
   // Evaluator entries are stored as lists of two elements.
-  Tree* Evaluator::extend(Tree* env, std::string const& s, Tree* e) { return cons(cons(sym(s), cons(e, nil)), env); }
+  auto Evaluator::extend(Tree* env, std::string const& s, Tree* e) -> Tree* {
+    return cons(cons(sym(s), cons(e, nil)), env);
+  }
 
-  Tree* Evaluator::lookup(Tree* env, std::string const& s) {
+  auto Evaluator::lookup(Tree* env, std::string const& s) -> Tree* {
     for (auto it = get_if<Cons>(env); it; it = get_if<Cons>(it->tail)) {
       if (auto const& curr = get_if<Cons>(it->head)) {
         auto const& lhs = curr->head;
@@ -627,7 +631,7 @@ namespace Eval {
     return res;
   }
 
-  Tree* Evaluator::resolve(size_t maxDepth) {
+  auto Evaluator::resolve(size_t maxDepth) -> Tree* {
     assert(grammar && parser);
     auto const& pos = parser->tokens().size();
     auto const& nodes = parser->nodes();
@@ -663,7 +667,7 @@ namespace Eval {
 #undef unit
 
   // TODO: custom expansion order
-  Tree* Evaluator::expand(Tree* e) {
+  auto Evaluator::expand(Tree* e) -> Tree* {
     if (get_if<Cons>(e)) {
       // Non-empty lists: expand all macros, from inside out
       try {
@@ -693,7 +697,7 @@ namespace Eval {
   }
 
   // Expands elements in a list
-  Tree* Evaluator::expandList(Tree* e) {
+  auto Evaluator::expandList(Tree* e) -> Tree* {
     if (get_if<Nil>(e)) return e;
     else if (auto const& econs = get_if<Cons>(e)) {
       auto const& [head, tail] = *econs;
@@ -704,7 +708,7 @@ namespace Eval {
     return expand(e);
   }
 
-  Tree* Evaluator::eval(Tree* env, Tree* e) {
+  auto Evaluator::eval(Tree* env, Tree* e) -> Tree* {
     while (true) {
       // Evaluate current `e` under current `env`
 
@@ -762,7 +766,7 @@ namespace Eval {
   }
 
   // Evaluates elements in a list (often used as parameters)
-  Tree* Evaluator::evalList(Tree* env, Tree* e) {
+  auto Evaluator::evalList(Tree* env, Tree* e) -> Tree* {
     if (get_if<Nil>(e)) return e;
     else if (auto const& econs = get_if<Cons>(e)) {
       auto const& [head, tail] = *econs;
@@ -775,7 +779,7 @@ namespace Eval {
 
   // Executes elements in a list, except the last one (for tail call optimization)
   // Returns the last one unevaluated, or `#unit` if list is empty
-  Tree* Evaluator::beginList(Tree* env, Tree* e) {
+  auto Evaluator::beginList(Tree* env, Tree* e) -> Tree* {
     for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) {
       auto const& [head, tail] = *it;
       if (!get_if<Cons>(tail)) {
@@ -789,7 +793,7 @@ namespace Eval {
   }
 
   // Evaluates a quasiquoted list
-  Tree* Evaluator::quasiquote(Tree* env, Tree* e) {
+  auto Evaluator::quasiquote(Tree* env, Tree* e) -> Tree* {
     if (auto const& econs = get_if<Cons>(e)) {
       auto const& [head, tail] = *econs;
       if (*head == Tree(Symbol{"unquote"})) return eval(env, expect<Cons>(tail).head);

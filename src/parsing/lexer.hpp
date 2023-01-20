@@ -6,6 +6,7 @@
 #include <array>
 #include <optional>
 #include <utility>
+#include <vector>
 #include <common.hpp>
 #include "generator.hpp"
 

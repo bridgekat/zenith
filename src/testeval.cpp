@@ -1,5 +1,6 @@
 #include <fstream>
 #include <iostream>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -18,10 +19,11 @@ auto readFile(std::ifstream&& in) -> string {
   return sstr.str();
 }
 
-auto main(int argc, char** argv) -> int {
-  Eval::ExtendedEvaluator evaluator;
-  string in;
-  for (int i = 1; i < argc; i++) in += readFile(std::ifstream(argv[i])) + "\n";
+auto main(int argc, char* argv[]) -> int {
+  auto const args = std::span(argv, static_cast<size_t>(argc));
+  auto evaluator = Eval::ExtendedEvaluator();
+  auto in = string();
+  for (auto i = 1_z; i < args.size(); i++) in += readFile(std::ifstream(args[i])) + "\n";
 
   while (true) {
     if (in.empty()) {

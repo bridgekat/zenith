@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <common.hpp>
 
 namespace Parsing {
@@ -58,8 +59,8 @@ namespace Parsing {
   class CharBuffer: public Generator<Char> {
   public:
     // A `CharBuffer` is constructed from a `std::string`.
-    explicit CharBuffer(std::string const& string):
-      _string(string) {}
+    explicit CharBuffer(std::string string):
+      _string(std::move(string)) {}
 
     auto eof() const -> bool override { return _position == _string.size(); }
     auto advance() -> Char override { return _position < _string.size() ? static_cast<Char>(_string[_position++]) : 0; }
@@ -114,9 +115,6 @@ namespace Parsing {
     size_t _position = 0;
     std::deque<T> _elements;
   };
-
-  // inline auto example1 = CharBuffer("233");
-  // inline auto example2 = LookaheadBuffer(example1);
 }
 
 #endif // GENERATOR_HPP_

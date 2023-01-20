@@ -2,6 +2,9 @@
 
 using std::string;
 using Core::Expr;
+using enum Core::Expr::Tag;
+using enum Core::Expr::SortTag;
+using enum Core::Expr::VarTag;
 
 namespace Eval {
 
@@ -84,10 +87,7 @@ namespace Eval {
     });
   }
 
-  Tree* ExtendedEvaluator::exprTree(Expr const* e) {
-    using enum Expr::Tag;
-    using enum Expr::SortTag;
-    using enum Expr::VarTag;
+  auto ExtendedEvaluator::exprTree(Expr const* e) -> Tree* {
     switch (e->tag) {
       case Sort:
         switch (e->sort.tag) {
@@ -110,15 +110,14 @@ namespace Eval {
     unreachable;
   }
 
-  Expr const* ExtendedEvaluator::treeExpr(Tree* e) {
-    using enum Expr::Tag;
+  auto ExtendedEvaluator::treeExpr(Tree* e) -> Expr const* {
 #define expr epool.emplace
     auto const& [h, t] = expect<Cons>(e);
-    string sym = expect<Symbol>(h).val;
+    auto const& sym = expect<Symbol>(h).val;
     if (sym == "Sort") {
       auto const& [h1, _] = expect<Cons>(t);
       expect<Nil>(_);
-      string tag = expect<Symbol>(h1).val;
+      auto const& tag = expect<Symbol>(h1).val;
       if (tag == "Prop") return expr(Expr::SProp);
       else if (tag == "Type") return expr(Expr::SType);
       else if (tag == "Kind") return expr(Expr::SKind);
@@ -127,8 +126,8 @@ namespace Eval {
       auto const& [h1, u] = expect<Cons>(t);
       auto const& [h2, _] = expect<Cons>(u);
       expect<Nil>(_);
-      string tag = expect<Symbol>(h1).val;
-      uint64_t id = expect<Nat64>(h2).val;
+      auto const& tag = expect<Symbol>(h1).val;
+      auto const id = expect<Nat64>(h2).val;
       if (tag == "Bound") return expr(Expr::VBound, static_cast<uint64_t>(id));
       else if (tag == "Free") return expr(Expr::VFree, static_cast<uint64_t>(id));
       else if (tag == "Meta") return expr(Expr::VMeta, static_cast<uint64_t>(id));

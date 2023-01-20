@@ -16,24 +16,26 @@
 
 namespace Eval {
 
-  // Parsing error exception
+  // Parsing error exception.
   struct ParsingError: public std::runtime_error {
-    size_t begin, end;
+    size_t begin;
+    size_t end;
+
     ParsingError(std::string const& s, size_t begin, size_t end):
       std::runtime_error(s),
       begin(begin),
       end(end) {}
   };
 
-  // Evaluation error exception
+  // Evaluation error exception.
   struct EvalError: public std::runtime_error {
-    Tree const *at, *e;
+    Tree const* at;
+    Tree const* e;
+
     EvalError(std::string const& s, Tree const* at, Tree const* e):
       std::runtime_error(s),
       at(at),
       e(e) {}
-    EvalError(EvalError const&) = default;
-    EvalError& operator=(EvalError const&) = default;
   };
 
   // Throw this to let the most recent call of `Evaluator::eval()` to provide context.
@@ -42,15 +44,15 @@ namespace Eval {
       EvalError(s, at, at) {}
   };
 
-  // Convenient pattern-matching functions (throw customized exceptions on failure)
+  // Convenient pattern-matching functions (throw customized exceptions on failure).
   template <typename T>
-  inline T& expect(Tree*) {
+  inline auto expect(Tree*) -> T& {
     unreachable;
   }
 
 #define defineExpect(T, msg)                                                                          \
   template <>                                                                                         \
-  inline T& expect<T>(Tree * e) {                                                                     \
+  inline auto expect<T>(Tree * e)->T& {                                                               \
     try {                                                                                             \
       return std::get<T>(*e);                                                                         \
     } catch (std::bad_variant_access&) { throw PartialEvalError((msg ", got ") + e->toString(), e); } \
@@ -66,7 +68,7 @@ namespace Eval {
 #undef defineExpect
 
   template <typename T>
-  inline T expectNative(Tree* e) {
+  inline auto expectNative(Tree* e) -> T {
     try {
       return std::any_cast<T>(expect<Native>(e).val);
     } catch (std::bad_any_cast& ex) { throw PartialEvalError(std::string("native type mismatch: ") + ex.what(), e); }
@@ -79,7 +81,9 @@ namespace Eval {
   public:
     Evaluator();
     Evaluator(Evaluator const&) = delete;
+    Evaluator(Evaluator&&) = delete;
     auto operator=(Evaluator const&) -> Evaluator& = delete;
+    auto operator=(Evaluator&&) -> Evaluator& = delete;
     virtual ~Evaluator() = default;
 
     auto setString(std::string const& string) -> void {
@@ -103,7 +107,9 @@ namespace Eval {
   protected:
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
     struct Result {
-      Tree *env, *e;
+      Tree* env;
+      Tree* e;
+
       Result(Tree* e):
         env(nullptr),
         e(e){};
