@@ -48,7 +48,7 @@ namespace Eval {
   // Match an Tree against another Tree (pattern)
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#syntax-forms
   // (Continuation, `__k`, `and`, `or`, `not` and `pred?` patterns are not implemented)
-  auto Evaluator::match(Tree* e, Tree* pat, Tree*& env, bool quoteMode) -> bool {
+  auto Evaluator::treeMatch(Tree* e, Tree* pat, Tree*& env, bool quoteMode) -> bool {
     if (auto const& sym = get_if<Symbol>(pat); sym && !quoteMode) {
       if (sym->val != "_") env = extend(env, sym->val, e);
       return true;
@@ -56,12 +56,13 @@ namespace Eval {
     if (auto const& cons = get_if<Cons>(pat)) {
       auto const& [h, t] = *cons;
       if (auto const& sym = get_if<Symbol>(h)) {
-        if (sym->val == "quote" && !quoteMode) return match(e, expect<Cons>(t).head, env, true);   // Enter quote mode
-        if (sym->val == "unquote" && quoteMode) return match(e, expect<Cons>(t).head, env, false); // Leave quote mode
+        if (sym->val == "quote" && !quoteMode) return treeMatch(e, expect<Cons>(t).head, env, true); // Enter quote mode
+        if (sym->val == "unquote" && quoteMode)
+          return treeMatch(e, expect<Cons>(t).head, env, false); // Leave quote mode
         if (sym->val == "...") return get_if<Nil>(e) || get_if<Cons>(e);
       }
       auto const& econs = get_if<Cons>(e);
-      return econs && match(econs->head, h, env, quoteMode) && match(econs->tail, t, env, quoteMode);
+      return econs && treeMatch(econs->head, h, env, quoteMode) && treeMatch(econs->tail, t, env, quoteMode);
     }
     return *e == *pat;
   }
@@ -164,7 +165,7 @@ namespace Eval {
       if (lookaheads) lookaheads->invalidate();
       if (buffer) {
         lexer = std::make_unique<Parsing::Lexer>(*automaton, *buffer);
-        lookaheads = std::make_unique<Parsing::LookaheadBuffer<std::optional<Parsing::Token>>>(*lexer);
+        lookaheads = std::make_unique<Parsing::LookaheadStream<std::optional<Parsing::Token>>>(*lexer);
         parser = std::make_unique<Parsing::Parser>(*grammar, *lookaheads);
       } else {
         lexer.reset();
@@ -350,7 +351,7 @@ namespace Eval {
       for (auto it = get_if<Cons>(clauses); it; it = get_if<Cons>(it->tail)) {
         auto const& [pat, u] = expect<Cons>(it->head);
         auto newEnv = env;
-        if (match(target, pat, newEnv)) {
+        if (treeMatch(target, pat, newEnv)) {
           auto const& [expr, _2] = expect<Cons>(u);
           return {newEnv, expr};
         }
@@ -614,12 +615,10 @@ namespace Eval {
     } else {
       // One step to left.
       for (auto const& [prevLink, childLink]: links) {
-        auto const child = std::visit(
-          Matcher{
-            [&](Parsing::Node const* node) { return resolve(node, {nil}, maxDepth - 1); },
-            [&](Parsing::Token const* tok) { return vector<Tree*>(1, str(std::string(tok->lexeme))); },
-          },
-          childLink
+        auto const child = match(
+          childLink,
+          [&](Parsing::Node const* node) { return resolve(node, {nil}, maxDepth - 1); },
+          [&](Parsing::Token const* tok) { return vector<Tree*>(1, str(std::string(tok->lexeme))); }
         );
         auto prod = vector<Tree*>();
         for (auto const c: child)
@@ -678,7 +677,7 @@ namespace Eval {
           if (it != nameMacros.end()) {
             auto const& cl = macros[it->second];
             auto env = cl.env;
-            if (!match(tail, cl.formal, env))
+            if (!treeMatch(tail, cl.formal, env))
               throw EvalError("pattern matching failed: " + cl.formal->toString() + " ?= " + tail->toString(), tail, e);
             return eval(env, beginList(env, cl.es));
           }
@@ -741,7 +740,7 @@ namespace Eval {
             auto const& params = evalList(env, tail);
             // Evaluate body as tail call
             env = cl->env;
-            if (!match(params, cl->formal, env))
+            if (!treeMatch(params, cl->formal, env))
               throw EvalError(
                 "pattern matching failed: " + cl->formal->toString() + " ?= " + params->toString(),
                 tail,

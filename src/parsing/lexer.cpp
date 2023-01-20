@@ -20,8 +20,8 @@ namespace Parsing {
     }
   }
 
-  auto NFA::match(Generator<Char>& string) const -> std::optional<Symbol> {
-    auto last = string.position();
+  auto NFA::match(Stream<Char>& stream) const -> std::optional<Symbol> {
+    auto last = stream.position();
     auto res = std::optional<Symbol>();
     auto s = std::vector<size_t>();
     auto v = std::vector<bool>(table.size(), false);
@@ -30,8 +30,8 @@ namespace Parsing {
     v[initial] = true;
     closure(*this, v, s);
     // Match greedily, until there are no further possibilities.
-    while (!string.eof() && !s.empty()) {
-      auto const c = string.advance();
+    while (!stream.eof() && !s.empty()) {
+      auto const c = stream.advance();
       // Reset all bits of `v[]`.
       for (auto const x: s) v[x] = false;
       // Move one step.
@@ -49,32 +49,32 @@ namespace Parsing {
       auto curr = std::optional<Symbol>();
       for (auto const x: s) curr = std::max(curr, table[x].mark);
       if (curr) {
-        last = string.position();
+        last = stream.position();
         res = *curr;
       }
     }
     // Restore last valid position and return.
-    string.revert(last);
+    stream.revert(last);
     return res;
   }
 
-  auto DFA::match(Generator<Char>& string) const -> std::optional<Symbol> {
-    auto last = string.position();
+  auto DFA::match(Stream<Char>& stream) const -> std::optional<Symbol> {
+    auto last = stream.position();
     auto res = std::optional<Symbol>();
     auto s = initial;
     // Match greedily, until there are no further possibilities.
-    while (!string.eof()) {
-      auto const c = string.advance();
+    while (!stream.eof()) {
+      auto const c = stream.advance();
       if (!table[s].outs[c]) break;
       s = *table[s].outs[c];
       // Update longest match, if applicable.
       if (auto const curr = table[s].mark) {
-        last = string.position();
+        last = stream.position();
         res = *curr;
       }
     }
     // Restore last valid position and return.
-    string.revert(last);
+    stream.revert(last);
     return res;
   }
 
@@ -481,14 +481,14 @@ namespace Parsing {
     }
   };
 
-  auto AutomatonBuilder::makeNFA() -> NFA const {
+  auto AutomatonBuilder::makeNFA() const -> NFA {
     auto res = NFA();
     res.initial = _initial;
     res.table = _table;
     return res;
   }
 
-  auto AutomatonBuilder::makeDFA(bool minimise) -> DFA const {
+  auto AutomatonBuilder::makeDFA(bool minimise) const -> DFA {
     auto nfa = makeNFA();
     auto dfa = DFA();
     auto construct = PowersetConstruction(nfa, dfa);
@@ -502,30 +502,30 @@ namespace Parsing {
 
   // Skips the next UTF-8 code point.
   // See: https://en.wikipedia.org/wiki/UTF-8#Encoding
-  auto skipCodePoint(Generator<Char>& string) -> bool {
-    if (string.eof()) return false;
-    string.advance();
-    auto last = string.position();
-    while (!string.eof()) {
-      auto const c = string.advance();
+  auto skipCodePoint(Stream<Char>& stream) -> bool {
+    if (stream.eof()) return false;
+    stream.advance();
+    auto last = stream.position();
+    while (!stream.eof()) {
+      auto const c = stream.advance();
       if ((c & 0b11000000) != 0b10000000) break; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
-      last = string.position();
+      last = stream.position();
     }
-    string.revert(last);
+    stream.revert(last);
     return true;
   }
 
   auto Lexer::advance() -> std::optional<Token> {
-    auto const last = _string.position();
-    if (auto const opt = _automaton.match(_string)) {
+    auto const last = _stream.position();
+    if (auto const opt = _automaton.match(_stream)) {
       // Success.
-      auto const curr = _string.position();
+      auto const curr = _stream.position();
       _offsets.push_back(curr);
-      return Token{*opt, last, curr, _string.slice(last, curr)};
+      return Token{*opt, last, curr, _stream.slice(last, curr)};
     } else {
       // Failure (or reached EOF).
-      skipCodePoint(_string);
-      auto const curr = _string.position();
+      skipCodePoint(_stream);
+      auto const curr = _stream.position();
       _offsets.push_back(curr);
       return std::nullopt;
     }

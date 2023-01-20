@@ -88,9 +88,9 @@ namespace Eval {
 
     auto setString(std::string const& string) -> void {
       assert(automaton && grammar);
-      buffer = std::make_unique<Parsing::CharBuffer>(string);
+      buffer = std::make_unique<Parsing::CharStream>(string);
       lexer = std::make_unique<Parsing::Lexer>(*automaton, *buffer);
-      lookaheads = std::make_unique<Parsing::LookaheadBuffer<std::optional<Parsing::Token>>>(*lexer);
+      lookaheads = std::make_unique<Parsing::LookaheadStream<std::optional<Parsing::Token>>>(*lexer);
       parser = std::make_unique<Parsing::Parser>(*grammar, *lookaheads);
     }
 
@@ -131,9 +131,9 @@ namespace Eval {
 
     std::unique_ptr<Parsing::Automaton const> automaton;
     std::unique_ptr<Parsing::Grammar const> grammar;
-    std::unique_ptr<Parsing::CharBuffer> buffer;
+    std::unique_ptr<Parsing::CharStream> buffer;
     std::unique_ptr<Parsing::Lexer> lexer;
-    std::unique_ptr<Parsing::LookaheadBuffer<std::optional<Parsing::Token>>> lookaheads;
+    std::unique_ptr<Parsing::LookaheadStream<std::optional<Parsing::Token>>> lookaheads;
     std::unique_ptr<Parsing::Parser> parser;
 
     std::vector<std::string> symbolNames;
@@ -181,7 +181,7 @@ namespace Eval {
       return id;
     }
 
-    auto match(Tree* e, Tree* pat, Tree*& env, bool quoteMode = false) -> bool;
+    auto treeMatch(Tree* e, Tree* pat, Tree*& env, bool quoteMode = false) -> bool;
 
     // Far less efficient than hash tries (HAMTs), but should be enough for current purpose!
     auto extend(Tree* env, std::string const& sym, Tree* e) -> Tree*;

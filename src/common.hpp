@@ -1,11 +1,14 @@
 #ifndef COMMON_HPP_
 #define COMMON_HPP_
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <iostream>
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // Make sure to put these into the global scope.
@@ -47,7 +50,54 @@ inline auto assert(bool expr, char const* name, char const* file, int line, char
 #define unimplemented unimplemented(__FILE__, __LINE__, static_cast<char const*>(__func__))
 #define assert(expr)  assert(expr, #expr, __FILE__, __LINE__, static_cast<char const*>(__func__))
 
-// Syntax "enhancements".
+// Compiler & tools support for literal suffix `uz` (in C++23) is still incomplete...
+// See: https://en.cppreference.com/w/cpp/language/user_literal
+constexpr auto operator"" _z(unsigned long long n) -> size_t { return n; }
+
+// A binary hash function.
+// See: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
+template <typename T>
+inline auto combineHash(size_t acc, T const& v) -> size_t {
+  auto const hasher = std::hash<T>();
+  return acc ^ (hasher(v) + 0x9e3779b9 + (acc << 6) + (acc >> 2)); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+}
+
+// Recursively combines hashes.
+// All values must have types that are hashable by `std::hash`.
+inline auto combineHashes(size_t acc) -> size_t { return acc; }
+template <typename T, typename... Ts>
+inline auto combineHashes(size_t acc, T const& v, Ts... args) -> size_t {
+  return combineHashes(combineHash(acc, v), args...);
+}
+
+// Uses 0 as initial seed.
+// All values must have types that are hashable by `std::hash`.
+template <typename... Ts>
+inline auto hashAll(Ts... args) -> size_t {
+  return combineHashes(0, args...);
+}
+
+// Hash function for `std::pair`.
+struct PairHasher {
+  template <typename S, typename T>
+  auto operator()(std::pair<S, T> const& p) const -> size_t {
+    return hashAll(p.first, p.second);
+  }
+};
+
+// "Pattern matching" on `std::variant`.
+// See: https://en.cppreference.com/w/cpp/utility/variant/visit
+// See: https://en.cppreference.com/w/cpp/language/aggregate_initialization
+template <typename... Ts>
+struct Matcher: Ts... {
+  using Ts::operator()...;
+};
+template <typename T, typename... Ts>
+constexpr auto match(T&& variant, Ts&&... lambdas) {
+  return std::visit(Matcher<Ts...>{std::forward<Ts>(lambdas)...}, std::forward<T>(variant));
+}
+
+// Other "syntax enhancements".
 #define required = 0
 
 // See: https://softwareengineering.stackexchange.com/questions/235674/what-is-the-pattern-for-a-safe-interface-in-c
@@ -61,50 +111,8 @@ protected:                                           \
 public:                                              \
   virtual ~T() = default
 
-// Compiler & tools support for literal suffix `uz` (in C++23) is still incomplete...
-// See: https://en.cppreference.com/w/cpp/language/user_literal
-constexpr auto operator"" _z(unsigned long long n) -> size_t { return n; }
-
-// A binary hash function.
-// See: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
-template <typename T>
-inline auto hashCombine(size_t seed, T const& v) -> size_t {
-  // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
-  return seed ^ (std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2));
-}
-
-// Recursively combines hashes.
-inline auto hashRecursive(size_t acc) -> size_t { return acc; }
-template <typename T, typename... Ts>
-inline auto hashRecursive(size_t acc, T const& v, Ts... args) -> size_t {
-  return hashRecursive(hashCombine(acc, v), args...);
-}
-
-// Uses 0 as initial seed.
-template <typename... Ts>
-inline auto hashAll(Ts... args) -> size_t {
-  return hashRecursive(0, args...);
-}
-
-// Hash function for `std::pair`.
-struct PairHasher {
-  template <typename S, typename T>
-  auto operator()(std::pair<S, T> const& p) const -> size_t {
-    return hashAll(p.first, p.second);
-  }
-};
-
-// "Pattern matching" on `std::variant`.
-// See: https://en.cppreference.com/w/cpp/utility/variant/visit
-template <typename... Ts>
-struct Matcher: Ts... {
-  using Ts::operator()...;
-};
-template <typename... Ts>
-Matcher(Ts...) -> Matcher<Ts...>;
-
 // A simple region-based memory allocator (uses larger blocks than `std::deque`).
-// This ensures that objects stay in the same place.
+// This ensures that allocated objects stay in the same place, like in `std::deque`.
 template <typename T>
 class Allocator {
 public:

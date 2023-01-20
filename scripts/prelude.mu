@@ -201,9 +201,7 @@
 (define_macro stmt' (lambda (s _) s))
 
 // Update syntax
-(set_syntax patterns rules)
-
-"Starting from this line, we can write everything in the enhanced syntax!";
+(set_syntax patterns rules) -- After this right parenthesis, we can write everything in the enhanced syntax!
 
 -- =================
 -- Utility functions
@@ -250,11 +248,11 @@ in define split_rule_rhs split_rule_rhs;
 -- Along with the new syntax rule, of course
 define add_rule_auto (fun [[func_name lhs rhs]] =>
   let macro_name = string_symbol (string_concat (print func_name) "'") in
-    match split_rule_rhs rhs 0 with [rhs arg_list body] =>
-      `(begin
-        match [get_syntax] with [patterns rules] => set_syntax patterns (concat rules (quote [[,macro_name ,lhs ,rhs]]));
-        define_macro ,macro_name (fun ,arg_list => quote ,[cons func_name body]);
-      end));
+  match split_rule_rhs rhs 0 with [rhs arg_list body] =>
+  `(begin
+      match [get_syntax] with [patterns rules] => set_syntax patterns (concat rules (quote [[,macro_name ,lhs ,rhs]]));
+      define_macro ,macro_name (fun ,arg_list => quote ,[cons func_name body]);
+    end));
 define_macro add_rule_auto' (fun [_ e] => add_rule_auto (eval e));
 
 add_pattern `[kw_add_rule_auto [word "add_rule_auto"]];

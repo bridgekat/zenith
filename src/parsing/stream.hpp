@@ -1,7 +1,7 @@
-// Parsing :: Char, Symbol, Precedence, Generator...
+// Parsing :: Char, Symbol, Precedence, Stream...
 
-#ifndef GENERATOR_HPP_
-#define GENERATOR_HPP_
+#ifndef STREAM_HPP_
+#define STREAM_HPP_
 
 #include <deque>
 #include <limits>
@@ -26,9 +26,9 @@ namespace Parsing {
   constexpr auto PrecedenceMax = std::numeric_limits<Precedence>::max();
 
   /*
-  // `G` is a "revertable generator" of `T` if...
+  // `G` is a "revertable stream" of `T` if...
   template <typename G, typename T>
-  concept Generator = requires (G g, G const& cg, size_t i) {
+  concept Stream = requires (G g, G const& cg, size_t i) {
     // It allows checking if there are no more elements:
     { cg.eof() } -> std::convertible_to<bool>;
     // It allows generating the next element:
@@ -40,10 +40,10 @@ namespace Parsing {
   };
   */
 
-  // A class is a "revertable generator" of `T` if...
+  // A class is a "revertable stream" of `T` if...
   template <typename T>
-  class Generator {
-    interface(Generator);
+  class Stream {
+    interface(Stream);
   public:
     // It allows checking if there are no more elements:
     virtual auto eof() const -> bool required;
@@ -56,10 +56,10 @@ namespace Parsing {
   };
 
   // Simple wrapper around a `std::string`.
-  class CharBuffer: public Generator<Char> {
+  class CharStream: public Stream<Char> {
   public:
     // A `CharBuffer` is constructed from a `std::string`.
-    explicit CharBuffer(std::string string):
+    explicit CharStream(std::string string):
       _string(std::move(string)) {}
 
     auto eof() const -> bool override { return _position == _string.size(); }
@@ -81,21 +81,21 @@ namespace Parsing {
     std::string _string;
   };
 
-  // A `LookaheadBuffer` that works with a "revertable generator".
+  // A `LookaheadStream` that works with a "revertable stream".
   // It copy-stores all generated elements, so as to avoid repeated work.
   template <typename T>
-  class LookaheadBuffer: public Generator<T> {
+  class LookaheadStream: public Stream<T> {
   public:
-    // A `LookaheadBuffer` is constructed from a "revertable generator" of `T`.
-    // Given reference must be valid over the `LookaheadBuffer`'s lifetime.
-    explicit LookaheadBuffer(Generator<T>& generator):
-      _generator(generator),
-      _offset(generator.position()) {}
+    // A `LookaheadStream` is constructed from a "revertable stream" of `T`.
+    // Given reference must be valid over the `LookaheadStream`'s lifetime.
+    explicit LookaheadStream(Stream<T>& stream):
+      _stream(stream),
+      _offset(stream.position()) {}
 
-    auto eof() const -> bool override { return _position == _elements.size() && _generator.eof(); }
+    auto eof() const -> bool override { return _position == _elements.size() && _stream.eof(); }
     auto advance() -> T override {
       assert(_position <= _elements.size());
-      if (_position == _elements.size()) _elements.push_back(_generator.advance());
+      if (_position == _elements.size()) _elements.push_back(_stream.advance());
       // Mid: _position < _elements.size()
       return _elements[_position++];
     }
@@ -105,16 +105,16 @@ namespace Parsing {
     // Invalidates cache past the current position (inclusive).
     auto invalidate() -> void {
       assert(_position <= _elements.size());
-      _generator.revert(_offset + _position);
+      _stream.revert(_offset + _position);
       _elements.resize(_position);
     }
 
   private:
-    Generator<T>& _generator;
+    Stream<T>& _stream;
     size_t _offset;
     size_t _position = 0;
     std::deque<T> _elements;
   };
 }
 
-#endif // GENERATOR_HPP_
+#endif // STREAM_HPP_

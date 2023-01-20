@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 #include <common.hpp>
-#include "generator.hpp"
+#include "stream.hpp"
 
 namespace Parsing {
 
@@ -19,7 +19,7 @@ namespace Parsing {
     // It allows matching a prefix of a string, which:
     // Returns the matching pattern ID and advances `string` on success;
     // Returns `std::nullopt` and leaves `string` in its original position on failure.
-    virtual auto match(Generator<Char>& string) const -> std::optional<Symbol> required;
+    virtual auto match(Stream<Char>& stream) const -> std::optional<Symbol> required;
   };
 
   // Nondeterministic finite automaton with ε-transitions.
@@ -33,7 +33,7 @@ namespace Parsing {
     size_t initial;           // The initial state.
 
     // Runs NFA.
-    auto match(Generator<Char>& string) const -> std::optional<Symbol> override;
+    auto match(Stream<Char>& stream) const -> std::optional<Symbol> override;
   };
 
   // Deterministic finite automaton.
@@ -47,7 +47,7 @@ namespace Parsing {
     size_t initial;           // The initial state.
 
     // Runs DFA.
-    auto match(Generator<Char>& string) const -> std::optional<Symbol> override;
+    auto match(Stream<Char>& stream) const -> std::optional<Symbol> override;
   };
 
   // Builds automata from regular expressions.
@@ -74,10 +74,10 @@ namespace Parsing {
     auto withPattern(Symbol sym, Subgraph a) -> AutomatonBuilder&;
 
     // Constructs a well-formed NFA.
-    auto makeNFA() -> NFA const;
+    auto makeNFA() const -> NFA;
 
     // Constructs a well-formed DFA, optionally minimised.
-    auto makeDFA(bool minimise) -> DFA const;
+    auto makeDFA(bool minimise) const -> DFA;
 
   private:
     std::vector<Entry> _table; // The transition & accepting state table.
@@ -90,34 +90,34 @@ namespace Parsing {
   // A token emitted by a lexer.
   struct Token {
     Symbol id;               // Terminal symbol ID.
-    size_t begin;            // Start index in original string.
-    size_t end;              // End index in original string.
+    size_t begin;            // Start index in original stream.
+    size_t end;              // End index in original stream.
     std::string_view lexeme; // Lexeme. `lexeme.size() == end - begin`.
   };
 
-  // A lexer is a "revertable generator" of `std::optional<Token>`.
+  // A lexer is a "revertable stream" of `std::optional<Token>`.
   // It generates the next token if a prefix match is found,
   // or `std::nullopt` (and skips a single UTF-8 code point) in case of a failed match.
-  class Lexer: public Generator<std::optional<Token>> {
+  class Lexer: public Stream<std::optional<Token>> {
   public:
     // Given references must be valid over the `Lexer`'s lifetime.
-    Lexer(Automaton const& automaton, CharBuffer& string):
+    Lexer(Automaton const& automaton, CharStream& stream):
       _automaton(automaton),
-      _string(string),
-      _offset(string.position()) {}
+      _stream(stream),
+      _offset(stream.position()) {}
 
-    auto eof() const -> bool override { return _string.eof(); }
+    auto eof() const -> bool override { return _stream.eof(); }
     auto advance() -> std::optional<Token> override;
     auto position() const -> size_t override { return _offsets.size(); }
     auto revert(size_t i) -> void override {
       assert(i <= _offsets.size());
       _offsets.resize(i);
-      _string.revert(_offsets.empty() ? _offset : _offsets.back());
+      _stream.revert(_offsets.empty() ? _offset : _offsets.back());
     }
 
   private:
     Automaton const& _automaton;  // Underlying automaton.
-    CharBuffer& _string;          // Input `Char` stream.
+    CharStream& _stream;          // Input `Char` stream.
     size_t _offset;               // Starting position in the input `Char` stream.
     std::vector<size_t> _offsets; // End positions in the input `Char` stream.
   };

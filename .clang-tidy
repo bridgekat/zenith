@@ -7,6 +7,5 @@ Checks: <
   cppcoreguidelines-*,
   modernize-*,
   -cppcoreguidelines-macro-usage,
-  -cppcoreguidelines-non-private-member-variables-in-classes,
   -cppcoreguidelines-pro-bounds-constant-array-index,
   -modernize-use-nodiscard

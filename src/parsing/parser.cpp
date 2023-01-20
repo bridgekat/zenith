@@ -1,9 +1,7 @@
 #include "parser.hpp"
 #include <algorithm>
-#include <unordered_map>
-
-// TEMP CODE
-#include <iostream>
+#include <iostream> // TEMP CODE
+#include <unordered_set>
 
 namespace Parsing {
 
@@ -23,7 +21,7 @@ namespace Parsing {
     return *this;
   }
 
-  auto GrammarBuilder::make() -> Grammar const {
+  auto GrammarBuilder::make() const -> Grammar {
     auto res = Grammar();
     auto& numSymbols = res.numSymbols;
     auto& startSymbol = res.startSymbol = _startSymbol;
@@ -43,7 +41,7 @@ namespace Parsing {
     }
     numSymbols++;
 
-    // Sort all rules by LHS symbol ID (for faster access).
+    // Sort all rules by LHS symbol ID and precedence (for faster access).
     sorted.clear();
     for (auto i = 0_z; i < n; i++) sorted.push_back(i);
     std::sort(sorted.begin(), sorted.end(), [&rules](size_t i, size_t j) { return rules[i].lhs < rules[j].lhs; });
@@ -59,61 +57,60 @@ namespace Parsing {
     return res;
   }
 
+  auto countNodes(std::vector<std::list<Node>> const& a) -> size_t {
+    auto res = 0_z;
+    for (auto const& curr: a) res += curr.size();
+    return res;
+  }
+
+  auto countPrevs(std::vector<std::list<Node>> const& a) -> size_t {
+    auto res = 0_z;
+    for (auto const& curr: a)
+      for (auto const& node: curr) res += node.prev.size();
+    return res;
+  }
+
+  auto countNexts(std::vector<std::list<Node>> const& a) -> size_t {
+    auto res = 0_z;
+    for (auto const& curr: a)
+      for (auto const& node: curr) res += node.next.size();
+    return res;
+  }
+
   auto Parser::advance() -> bool {
     if (_run()) {
       // Success.
+      std::cout << "Before: ";
+      std::cout << countNodes(_nodes) << " nodes, ";
+      std::cout << countPrevs(_nodes) << " back links, ";
+      std::cout << countNexts(_nodes) << " forward links." << std::endl;
+      _prune();
+      std::cout << "After: ";
+      std::cout << countNodes(_nodes) << " nodes, ";
+      std::cout << countPrevs(_nodes) << " back links, ";
+      std::cout << countNexts(_nodes) << " forward links." << std::endl;
       return true;
     } else if (auto const token = _nextToken()) {
       // Failure.
-      // TEMP CODE
-      std::cerr << "ERROR" << std::endl;
+      std::cout << "Parse error." << std::endl;
       return false;
     } else {
       // Reached EOF.
       return false;
     }
-    /*
-    auto error = std::optional<ParserError>();
-    while (!) {
-      auto const found = run();
-      if (found) {
-        // Successful parse.
-        if (_tokens.empty()) unimplemented;
-        if (error) mErrors.push_back(*error);
-        return true;
-      }
-      if (!nextToken) {
-        // EOF.
-        if (!_tokens.empty()) {
-          // EOF with incomplete sentence.
-          if (!error) error = lastError(_tokens.back().end, _tokens.back().end, std::nullopt);
-          else error->end = _tokens.back().end;
-        }
-        if (error) mErrors.push_back(*error);
-        return false;
-      }
-      // Mid: !index && nextToken
-      // Error.
-      if (!error) error = lastError(nextToken->begin, nextToken->end, mPatterns.at(nextToken->id).sym.first);
-      else error->end = nextToken->end;
-      // Skip at least one token to avoid infinite loops.
-      if (_tokens.empty()) {
-        auto tok = mLexer->advance();
-        while (tok && mPatterns.at(tok->id).sym.first == mIgnoredSymbol) tok = mLexer->advance();
-      }
-    }
-    */
   }
 
   auto Parser::showState(Node const& node, std::vector<std::string> const& names) const -> std::string {
     auto const& rules = _grammar.rules;
     auto const& s = node.state;
-    auto res = std::to_string(s.begin) + ", <" + names.at(rules[s.rule].lhs.first) + "> ::= ";
+    auto res = std::string();
+    res += std::to_string(s.begin) + "-" + std::to_string(s.end) + ", ";
+    res += names.at(rules[s.rule].lhs.first) + " ::=";
     for (auto i = 0_z; i < rules[s.rule].rhs.size(); i++) {
-      if (i == s.progress) res += "|";
-      res += "<" + names.at(rules[s.rule].rhs[i].first) + ">";
+      if (i == s.progress) res += " |";
+      res += " " + names.at(rules[s.rule].rhs[i].first);
     }
-    if (s.progress == rules[s.rule].rhs.size()) res += "|";
+    if (s.progress == rules[s.rule].rhs.size()) res += " |";
     res += "\n";
     return res;
   }
@@ -121,19 +118,21 @@ namespace Parsing {
   auto Parser::showStates(std::vector<std::string> const& names) const -> std::string {
     assert(_nodes.size() == _tokens.size() + 1);
     auto res = std::string();
-    for (auto pos = 0_z; pos <= _tokens.size(); pos++) {
-      res += "States at position " + std::to_string(pos) + ":\n";
-      for (auto const& mode: _nodes[pos]) res += showState(mode, names);
+    auto i = 0_z;
+    for (auto const& token: _tokens) {
+      res += "States at position " + std::to_string(i) + ":\n";
+      for (auto const& node: _nodes[i]) res += showState(node, names);
       res += "\n";
-      if (pos < _tokens.size()) res += "Next token: <" + names.at(_tokens[pos].id) + ">\n";
+      if (i < _tokens.size()) res += "Next token: " + names.at(token.id) + "\n";
+      i++;
     }
     return res;
   }
 
   // Returns next non-ignored token, or `std::nullopt` if reaches EOF.
   auto Parser::_nextToken() -> std::optional<Token> {
-    while (!_lexer.eof()) {
-      auto const token = _lexer.advance();
+    while (!_stream.eof()) {
+      auto const token = _stream.advance();
       if (token && token->id != _grammar.ignoredSymbol) return token;
     }
     return {};
@@ -149,7 +148,6 @@ namespace Parsing {
   }
 
   // Adds a transition from `prev` to `next` which goes through `child`.
-  // This adds both forward and backward links.
   auto Parser::_transition(Node* prev, std::variant<Node*, Token*> child, Node* next) -> void {
     prev->next.emplace_back(next, child);
     next->prev.emplace_back(prev, child);
@@ -168,11 +166,10 @@ namespace Parsing {
   auto Parser::_run() -> bool {
     auto const& rules = _grammar.rules;
     auto const& startSymbol = _grammar.startSymbol;
-    auto const& numSymbols = _grammar.numSymbols;
     auto const& sorted = _grammar.sorted;
     auto const& ranges = _grammar.ranges;
 
-    auto last = _lexer.position();
+    auto last = _stream.position();
     auto lastIndex = 0_z;
     auto res = false;
 
@@ -181,10 +178,6 @@ namespace Parsing {
     _map.clear();
     _completions.clear();
     _completed.clear();
-
-    // Avoid looking up the same rule multiple times in the prediction stage (see below).
-    auto addedSym = std::vector<Symbol>();
-    auto symAdded = std::vector<bool>(numSymbols);
 
     // Initial states.
     _nodes.emplace_back();
@@ -195,23 +188,20 @@ namespace Parsing {
     for (auto i = 0_z; !_nodes[i].empty(); i++) {
 
       // "Prediction/completion" stage.
-      for (auto j = 0_z; j < _nodes[i].size(); j++) {
-        // Note that `std::deque::push_back()` invalidates iterators, but not references.
-        // See: https://en.cppreference.com/w/cpp/container/deque/push_back
-        auto& sref = _nodes[i][j];
+      for (auto& sref: _nodes[i]) {
+        // Note that `std::list::push_back()` will not invalidate iterators or references.
+        // The past-the-end iterator remains past-the-end, so this loop will eventually cover newly-inserted items.
+        // See: https://en.cppreference.com/w/cpp/container/list/push_back
         auto const& s = sref.state;
         auto const& [sl, sr] = rules[s.rule];
         if (s.progress < sr.size()) {
           // Perform prediction.
           auto const& [sym, prec] = sr[s.progress];
-          if (!symAdded[sym]) {
-            symAdded[sym] = true;
-            addedSym.push_back(sym);
-            for (auto k = ranges[sym].begin; k < ranges[sym].end; k++) _node(i, i, sorted[k], 0);
-          }
+          for (auto k = ranges[sym].begin; k < ranges[sym].end; k++)
+            if (prec <= rules[sorted[k]].lhs.second) _node(i, i, sorted[k], 0);
           // Add to completion candidates.
           _completions.emplace(std::pair(i, sym), &sref);
-          // Special null-completion (if `sym` is already null-completed, we are late, so we have to complete here).
+          // Special null-completion (if `sym` is already null-completed, we are late, so we have to complete here.)
           auto const& [begin, end] = _completed.equal_range(std::pair(i, sym));
           for (auto it = begin; it != end; it++) {
             auto& tref = *it->second;
@@ -231,25 +221,22 @@ namespace Parsing {
             assert(t.progress < tr.size() && tr[t.progress].first == sym);
             if (tr[t.progress].second <= prec) _transition(&tref, &sref, _node(t.begin, i, t.rule, t.progress + 1));
           }
-          // If null, add to known null-completions.
+          // If null, add to known null-completions (so that late predictions have a chance to catch up.)
           if (s.begin == i) _completed.emplace(std::pair(i, sym), &sref);
         }
       }
-      // Clear flags.
-      for (auto const sym: addedSym) symAdded[sym] = false;
-      addedSym.clear();
 
-      // Check if the start symbol completes and update result.
-      auto found = false;
+      // Check if the start symbol is completed and update result.
       for (auto& sref: _nodes[i]) {
         auto const& s = sref.state;
         auto const& [sl, sr] = rules[s.rule];
-        if (sl.first == startSymbol && s.begin == 0 && s.progress == sr.size()) found = true;
-      }
-      if (found) {
-        last = _lexer.position();
-        lastIndex = i;
-        res = true;
+        assert(s.end == i);
+        if (sl.first == startSymbol && s.begin == 0 && s.progress == sr.size()) {
+          last = _stream.position();
+          lastIndex = i;
+          res = true;
+          break;
+        }
       }
 
       // Advance to next position.
@@ -271,7 +258,7 @@ namespace Parsing {
     }
 
     // Restore last valid position and return.
-    _lexer.revert(last);
+    _stream.revert(last);
     _tokens.resize(lastIndex);
     _nodes.resize(lastIndex + 1);
     return res;
@@ -279,35 +266,109 @@ namespace Parsing {
     /*
      * ===== A hand-wavey argument for correctness =====
      * By induction prove (1):
-     *     If a (possibly empty) substring has a derivation tree, and the root node of the tree
-     *     was predicted at the starting position of that substring (in the "prediction/completion" stage),
-     *     then the root node will get completed (i.e. the completed item will be added to the DP array),
-     *     no later than the "prediction/completion" stage performed at the end position.
-     * - By induction prove (2):
-     *       Every prefix of the root production rule will be reached, no later than the
-     *       "prediction/completion" stage performed at the corresponding position.
+     *     If a (possibly empty) substring has a derivation tree, and the root node of the tree was predicted in the
+     *     "prediction/completion" stage at the `begin` position of the substring, then the root node of that tree will
+     *     eventually get completed, no later than the "prediction/completion" stage performed at the `end` position of
+     *     the substring.
+     * - Base cases (trivial RHS):
+     *   - If tree contains a single token: such item will always be completed in the "scanning" stage.
+     *   - If tree is empty (RHS of root derivation has length 0): such item will always be completed once predicted.
+     * - Induction step (non-trivial RHS):
+     *   By induction prove (2):
+     *       Every prefix of the root production rule will be reached, no later than the "prediction/completion" stage
+     *       performed at the corresponding positions.
      *   - Base case (empty prefix): initially true.
-     *   - Induction step: if last symbol is...
-     *     - terminal: by IH of (2) + "scanning" stage (pos-1 ~ pos) is before "prediction/completion" stage (pos)
-     *     - nonempty nonterminal: by IH of (2), the prefix minus the last symbol will be reached
-     *       -> all rules for the last symbol get predicted at the corresponding position
-     *       -> by IH of (1), the correct one will get completed in a later position, advancing the current item.
-     *     If the rule yields empty string, it may have been completed earlier, and the current item
-     *     does not have a chance to advance... That's why we need the final case:
-     *     - empty nonterminal: by IH of (2) + skipping at the "prediction/completion" stage.
+     *   - Induction step (nonempty prefix): if last symbol of the prefix is...
+     *     - Terminal: by IH of (2) + "scanning" stage.
+     *     - Nonempty nonterminal: by IH of (2), the prefix minus the last symbol will be reached; then all possible
+     *       rules for the last symbol will be predicted at the last position, with the root item being added to
+     *       `_completions`. Now by IH of (1), the correct rules for the symbol will get completed (in a strictly later
+     *       position, so their completions must happen after the aforementioned prediction), and the root item will
+     *       have its `progress` incremented by 1.
+     *     - Empty nonterminal: similarly by IH of (2).
+     *       - If completion happens after prediction, same as above;
+     *       - Otherwise, item is added to `_completed` before the current prediction, and will be found immediately by
+     *         the "special null-completion" code, which also advances the root item's progress by 1.
      *
      * ===== A hand-wavey argument for time complexity =====
-     * Number of states on each position (i.e. `forest[pos].size()`) = O(|G|n).
-     * If grammar is unambiguous, each state can have at most one link.
+     * Number of states on each position `forest[pos].size()` = O(|G|n).
+     * If grammar is unambiguous, each state can have at most 1 back link. Otherwise, following 2 links will give 2
+     * different but valid parse trees.
+     *
      * For each iteration of the outer loop:
-     * - Prediction = O(|G|n) (iterating through states = O(|G|n), total states added = O(|G|)).
+     * - Prediction = O(|G|²n) (iterating through states = O(|G|n), time for each state = O(|G|)).
      * - Completion = O(|G|²n²) (iterating though states = O(|G|n), time for each state = O(|G|n)).
      *              = O(|G|n) for unambiguous cases (iterating through states = O(|G|n), total links added = O(|G|n)).
      * - Scanning   = O(|G|n) (iterating through states = O(|G|n)).
      *
      * Overall: O(|G|²n³) for all cases;
-     *          O(|G|n²) for unambiguous cases.
+     *          O(|G|²n²) for unambiguous cases.
      */
+  }
+
+  // Removes all nodes unreachable from the final states.
+  auto Parser::_prune() -> void {
+    assert(_nodes.size() == _tokens.size() + 1);
+    auto const& rules = _grammar.rules;
+    auto const& startSymbol = _grammar.startSymbol;
+    auto const len = _tokens.size();
+    auto stk = std::vector<Node const*>();
+    auto v = std::unordered_set<Node const*>();
+
+    // Start from the final states.
+    for (auto& sref: _nodes[len]) {
+      auto const& s = sref.state;
+      auto const& [sl, sr] = rules[s.rule];
+      assert(s.end == len);
+      if (sl.first == startSymbol && s.begin == 0 && s.progress == sr.size()) {
+        stk.push_back(&sref);
+        v.insert(&sref);
+      }
+    }
+
+    // Mark reachability from end, depth-first.
+    while (!stk.empty()) {
+      auto const& node = *stk.back();
+      stk.pop_back();
+      for (auto const& [prev, child]: node.prev) {
+        // Previous node.
+        if (!v.contains(prev)) {
+          stk.push_back(prev);
+          v.insert(prev);
+        }
+        // Child node (if applicable).
+        if (auto const opt = std::get_if<Node*>(&child); opt) {
+          if (!v.contains(*opt)) {
+            stk.push_back(*opt);
+            v.insert(*opt);
+          }
+        }
+      }
+    }
+
+    // Remove unreachable nodes, as well as all edges pointing to them.
+    for (auto& curr: _nodes) {
+      for (auto it = curr.begin(); it != curr.end();) {
+        auto& node = *it;
+        if (!v.contains(&node)) {
+          it = curr.erase(it);
+          continue;
+        }
+        // Mid: `node` is reachable.
+        // All nodes pointed by its `prev` links must also be reachable.
+        for (auto itn = node.next.begin(); itn != node.next.end();) {
+          auto& [next, _] = *itn;
+          if (!v.contains(next)) {
+            itn = node.next.erase(itn);
+            continue;
+          }
+          // Mid: `next` is reachable.
+          // The `_` (child node) must also be reachable.
+          itn++;
+        }
+        it++;
+      }
+    }
   }
 
   // For use in `nextSentence()` only.
