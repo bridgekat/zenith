@@ -54,19 +54,17 @@ auto main(int argc, char* argv[]) -> int {
     }
     evaluator.setString(in);
     while (true) {
-      bool more = evaluator.parseNextStatement();
-      auto const& err = evaluator.popParsingErrors();
-      if (!err.empty()) {
-        auto const& ex = err[0];
+      auto const more = evaluator.parseNextStatement();
+      auto const& err = evaluator.parsingErrors();
+      for (auto const& ex: err) {
         cout << endl;
         cout << "× " << ex.what() << endl;
         cout << "| " << endl;
         cout << "| " << in << endl;
         cout << "| " << std::string(ex.begin, ' ') << std::string(ex.end - ex.begin, '~') << endl;
         cout << endl;
-        break;
       }
-      if (!more) break;
+      if (!more || !err.empty()) break;
       try {
         auto const& res = evaluator.evalParsedStatement();
         cout << res->toString() << endl;

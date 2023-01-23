@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <string>
 
 using std::string;
 using std::vector;
@@ -14,7 +15,7 @@ namespace Eval {
 
   auto Evaluator::parseNextStatement() -> bool {
     assert(bool(parser));
-    return parser->advance();
+    return parser->parser.parse();
     // std::cout << parser->showStates(symbolNames) << std::endl;
   }
 
@@ -26,22 +27,29 @@ namespace Eval {
     return e;
   }
 
-  auto Evaluator::popParsingErrors() -> vector<ParsingError> {
+  auto Evaluator::parsingErrors() -> vector<ParsingError> {
     auto res = vector<ParsingError>();
     // See:
     // https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
-    /*
-    for (auto const& e: lexer.popErrors()) {
-      res.emplace_back("Parsing error, unexpected characters: " + e.lexeme, e.begin, e.end);
+    for (auto const& e: parser->parser.errors()) {
+      auto s = string("Parsing error, expected ");
+      if (!e.expected.empty()) {
+        s += "one of: ";
+        for (auto const& sym: e.expected)
+          if (symbolIsTerminal[sym]) s += symbolNames[sym] + ", ";
+      } else {
+        s += "end-of-file, ";
+      }
+      if (auto const& tok = e.got) {
+        s += "got token ";
+        if (tok->id) s += symbolNames[*tok->id] + " ";
+        s += "\"" + string(tok->lexeme) + "\"";
+        res.emplace_back(s, tok->begin, tok->end);
+      } else {
+        s += "but reached end-of-file";
+        res.emplace_back(s, stream->string().size(), stream->string().size() + 1);
+      }
     }
-    for (auto const& e: parser.popErrors()) {
-      string s = "Parsing error, expected one of: ";
-      for (Symbol sym: e.expected) s += "<" + symbolNames[sym] + ">, ";
-      if (e.got) s += "got token <" + symbolNames[*e.got] + ">";
-      else s += "but reached the end of file";
-      res.emplace_back(s, e.begin, e.end);
-    }
-    */
     return res;
   }
 
@@ -109,7 +117,10 @@ namespace Eval {
     for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) {
       auto const& [sym, t] = expect<Cons>(it->head);
       auto const& [prec, _] = expect<Cons>(t);
-      res.emplace_back(symbol(expect<Symbol>(sym).val), static_cast<Parsing::Precedence>(expect<Nat64>(prec).val));
+      res.emplace_back(
+        symbol(false, expect<Symbol>(sym).val),
+        static_cast<Parsing::Precedence>(expect<Nat64>(prec).val)
+      );
     }
     return res;
   }
@@ -119,6 +130,7 @@ namespace Eval {
     auto automatonBuilder = AutomatonBuilder();
     auto grammarBuilder = GrammarBuilder();
 
+    symbolIsTerminal.clear();
     symbolNames.clear();
     nameSymbols.clear();
     ruleNames.clear();
@@ -128,8 +140,10 @@ namespace Eval {
     rules = r;
 
     // Add ignored and starting symbols.
+    symbolIsTerminal.emplace_back(false);
     symbolNames.emplace_back("_");
     grammarBuilder.withIgnoredSymbol(ignoredSymbol);
+    symbolIsTerminal.emplace_back(false);
     symbolNames.emplace_back("_");
     grammarBuilder.withStartSymbol(startSymbol);
 
@@ -138,7 +152,7 @@ namespace Eval {
       auto const& [lhs, t] = expect<Cons>(it->head);
       auto const& [rhs, _] = expect<Cons>(t);
       auto const& sname = expect<Symbol>(lhs).val;
-      auto const sid = sname == "_" ? ignoredSymbol : symbol(sname);
+      auto const sid = sname == "_" ? ignoredSymbol : symbol(true, sname);
       automatonBuilder.withPattern(sid, treePattern(automatonBuilder, rhs));
     }
 
@@ -151,28 +165,17 @@ namespace Eval {
       auto const& [prec, _2] = expect<Cons>(v);
       auto const& sname = expect<Symbol>(sym).val;
       auto const& rname = expect<Symbol>(name).val;
-      auto const sid = sname == "_" ? startSymbol : symbol(sname);
+      auto const sid = sname == "_" ? startSymbol : symbol(false, sname);
       auto const sprec = static_cast<Parsing::Precedence>(expect<Nat64>(prec).val);
       grammarBuilder.withRule(std::pair(sid, sprec), listSymbols(rhs));
       ruleNames.push_back(rname);
     }
 
     // Finalise.
+    if (parser) parser->buffer.invalidate();
     automaton = std::make_unique<Parsing::DFA const>(automatonBuilder.makeDFA(true));
     grammar = std::make_unique<Parsing::Grammar const>(grammarBuilder.make());
-    // Rebuild dependents if needed.
-    if (lexer || parser) {
-      if (lookaheads) lookaheads->invalidate();
-      if (buffer) {
-        lexer = std::make_unique<Parsing::Lexer>(*automaton, *buffer);
-        lookaheads = std::make_unique<Parsing::LookaheadStream<std::optional<Parsing::Token>>>(*lexer);
-        parser = std::make_unique<Parsing::Parser>(*grammar, *lookaheads);
-      } else {
-        lexer.reset();
-        lookaheads.reset();
-        parser.reset();
-      }
-    }
+    if (parser) parser = std::make_unique<Parser>(*automaton, *grammar, *stream);
   }
 
 #define cons       pool.emplace
@@ -605,25 +608,24 @@ namespace Eval {
     return nullptr;
   }
 
-  auto Evaluator::resolve(Parsing::Node const* node, vector<Tree*> const& tails, size_t maxDepth) -> vector<Tree*> {
+  auto Evaluator::resolve(Parsing::Node const& node, vector<Tree*> const& tails, size_t maxDepth) -> vector<Tree*> {
     if (maxDepth == 0) return {};
-    auto const& [state, _, links] = *node;
+    auto const& nodes = parser->parser.nodes();
+    auto const& tokens = parser->parser.tokens();
+    auto const& [state, _, links] = node;
     auto res = vector<Tree*>();
     if (state.progress == 0) {
       // Whole rule completed.
       for (auto const r: tails) res.push_back(cons(sym(ruleNames[state.rule]), r));
     } else {
       // One step to left.
-      for (auto const& [prevLink, childLink]: links) {
-        auto const child = match(
-          childLink,
-          [&](Parsing::Node const* node) { return resolve(node, {nil}, maxDepth - 1); },
-          [&](Parsing::Token const* tok) { return vector<Tree*>(1, str(std::string(tok->lexeme))); }
-        );
+      for (auto const& [prev, leaf, child]: links) {
+        auto const childTrees =
+          leaf ? vector<Tree*>(1, str(std::string(tokens[child].lexeme))) : resolve(nodes[child], {nil}, maxDepth - 1);
         auto prod = vector<Tree*>();
-        for (auto const c: child)
+        for (auto const c: childTrees)
           for (auto const r: tails) prod.push_back(cons(c, r));
-        auto const& final = resolve(prevLink, prod, maxDepth);
+        auto const& final = resolve(nodes[prev], prod, maxDepth);
         for (auto const f: final) res.push_back(f);
       }
     }
@@ -632,15 +634,14 @@ namespace Eval {
 
   auto Evaluator::resolve(size_t maxDepth) -> Tree* {
     assert(grammar && parser);
-    auto const& pos = parser->tokens().size();
-    auto const& nodes = parser->nodes();
-    assert(pos < nodes.size());
+    auto const& nodes = parser->parser.nodes();
+    auto const& finalStates = parser->parser.finalStates();
     auto all = vector<Tree*>();
-    for (auto const& node: nodes[pos]) {
-      auto const& [state, _, links] = node;
+    for (auto const ni: finalStates) {
+      auto const& [state, _, links] = nodes[ni];
       auto const& [lhs, rhs] = grammar->rules[state.rule];
       if (state.begin == 0 && lhs.first == startSymbol && state.progress == rhs.size()) {
-        auto const& final = resolve(&node, {nil}, maxDepth);
+        auto const& final = resolve(nodes[ni], {nil}, maxDepth);
         for (auto const f: final) all.push_back(f);
       }
     }

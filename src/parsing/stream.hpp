@@ -1,120 +1,145 @@
-// Parsing :: Char, Symbol, Precedence, Stream...
+// Parsing :: Stream...
 
-#ifndef STREAM_HPP_
-#define STREAM_HPP_
+#ifndef PARSING_STREAM_HPP_
+#define PARSING_STREAM_HPP_
 
-#include <deque>
-#include <limits>
-#include <optional>
 #include <string>
-#include <string_view>
-#include <utility>
-#include <common.hpp>
+#include "basic.hpp"
 
 namespace Parsing {
 
-  // Assuming 8-bit code units (UTF-8).
-  using Char = uint8_t;
-  constexpr auto CharMax = std::numeric_limits<Char>::max();
-
-  // Unified ID for terminal and nonterminal symbols.
-  using Symbol = uint32_t;
-  constexpr auto SymbolMax = std::numeric_limits<Symbol>::max();
-
-  // Operator precedence levels.
-  using Precedence = uint16_t;
-  constexpr auto PrecedenceMax = std::numeric_limits<Precedence>::max();
-
-  /*
-  // `G` is a "revertable stream" of `T` if...
-  template <typename G, typename T>
-  concept Stream = requires (G g, G const& cg, size_t i) {
-    // It allows checking if there are no more elements:
-    { cg.eof() } -> std::convertible_to<bool>;
-    // It allows generating the next element:
-    { g.advance() } -> std::convertible_to<T>;
-    // It allows obtaining the current position (which must be zero initially):
-    { cg.position() } -> std::convertible_to<size_t>;
-    // It allows reverting to a previous position (i.e. `0 <= i <= position()`):
-    g.revert(i);
-  };
-  */
-
-  // A class is a "revertable stream" of `T` if...
+  // A class is a (finite) "revertable stream" of `T` if...
   template <typename T>
-  class Stream {
-    interface(Stream);
+  class IStream {
+    interface(IStream);
   public:
-    // It allows checking if there are no more elements:
-    virtual auto eof() const -> bool required;
-    // It allows generating the next element;
-    virtual auto advance() -> T required;
-    // It allows obtaining the current position (which must be zero initially):
+    // It allows generating the next element (or empty if reached the end):
+    virtual auto advance() -> std::optional<T> required;
+    // It allows obtaining the current position:
     virtual auto position() const -> size_t required;
     // It allows reverting to a previous position (i.e. `0 <= i <= position()`):
     virtual auto revert(size_t i) -> void required;
   };
 
-  // Simple wrapper around a `std::string`.
-  class CharStream: public Stream<Char> {
+  // A "buffered stream" copy-stores all generated elements, so as to avoid repeated calls to `advance()`.
+  template <typename T>
+  class IBufferedStream: public IStream<T> {
+    interface(IBufferedStream);
   public:
-    // A `CharBuffer` is constructed from a `std::string`.
+    // It allows invalidating its cache past the current position
+    // (in context-dependent parsing, this might be necessary before changing syntax):
+    virtual auto invalidate() -> void required;
+  };
+
+  // A class is a "marked stream" of `T` if it is a "revertable stream" of `T`, and...
+  template <typename T>
+  class IMarkedStream: public IStream<T> {
+    interface(IMarkedStream);
+  public:
+    // It allows adding a "mark" to the stream:
+    virtual auto mark() -> void required;
+    // It allows advancing the underlying stream without inserting a mark:
+    virtual auto next() -> std::optional<T> required;
+    // It allows clearing all markings:
+    virtual auto clear() -> void required;
+    // ...and `advance()` is implemented in term of them:
+    auto advance() -> std::optional<T> final {
+      auto const res = next();
+      mark();
+      return res;
+    }
+  };
+
+  // A class is a "character stream" if it is a "revertable stream" of `Char`, and...
+  class ICharStream: public IStream<Char> {
+    interface(ICharStream);
+  public:
+    // It allows for obtaining a view of the whole string:
+    virtual auto string() const -> std::string_view required;
+    // It allows for obtaining a view of some substring:
+    virtual auto slice(size_t start, size_t end) const -> std::string_view required;
+  };
+
+  // Simplest implementation of `IBufferedStream`.
+  // Its underlying stream must not be modified elsewhere.
+  template <typename T>
+  class BufferedStream: public IBufferedStream<T> {
+  public:
+    explicit BufferedStream(IStream<T>& stream):
+      _underlying(stream),
+      _offset(stream.position()) {}
+
+    auto advance() -> std::optional<T> override {
+      assert(_position <= _buffer.size());
+      if (_position == _buffer.size()) _buffer.push_back(_underlying.advance());
+      // Mid: _position < _elements.size()
+      return _buffer[_position++];
+    }
+    auto position() const -> size_t override { return _position; }
+    auto revert(size_t i) -> void override { assert(i <= _position), _position = i; }
+    auto invalidate() -> void override {
+      assert(_position <= _buffer.size());
+      _underlying.revert(_offset + _position);
+      _buffer.resize(_position);
+    }
+
+  private:
+    IStream<T>& _underlying;               // Underlying stream.
+    size_t const _offset;                  // Initial offset.
+    size_t _position = 0;                  // Current position = index in `_buffer`.
+    std::vector<std::optional<T>> _buffer; // Stored elements.
+  };
+
+  // Simplest implementation of `IMarkedStream`.
+  // Its underlying stream must not be modified elsewhere (exception: `underlying.advance()` is permitted;
+  // effect is the same as calling `next()`).
+  template <typename T>
+  class MarkedStream: public IMarkedStream<T> {
+  public:
+    explicit MarkedStream(IStream<T>& stream):
+      _underlying(stream),
+      _offset(stream.position()) {}
+
+    auto position() const -> size_t override { return _offsets.size(); }
+    auto revert(size_t i) -> void override {
+      assert(i <= _offsets.size());
+      _offsets.resize(i);
+      _underlying.revert(_offsets.empty() ? _offset : _offsets.back());
+    }
+    auto mark() -> void override { _offsets.push_back(_underlying.position()); }
+    auto next() -> std::optional<T> override { return _underlying.advance(); }
+    auto clear() -> void override { _offset = _underlying.position(), _offsets.clear(); }
+
+  private:
+    IStream<T>& _underlying;      // Underlying stream.
+    size_t _offset;               // Initial offset.
+    std::vector<size_t> _offsets; // Offsets of marks.
+  };
+
+  // Simplest implementation of `ICharStream` (wrapper around a `std::string`).
+  class CharStream: public ICharStream {
+  public:
     explicit CharStream(std::string string):
       _string(std::move(string)) {}
 
-    auto eof() const -> bool override { return _position == _string.size(); }
-    auto advance() -> Char override { return _position < _string.size() ? static_cast<Char>(_string[_position++]) : 0; }
+    auto advance() -> std::optional<Char> override {
+      if (_position >= _string.size()) return {};
+      return static_cast<Char>(_string[_position++]);
+    }
     auto position() const -> size_t override { return _position; }
     auto revert(size_t i) -> void override { assert(i <= _position), _position = i; }
 
-    // Returns whole string.
-    auto string() -> std::string_view { return _string; }
-
-    // Returns a substring.
-    auto slice(size_t start, size_t end) -> std::string_view {
+    auto string() const -> std::string_view override { return _string; }
+    auto slice(size_t start, size_t end) const -> std::string_view override {
       assert(start <= end && end <= _position);
       return std::string_view(_string).substr(start, end - start);
     }
 
   private:
-    size_t _position = 0;
-    std::string _string;
+    std::string _string;  // Underlying string.
+    size_t _position = 0; // Current position.
   };
 
-  // A `LookaheadStream` that works with a "revertable stream".
-  // It copy-stores all generated elements, so as to avoid repeated work.
-  template <typename T>
-  class LookaheadStream: public Stream<T> {
-  public:
-    // A `LookaheadStream` is constructed from a "revertable stream" of `T`.
-    // Given reference must be valid over the `LookaheadStream`'s lifetime.
-    explicit LookaheadStream(Stream<T>& stream):
-      _stream(stream),
-      _offset(stream.position()) {}
-
-    auto eof() const -> bool override { return _position == _elements.size() && _stream.eof(); }
-    auto advance() -> T override {
-      assert(_position <= _elements.size());
-      if (_position == _elements.size()) _elements.push_back(_stream.advance());
-      // Mid: _position < _elements.size()
-      return _elements[_position++];
-    }
-    auto position() const -> size_t override { return _position; }
-    auto revert(size_t i) -> void override { assert(i <= _position), _position = i; }
-
-    // Invalidates cache past the current position (inclusive).
-    auto invalidate() -> void {
-      assert(_position <= _elements.size());
-      _stream.revert(_offset + _position);
-      _elements.resize(_position);
-    }
-
-  private:
-    Stream<T>& _stream;
-    size_t _offset;
-    size_t _position = 0;
-    std::deque<T> _elements;
-  };
 }
 
-#endif // STREAM_HPP_
+#endif // PARSING_STREAM_HPP_

@@ -12,6 +12,7 @@
 #include <vector>
 #include <parsing/lexer.hpp>
 #include <parsing/parser.hpp>
+#include "parsing/stream.hpp"
 #include "tree.hpp"
 
 namespace Eval {
@@ -86,12 +87,10 @@ namespace Eval {
     auto operator=(Evaluator&&) -> Evaluator& = delete;
     virtual ~Evaluator() = default;
 
-    auto setString(std::string const& string) -> void {
+    auto setString(std::string const& s) -> void {
       assert(automaton && grammar);
-      buffer = std::make_unique<Parsing::CharStream>(string);
-      lexer = std::make_unique<Parsing::Lexer>(*automaton, *buffer);
-      lookaheads = std::make_unique<Parsing::LookaheadStream<std::optional<Parsing::Token>>>(*lexer);
-      parser = std::make_unique<Parsing::Parser>(*grammar, *lookaheads);
+      stream = std::make_unique<Parsing::CharStream>(s);
+      parser = std::make_unique<Parser>(*automaton, *grammar, *stream);
     }
 
     // Parses next statement (results will be stored).
@@ -102,9 +101,25 @@ namespace Eval {
     auto evalParsedStatement() -> Tree*;
 
     // Returns and clears error log.
-    auto popParsingErrors() -> std::vector<ParsingError>;
+    auto parsingErrors() -> std::vector<ParsingError>;
 
   protected:
+    struct Parser {
+      static constexpr auto defaultParams = Parsing::EarleyParser::ErrorRecoveryParams{
+        .maxSkipped = 5_z,
+        .threshold = 10_z,
+      };
+
+      Parsing::AutomatonLexer lexer;
+      Parsing::BufferedStream<Parsing::Token> buffer;
+      Parsing::EarleyParser parser;
+
+      Parser(Parsing::Automaton const& automaton, Parsing::Grammar const& grammar, Parsing::CharStream& stream):
+        lexer(automaton, stream),
+        buffer(lexer),
+        parser(grammar, buffer, defaultParams) {}
+    };
+
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
     struct Result {
       Tree* env;
@@ -131,11 +146,10 @@ namespace Eval {
 
     std::unique_ptr<Parsing::Automaton const> automaton;
     std::unique_ptr<Parsing::Grammar const> grammar;
-    std::unique_ptr<Parsing::CharStream> buffer;
-    std::unique_ptr<Parsing::Lexer> lexer;
-    std::unique_ptr<Parsing::LookaheadStream<std::optional<Parsing::Token>>> lookaheads;
-    std::unique_ptr<Parsing::Parser> parser;
+    std::unique_ptr<Parsing::CharStream> stream;
+    std::unique_ptr<Parser> parser;
 
+    std::vector<bool> symbolIsTerminal;
     std::vector<std::string> symbolNames;
     std::unordered_map<std::string, size_t> nameSymbols;
     std::vector<std::string> ruleNames;
@@ -152,10 +166,11 @@ namespace Eval {
       return res;
     }
 
-    auto symbol(std::string const& name) -> Parsing::Symbol {
+    auto symbol(bool isTerminal, std::string const& name) -> Parsing::Symbol {
       if (auto const it = nameSymbols.find(name); it != nameSymbols.end())
         return static_cast<Parsing::Symbol>(it->second);
-      auto const id = symbolNames.size();
+      auto const id = symbolIsTerminal.size();
+      symbolIsTerminal.push_back(isTerminal);
       symbolNames.push_back(name);
       nameSymbols[name] = id;
       return static_cast<Parsing::Symbol>(id);
@@ -187,7 +202,7 @@ namespace Eval {
     auto extend(Tree* env, std::string const& sym, Tree* e) -> Tree*;
     auto lookup(Tree* env, std::string const& sym) -> Tree*;
 
-    auto resolve(Parsing::Node const* node, std::vector<Tree*> const& tails, size_t maxDepth) -> std::vector<Tree*>;
+    auto resolve(Parsing::Node const& node, std::vector<Tree*> const& tails, size_t maxDepth) -> std::vector<Tree*>;
     auto resolve(size_t maxDepth = 4096) -> Tree*;
     auto expand(Tree* e) -> Tree*;
     auto expandList(Tree* e) -> Tree*;

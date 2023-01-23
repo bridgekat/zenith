@@ -1,14 +1,9 @@
-// Parsing :: Grammar, GrammarBuilder, Node, Parser...
+// Parsing :: Grammar, GrammarBuilder, Node, EarleyParser...
 
-#ifndef PARSER_HPP_
-#define PARSER_HPP_
+#ifndef PARSING_PARSER_HPP_
+#define PARSING_PARSER_HPP_
 
-#include <limits>
-#include <list>
-#include <optional>
 #include <unordered_map>
-#include <variant>
-#include <common.hpp>
 #include "lexer.hpp"
 #include "stream.hpp"
 
@@ -62,52 +57,85 @@ namespace Parsing {
         auto operator()(State const& s) const -> size_t { return hashAll(s.begin, s.end, s.rule, s.progress); }
       };
     };
-    State state;                                                   // Payload.
-    std::list<std::pair<Node*, std::variant<Node*, Token*>>> next; // Forward links (construction deferred).
-    std::list<std::pair<Node*, std::variant<Node*, Token*>>> prev; // Backward links.
+    struct Link {
+      size_t sibling; // Index of the previous/next node.
+      bool leaf;      // Whether it is a leaf node.
+      size_t child;   // Index of completed child node (for non-leaf nodes) or token (for leaf nodes).
+    };
+    State state;            // Payload.
+    std::vector<Link> next; // Forward links (construction deferred).
+    std::vector<Link> prev; // Backward links.
   };
 
   // Earley parser!
-  // Without "Leo's optimisation", this is more suitable for left-recursive rules (linear complexity)
+  // See: https://en.wikipedia.org/wiki/Earley_parser#The_algorithm for an overview.
+  // See: https://loup-vaillant.fr/tutorials/earley-parsing
+  // Other related information:
+  // - https://github.com/jeffreykegler/old_kollos/blob/master/notes/misc/leo2.md
+  // - https://jeffreykegler.github.io/Marpa-web-site/
+  // - https://arxiv.org/pdf/1910.08129.pdf
+  //
+  // Without Leo's optimisation, this is more suitable for left-recursive rules (linear complexity)
   // than right-recursive ones (quadratic time and space complexity w.r.t. length of the sentence).
-  class Parser {
+  class EarleyParser {
   public:
-    // Given references must be valid over the `Parser`'s lifetime.
-    Parser(Grammar const& grammar, Stream<std::optional<Token>>& stream):
-      _grammar(grammar),
-      _stream(stream) {}
+    struct IndexRange {
+      size_t begin; // Index of the first node (in the DP array) at this position.
+      size_t end;   // Index of the last node (in the DP array) at this position + 1.
+    };
+    struct ErrorRecoveryParams {
+      size_t maxSkipped; // Max number of skipped tokens around an error.
+      size_t threshold;  // Number of tokens to be recognised before declaring success.
+    };
+    struct Error {
+      std::vector<Symbol> expected; // Expected symbol IDs (including terminals and nonterminals).
+      std::optional<Token> got;     // The problematic token (empty if reached EOF).
+    };
 
-    auto eof() const -> bool { return _stream.eof(); }
-    auto advance() -> bool;
+    // Given references must be valid over the `Parser`'s lifetime.
+    EarleyParser(Grammar const& grammar, IStream<Token>& stream, ErrorRecoveryParams const& params):
+      _grammar(grammar),
+      _marked(stream),
+      _params(params) {}
+
+    // Parse with error recovery.
+    auto parse() -> bool;
 
     // Retrieves results.
-    auto tokens() const -> std::list<Token> const& { return _tokens; }
-    auto nodes() const -> std::vector<std::list<Node>> const& { return _nodes; }
+    auto tokens() const -> std::vector<Token> const& { return _tokens; }
+    auto nodes() const -> std::vector<Node> const& { return _nodes; }
+    auto ranges() const -> std::vector<IndexRange> const& { return _ranges; }
+    auto errors() const -> std::vector<Error> const& { return _errors; }
+    auto finalStates() const -> std::vector<size_t>;
 
     // Debug output.
     auto showState(Node const& node, std::vector<std::string> const& names) const -> std::string;
     auto showStates(std::vector<std::string> const& names) const -> std::string;
 
   private:
-    Grammar const& _grammar;               // Grammar.
-    Stream<std::optional<Token>>& _stream; // Input `Token` stream.
-    std::list<Token> _tokens;              // Parsed tokens.
-    std::vector<std::list<Node>> _nodes;   // The DP array, aka. "shared packed parse forest (SPPF)".
+    Grammar const& _grammar;         // Grammar.
+    MarkedStream<Token> _marked;     // Input `Token` stream with markers.
+    std::vector<Token> _tokens;      // Parsed tokens.
+    std::vector<Node> _nodes;        // The DP array, aka. "shared packed parse forest (SPPF)".
+    std::vector<IndexRange> _ranges; // Position -> index range of nodes at this position.
+    ErrorRecoveryParams _params;     // Error recovery parameters.
+    std::vector<Error> _errors;      // Logged errors.
 
-    // Map for state deduplication: state -> node.
-    std::unordered_map<Node::State, Node*, Node::State::Hasher> _map;
-    // Map of completion candidates: (end position, next symbol) -> node.
-    std::unordered_multimap<std::pair<size_t, Symbol>, Node*, PairHasher> _completions;
-    // Map of null-completed nodes: (start and end position, symbol) -> node.
-    std::unordered_multimap<std::pair<size_t, Symbol>, Node*, PairHasher> _completed;
+    // Map for state deduplication: state -> node index.
+    std::unordered_map<Node::State, size_t, Node::State::Hasher> _map;
+    // Map of completion candidates: (end position, next symbol) -> node index.
+    std::unordered_multimap<std::pair<size_t, Symbol>, size_t, PairHasher> _completions;
+    // Map of null-completed nodes: (start and end position, symbol) -> node index.
+    std::unordered_multimap<std::pair<size_t, Symbol>, size_t, PairHasher> _completed;
 
     auto _nextToken() -> std::optional<Token>;
-    auto _node(size_t begin, size_t end, size_t rule, size_t progress) -> Node*;
-    auto _transition(Node* prev, std::variant<Node*, Token*> child, Node* next) -> void;
-    auto _run() -> bool;
-    auto _prune() -> void;
+    auto _skipTokens(size_t count) -> void;
+    auto _node(size_t begin, size_t end, size_t rule, size_t progress) -> size_t;
+    auto _transition(size_t prev, bool leaf, size_t child, size_t next) -> void;
+    auto _run(bool initialCompletions = true, size_t length = std::numeric_limits<size_t>::max()) -> bool;
+    auto _restore(size_t i) -> void;
   };
 
 }
 
-#endif // PARSER_HPP_
+#endif // PARSING_PARSER_HPP_

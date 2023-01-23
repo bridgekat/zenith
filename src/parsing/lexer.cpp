@@ -20,7 +20,7 @@ namespace Parsing {
     }
   }
 
-  auto NFA::match(Stream<Char>& stream) const -> std::optional<Symbol> {
+  auto NFA::match(IStream<Char>& stream) const -> std::optional<Symbol> {
     auto last = stream.position();
     auto res = std::optional<Symbol>();
     auto s = std::vector<size_t>();
@@ -30,8 +30,8 @@ namespace Parsing {
     v[initial] = true;
     closure(*this, v, s);
     // Match greedily, until there are no further possibilities.
-    while (!stream.eof() && !s.empty()) {
-      auto const c = stream.advance();
+    while (auto const opt = stream.advance()) {
+      auto const c = *opt;
       // Reset all bits of `v[]`.
       for (auto const x: s) v[x] = false;
       // Move one step.
@@ -58,13 +58,13 @@ namespace Parsing {
     return res;
   }
 
-  auto DFA::match(Stream<Char>& stream) const -> std::optional<Symbol> {
+  auto DFA::match(IStream<Char>& stream) const -> std::optional<Symbol> {
     auto last = stream.position();
     auto res = std::optional<Symbol>();
     auto s = initial;
     // Match greedily, until there are no further possibilities.
-    while (!stream.eof()) {
-      auto const c = stream.advance();
+    while (auto const opt = stream.advance()) {
+      auto const c = *opt;
       if (!table[s].outs[c]) break;
       s = *table[s].outs[c];
       // Update longest match, if applicable.
@@ -500,14 +500,13 @@ namespace Parsing {
     return dfa;
   }
 
-  // Skips the next UTF-8 code point.
+  // Skips the next UTF-8 code point. Returns false if no more available characters.
   // See: https://en.wikipedia.org/wiki/UTF-8#Encoding
-  auto skipCodePoint(Stream<Char>& stream) -> bool {
-    if (stream.eof()) return false;
-    stream.advance();
+  auto skipCodePoint(IStream<Char>& stream) -> bool {
+    if (!stream.advance()) return false;
     auto last = stream.position();
-    while (!stream.eof()) {
-      auto const c = stream.advance();
+    while (auto const opt = stream.advance()) {
+      auto const c = *opt;
       if ((c & 0b11000000) != 0b10000000) break; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
       last = stream.position();
     }
@@ -515,19 +514,18 @@ namespace Parsing {
     return true;
   }
 
-  auto Lexer::advance() -> std::optional<Token> {
-    auto const last = _stream.position();
-    if (auto const opt = _automaton.match(_stream)) {
-      // Success.
+  auto AutomatonLexer::next() -> std::optional<Token> {
+    auto const orig = _stream.position();
+    if (auto const opt = _automaton.match(_stream)) { // Success.
       auto const curr = _stream.position();
-      _offsets.push_back(curr);
-      return Token{*opt, last, curr, _stream.slice(last, curr)};
-    } else {
-      // Failure (or reached EOF).
-      skipCodePoint(_stream);
-      auto const curr = _stream.position();
-      _offsets.push_back(curr);
-      return std::nullopt;
+      return Token{opt, _stream.slice(orig, curr), orig, curr};
+    } else if (skipCodePoint(_stream)) { // Failure.
+      auto last = _stream.position();
+      while (!_automaton.match(_stream) && skipCodePoint(_stream)) last = _stream.position();
+      _stream.revert(last);
+      return Token{{}, _stream.slice(orig, last), orig, last};
+    } else { // Reached EOF.
+      return {};
     }
   }
 

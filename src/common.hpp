@@ -50,7 +50,7 @@ inline auto assert(bool expr, char const* name, char const* file, int line, char
 #define unimplemented unimplemented(__FILE__, __LINE__, static_cast<char const*>(__func__))
 #define assert(expr)  assert(expr, #expr, __FILE__, __LINE__, static_cast<char const*>(__func__))
 
-// Compiler & tools support for literal suffix `uz` (in C++23) is still incomplete...
+// Compiler & tools support for literal suffix `uz` (C++23) is still incomplete...
 // See: https://en.cppreference.com/w/cpp/language/user_literal
 constexpr auto operator"" _z(unsigned long long n) -> size_t { return n; }
 
@@ -85,6 +85,9 @@ struct PairHasher {
   }
 };
 
+// A unit type.
+struct Unit {};
+
 // "Pattern matching" on `std::variant`.
 // See: https://en.cppreference.com/w/cpp/utility/variant/visit
 // See: https://en.cppreference.com/w/cpp/language/aggregate_initialization
@@ -100,6 +103,7 @@ constexpr auto match(T&& variant, Ts&&... lambdas) {
 // Other "syntax enhancements".
 #define required = 0
 
+// Used for declaring a class as "interface".
 // See: https://softwareengineering.stackexchange.com/questions/235674/what-is-the-pattern-for-a-safe-interface-in-c
 #define interface(T)                                 \
 protected:                                           \

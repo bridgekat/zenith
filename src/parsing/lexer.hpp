@@ -1,13 +1,9 @@
-// Parsing :: Automaton, AutomatonBuilder, Token, Lexer...
+// Parsing :: Automaton, AutomatonBuilder, AutomatonLexer...
 
-#ifndef LEXER_HPP_
-#define LEXER_HPP_
+#ifndef PARSING_LEXER_HPP_
+#define PARSING_LEXER_HPP_
 
 #include <array>
-#include <optional>
-#include <utility>
-#include <vector>
-#include <common.hpp>
 #include "stream.hpp"
 
 namespace Parsing {
@@ -17,9 +13,9 @@ namespace Parsing {
     interface(Automaton);
   public:
     // It allows matching a prefix of a string, which:
-    // Returns the matching pattern ID and advances `string` on success;
-    // Returns `std::nullopt` and leaves `string` in its original position on failure.
-    virtual auto match(Stream<Char>& stream) const -> std::optional<Symbol> required;
+    // Returns the matching pattern ID on success;
+    // Returns `std::nullopt` on failure.
+    virtual auto match(IStream<Char>& stream) const -> std::optional<Symbol> required;
   };
 
   // Nondeterministic finite automaton with ε-transitions.
@@ -33,7 +29,7 @@ namespace Parsing {
     size_t initial;           // The initial state.
 
     // Runs NFA.
-    auto match(Stream<Char>& stream) const -> std::optional<Symbol> override;
+    auto match(IStream<Char>& stream) const -> std::optional<Symbol> override;
   };
 
   // Deterministic finite automaton.
@@ -47,7 +43,7 @@ namespace Parsing {
     size_t initial;           // The initial state.
 
     // Runs DFA.
-    auto match(Stream<Char>& stream) const -> std::optional<Symbol> override;
+    auto match(IStream<Char>& stream) const -> std::optional<Symbol> override;
   };
 
   // Builds automata from regular expressions.
@@ -87,40 +83,31 @@ namespace Parsing {
     auto _transition(size_t s, Char c, size_t t) -> void;
   };
 
-  // A token emitted by a lexer.
-  struct Token {
-    Symbol id;               // Terminal symbol ID.
-    size_t begin;            // Start index in original stream.
-    size_t end;              // End index in original stream.
-    std::string_view lexeme; // Lexeme. `lexeme.size() == end - begin`.
-  };
-
-  // A lexer is a "revertable stream" of `std::optional<Token>`.
-  // It generates the next token if a prefix match is found,
-  // or `std::nullopt` (and skips a single UTF-8 code point) in case of a failed match.
-  class Lexer: public Stream<std::optional<Token>> {
+  // A lexer is a "revertable stream" of `Token`.
+  class AutomatonLexer: public IMarkedStream<Token> {
   public:
     // Given references must be valid over the `Lexer`'s lifetime.
-    Lexer(Automaton const& automaton, CharStream& stream):
+    AutomatonLexer(Automaton const& automaton, CharStream& stream):
       _automaton(automaton),
       _stream(stream),
       _offset(stream.position()) {}
 
-    auto eof() const -> bool override { return _stream.eof(); }
-    auto advance() -> std::optional<Token> override;
     auto position() const -> size_t override { return _offsets.size(); }
     auto revert(size_t i) -> void override {
       assert(i <= _offsets.size());
       _offsets.resize(i);
       _stream.revert(_offsets.empty() ? _offset : _offsets.back());
     }
+    auto mark() -> void override { _offsets.push_back(_stream.position()); }
+    auto next() -> std::optional<Token> override;
+    auto clear() -> void override { _offset = _stream.position(), _offsets.clear(); }
 
   private:
     Automaton const& _automaton;  // Underlying automaton.
-    CharStream& _stream;          // Input `Char` stream.
-    size_t _offset;               // Starting position in the input `Char` stream.
-    std::vector<size_t> _offsets; // End positions in the input `Char` stream.
+    CharStream& _stream;          // Underlying stream.
+    size_t _offset;               // Initial offset.
+    std::vector<size_t> _offsets; // Offsets of marks.
   };
 }
 
-#endif // LEXER_HPP_
+#endif // PARSING_LEXER_HPP_
