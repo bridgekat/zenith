@@ -1,26 +1,26 @@
-// Eval :: ExtendedEvaluator
-
-#ifndef EXTENDED_EVALUATOR_HPP_
-#define EXTENDED_EVALUATOR_HPP_
+#ifndef APIMU_EVAL_EXTENDED_EVALUATOR_HPP
+#define APIMU_EVAL_EXTENDED_EVALUATOR_HPP
 
 #include <core/expr.hpp>
 #include <core/fol/fol.hpp>
 #include "evaluator.hpp"
 
-namespace Eval {
+namespace apimu::eval {
+#include "macros_open.hpp"
 
   class ExtendedEvaluator: public Evaluator {
   public:
     ExtendedEvaluator();
 
   private:
-    Core::FOLContext ctx;
-    Allocator<Core::Expr> epool;
+    core::FOLContext ctx;
+    Allocator<core::Expr> epool;
 
-    auto exprTree(Core::Expr const* e) -> Tree*;
-    auto treeExpr(Tree* e) -> Core::Expr const*;
+    auto exprTree(core::Expr const* e) -> Tree*;
+    auto treeExpr(Tree* e) -> core::Expr const*;
   };
 
+#include "macros_close.hpp"
 }
 
-#endif // EXTENDED_EVALUATOR_HPP_
+#endif // APIMU_EVAL_EXTENDED_EVALUATOR_HPP

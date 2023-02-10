@@ -4,21 +4,22 @@
 using std::string;
 using std::pair;
 
-namespace Eval {
+namespace apimu::eval {
+#include "macros_open.hpp"
 
   auto Tree::clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const -> Tree* {
     return match(
       *this,
       [&](Nil const&) { return nil; },
-      [&](Cons const& x) { return pool.emplace(x.head->clone(pool, nil, unit), x.tail->clone(pool, nil, unit)); },
-      [&](Symbol const& x) { return pool.emplace(x); },
-      [&](Prim const& x) { return pool.emplace(x); },
-      [&](Nat64 const& x) { return pool.emplace(x); },
-      [&](String const& x) { return pool.emplace(x); },
-      [&](Bool const& x) { return pool.emplace(x); },
+      [&](Cons const& x) { return pool.make(x.head->clone(pool, nil, unit), x.tail->clone(pool, nil, unit)); },
+      [&](Symbol const& x) { return pool.make(x); },
+      [&](Prim const& x) { return pool.make(x); },
+      [&](Nat64 const& x) { return pool.make(x); },
+      [&](String const& x) { return pool.make(x); },
+      [&](Bool const& x) { return pool.make(x); },
       [&](Unit const&) { return unit; },
       [&](Closure const&) -> Tree* { unimplemented; },
-      [&](Native const& x) { return pool.emplace(x); }
+      [&](Native const& x) { return pool.make(x); }
     );
   }
 
@@ -119,4 +120,6 @@ namespace Eval {
     }
     return res;
   }
+
+#include "macros_close.hpp"
 }

@@ -1,7 +1,5 @@
-// Eval :: Matcher, Tree, Nil, Cons, VarType...
-
-#ifndef TREE_HPP_
-#define TREE_HPP_
+#ifndef APIMU_EVAL_TREE_HPP
+#define APIMU_EVAL_TREE_HPP
 
 #include <any>
 #include <compare>
@@ -11,7 +9,8 @@
 #include <variant>
 #include <common.hpp>
 
-namespace Eval {
+namespace apimu::eval {
+#include "macros_open.hpp"
 
   // clang-format off
   // Concrete atom types for Tree
@@ -40,13 +39,12 @@ namespace Eval {
   // Pre & invariant (for all methods): all pointers (in the "active variant") are valid
   class Tree: public std::variant<Nil, Cons, Symbol, Prim, Nat64, String, Bool, Unit, Closure, Native> {
   public:
-    using Super = std::variant<Nil, Cons, Symbol, Prim, Nat64, String, Bool, Unit, Closure, Native>;
-    using Super::variant;
+    using variant::variant;
 
     Tree():
-      Super(Nil{}) {}
+      variant(Nil{}) {}
     Tree(Tree* l, Tree* r):
-      Super(Cons{l, r}) {}
+      variant(Cons{l, r}) {}
 
     auto clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const -> Tree*;
 
@@ -59,15 +57,7 @@ namespace Eval {
 
   inline auto Cons::operator==(Cons const& r) const -> bool { return *head == *r.head && *tail == *r.tail; };
 
-  /*
-  // A thread-local temporary allocator instance for `Tree`
-  // Should be cleared only by outermost level code
-  inline Allocator<Tree>& temp() {
-    thread_local Allocator<Tree> pool;
-    return pool;
-  }
-  */
-
+#include "macros_close.hpp"
 }
 
-#endif // TREE_HPP_
+#endif // APIMU_EVAL_TREE_HPP

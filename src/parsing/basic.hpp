@@ -1,35 +1,27 @@
-// Parsing :: Char, Symbol, Precedence, Token
-
-#ifndef PARSING_BASIC_HPP_
-#define PARSING_BASIC_HPP_
+#ifndef APIMU_PARSING_BASIC_HPP
+#define APIMU_PARSING_BASIC_HPP
 
 #include <limits>
 #include <optional>
 #include <string_view>
 #include <common.hpp>
 
-namespace Parsing {
+namespace apimu::parsing {
+#include "macros_open.hpp"
 
   // Assuming 8-bit code units (UTF-8).
   using Char = uint8_t;
-  constexpr auto CharMax = std::numeric_limits<Char>::max();
+  constexpr Char CharMax = std::numeric_limits<Char>::max();
 
   // Unified ID for terminal and nonterminal symbols.
   using Symbol = uint32_t;
-  constexpr auto SymbolMax = std::numeric_limits<Symbol>::max();
+  constexpr Symbol SymbolMax = std::numeric_limits<Symbol>::max();
 
   // Operator precedence levels.
-  using Precedence = uint16_t;
-  constexpr auto PrecedenceMax = std::numeric_limits<Precedence>::max();
+  using Precedence = uint32_t;
+  constexpr Precedence PrecedenceMax = std::numeric_limits<Precedence>::max();
 
-  // A token emitted by a lexer.
-  struct Token {
-    std::optional<Symbol> id; // Terminal symbol ID (empty if unrecognised).
-    std::string_view lexeme;  // Lexeme. `lexeme.size() == end - begin`.
-    size_t begin;             // Start index in original character stream.
-    size_t end;               // End index in original character stream.
-  };
-
+#include "macros_close.hpp"
 }
 
-#endif // PARSING_BASIC_HPP_
+#endif // APIMU_PARSING_BASIC_HPP

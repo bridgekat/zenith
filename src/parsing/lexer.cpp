@@ -2,7 +2,8 @@
 #include <algorithm>
 #include <unordered_map>
 
-namespace Parsing {
+namespace apimu::parsing {
+#include "macros_open.hpp"
 
   // Expands `s` to ε-closure.
   // Pre: the indices where `v[]` is true must match the elements of `s`.
@@ -106,6 +107,14 @@ namespace Parsing {
     for (auto i = size_t{a}; i <= b; i++) _transition(s, static_cast<Char>(i), t);
     return {s, t};
   }
+  auto AutomatonBuilder::rangeExcept(Char a, Char b, std::vector<Char> const& ls) -> Subgraph {
+    auto f = std::array<bool, CharMax + 1>{};
+    for (auto const c: ls) f[c] = true;
+    auto const s = _node(), t = _node();
+    for (auto i = size_t{a}; i <= b; i++)
+      if (!f[i]) _transition(s, static_cast<Char>(i), t);
+    return {s, t};
+  }
   auto AutomatonBuilder::word(std::vector<Char> const& word) -> Subgraph {
     auto const s = _node();
     auto t = s;
@@ -145,7 +154,7 @@ namespace Parsing {
     return {s, t};
   }
   auto AutomatonBuilder::plus(Subgraph a) -> Subgraph { return concat({a, star(a)}); }
-  auto AutomatonBuilder::withPattern(Symbol sym, Subgraph a) -> AutomatonBuilder& {
+  auto AutomatonBuilder::pattern(Symbol sym, Subgraph a) -> AutomatonBuilder& {
     _transition(_initial, 0, a.first);
     _table[a.second].mark = sym;
     return *this;
@@ -275,7 +284,7 @@ namespace Parsing {
     auto add(size_t x, size_t i) -> void {
       cls[i].size++;
       auto const l = cls[i].head, r = l->r;
-      auto const curr = pool.add(List{l, r, x});
+      auto const curr = pool.make(List{l, r, x});
       l->r = r->l = curr;
       info[x] = {i, curr};
     }
@@ -291,7 +300,7 @@ namespace Parsing {
 
     // Allocates new class and returns its ID (always equal to `partition.size() - 1`, just for convenience).
     auto newClass() -> size_t {
-      auto const head = pool.add(List{nullptr, nullptr, 0_z});
+      auto const head = pool.make(List{nullptr, nullptr, 0_z});
       head->l = head->r = head;
       auto const index = cls.size();
       cls.push_back(Class{0_z, head, false});
@@ -529,4 +538,5 @@ namespace Parsing {
     }
   }
 
+#include "macros_close.hpp"
 }

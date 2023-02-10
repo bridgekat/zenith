@@ -1,7 +1,5 @@
-// Eval :: EvalError, Evaluator...
-
-#ifndef EVALUATOR_HPP_
-#define EVALUATOR_HPP_
+#ifndef APIMU_EVAL_EVALUATOR_HPP
+#define APIMU_EVAL_EVALUATOR_HPP
 
 #include <functional>
 #include <initializer_list>
@@ -15,9 +13,10 @@
 #include "parsing/stream.hpp"
 #include "tree.hpp"
 
-namespace Eval {
+namespace apimu::eval {
+#include "macros_open.hpp"
 
-  // Parsing error exception.
+  // parsing error exception.
   struct ParsingError: public std::runtime_error {
     size_t begin;
     size_t end;
@@ -89,7 +88,7 @@ namespace Eval {
 
     auto setString(std::string const& s) -> void {
       assert(automaton && grammar);
-      stream = std::make_unique<Parsing::CharStream>(s);
+      stream = std::make_unique<parsing::CharStream>(s);
       parser = std::make_unique<Parser>(*automaton, *grammar, *stream);
     }
 
@@ -105,19 +104,21 @@ namespace Eval {
 
   protected:
     struct Parser {
-      static constexpr auto defaultParams = Parsing::EarleyParser::ErrorRecoveryParams{
-        .maxSkipped = 5_z,
-        .threshold = 10_z,
+      static constexpr auto defaultParams = parsing::ErrorRecoveryParams{
+        .rollback = true,
+        .maxSkipped = 5,
+        .threshold = 5,
       };
 
-      Parsing::AutomatonLexer lexer;
-      Parsing::BufferedStream<Parsing::Token> buffer;
-      Parsing::EarleyParser parser;
+      parsing::AutomatonLexer lexer;
+      parsing::BufferedStream<parsing::Token> buffer;
+      parsing::EarleyParser parser;
+      parsing::BasicErrorHandler handler;
 
-      Parser(Parsing::Automaton const& automaton, Parsing::Grammar const& grammar, Parsing::CharStream& stream):
+      Parser(parsing::Automaton const& automaton, parsing::Grammar const& grammar, parsing::CharStream& stream):
         lexer(automaton, stream),
         buffer(lexer),
-        parser(grammar, buffer, defaultParams) {}
+        parser(grammar, buffer, defaultParams, handler) {}
     };
 
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
@@ -134,51 +135,33 @@ namespace Eval {
     };
     using PrimitiveFunc = std::pair<bool, std::function<Result(Tree*, Tree*)>>;
 
-    static constexpr Parsing::Symbol ignoredSymbol = 0;
-    static constexpr Parsing::Symbol startSymbol = 1;
+    static constexpr parsing::Symbol ignoredSymbol = 0;
+    static constexpr parsing::Symbol startSymbol = 1;
+    static constexpr size_t defaultMaxDepth = 4096;
 
-    Allocator<Tree> pool;
-    Eval::Tree* const nil = pool.emplace(Nil{});
-    Eval::Tree* const unit = pool.emplace(Unit{});
-    Eval::Tree* patterns = nil;
-    Eval::Tree* rules = nil;
-    Eval::Tree* globalEnv = nil;
-
-    std::unique_ptr<Parsing::Automaton const> automaton;
-    std::unique_ptr<Parsing::Grammar const> grammar;
-    std::unique_ptr<Parsing::CharStream> stream;
-    std::unique_ptr<Parser> parser;
-
-    std::vector<bool> symbolIsTerminal;
-    std::vector<std::string> symbolNames;
-    std::unordered_map<std::string, size_t> nameSymbols;
-    std::vector<std::string> ruleNames;
-    std::unordered_map<std::string, size_t> nameRules;
-
-    std::vector<Closure> macros;
-    std::unordered_map<std::string, size_t> nameMacros;
-    std::vector<PrimitiveFunc> prims;
-    std::unordered_map<std::string, size_t> namePrims;
+    auto pool() -> Allocator<Tree>& { return _pool; }
+    auto nil() -> eval::Tree* { return _nil; }
+    auto unit() -> eval::Tree* { return _unit; }
 
     auto makeList(std::initializer_list<Tree*> const& es) -> Tree* {
-      auto res = nil;
-      for (auto it = std::rbegin(es); it != std::rend(es); it++) res = pool.emplace(*it, res);
+      auto res = nil();
+      for (auto it = std::rbegin(es); it != std::rend(es); it++) res = pool().make(*it, res);
       return res;
     }
 
-    auto symbol(bool isTerminal, std::string const& name) -> Parsing::Symbol {
+    auto symbol(bool isTerminal, std::string const& name) -> parsing::Symbol {
       if (auto const it = nameSymbols.find(name); it != nameSymbols.end())
-        return static_cast<Parsing::Symbol>(it->second);
+        return static_cast<parsing::Symbol>(it->second);
       auto const id = symbolIsTerminal.size();
       symbolIsTerminal.push_back(isTerminal);
       symbolNames.push_back(name);
       nameSymbols[name] = id;
-      return static_cast<Parsing::Symbol>(id);
+      return static_cast<parsing::Symbol>(id);
     }
 
-    auto treePattern(Parsing::AutomatonBuilder& builder, Tree* e) -> Parsing::AutomatonBuilder::Subgraph;
-    auto listPatterns(Parsing::AutomatonBuilder& builder, Tree* e) -> std::vector<Parsing::AutomatonBuilder::Subgraph>;
-    auto listSymbols(Tree* e) -> std::vector<std::pair<Parsing::Symbol, Parsing::Precedence>>;
+    auto treePattern(parsing::AutomatonBuilder& builder, Tree* e) -> parsing::AutomatonBuilder::Subgraph;
+    auto listPatterns(parsing::AutomatonBuilder& builder, Tree* e) -> std::vector<parsing::AutomatonBuilder::Subgraph>;
+    auto listSymbols(Tree* e) -> std::vector<parsing::GrammarBuilder::InputPair>;
     auto setSyntax(Tree* p, Tree* r) -> void;
 
     auto addMacro(std::string const& name, Closure const& cl) -> size_t {
@@ -202,16 +185,42 @@ namespace Eval {
     auto extend(Tree* env, std::string const& sym, Tree* e) -> Tree*;
     auto lookup(Tree* env, std::string const& sym) -> Tree*;
 
-    auto resolve(Parsing::Node const& node, std::vector<Tree*> const& tails, size_t maxDepth) -> std::vector<Tree*>;
-    auto resolve(size_t maxDepth = 4096) -> Tree*;
+    auto resolve(parsing::Node const& node, std::vector<Tree*> const& tails, size_t maxDepth) -> std::vector<Tree*>;
+    auto resolve(size_t maxDepth = defaultMaxDepth) -> Tree*;
     auto expand(Tree* e) -> Tree*;
     auto expandList(Tree* e) -> Tree*;
     auto eval(Tree* env, Tree* e) -> Tree*;
     auto evalList(Tree* env, Tree* e) -> Tree*;
     auto beginList(Tree* env, Tree* e) -> Tree*;
     auto quasiquote(Tree* env, Tree* e) -> Tree*;
+
+  private:
+    Allocator<Tree> _pool;
+    eval::Tree* _nil = _pool.make(Nil{});
+    eval::Tree* _unit = _pool.make(Unit{});
+
+    eval::Tree* patterns = nil();
+    eval::Tree* rules = nil();
+    eval::Tree* globalEnv = nil();
+
+    std::unique_ptr<parsing::Automaton const> automaton;
+    std::unique_ptr<parsing::Grammar const> grammar;
+    std::unique_ptr<parsing::CharStream> stream;
+    std::unique_ptr<Parser> parser;
+
+    std::vector<bool> symbolIsTerminal;
+    std::vector<std::string> symbolNames;
+    std::unordered_map<std::string, size_t> nameSymbols;
+    std::vector<std::string> ruleNames;
+    std::unordered_map<std::string, size_t> nameRules;
+
+    std::vector<Closure> macros;
+    std::unordered_map<std::string, size_t> nameMacros;
+    std::vector<PrimitiveFunc> prims;
+    std::unordered_map<std::string, size_t> namePrims;
   };
 
+#include "macros_close.hpp"
 }
 
-#endif // EVALUATOR_HPP_
+#endif // APIMU_EVAL_EVALUATOR_HPP

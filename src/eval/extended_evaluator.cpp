@@ -1,21 +1,22 @@
 #include "extended_evaluator.hpp"
 
 using std::string;
-using Core::Expr;
-using enum Core::Expr::Tag;
-using enum Core::Expr::SortTag;
-using enum Core::Expr::VarTag;
+using apimu::core::Expr;
+using enum apimu::core::Expr::Tag;
+using enum apimu::core::Expr::SortTag;
+using enum apimu::core::Expr::VarTag;
 
-namespace Eval {
+namespace apimu::eval {
+#include "macros_open.hpp"
 
-#define cons       pool.emplace
-#define nil        nil
-#define sym(s)     pool.emplace(Symbol{s})
-#define str(s)     pool.emplace(String{s})
-#define nat(n)     pool.emplace(Nat64{n})
-#define boolean(b) pool.emplace(Bool{b})
-#define obj(n)     pool.emplace(Native{n})
-#define unit       unit
+#define cons       pool().make
+#define nil        nil()
+#define sym(s)     pool().make(Symbol{s})
+#define str(s)     pool().make(String{s})
+#define nat(n)     pool().make(Nat64{n})
+#define boolean(b) pool().make(Bool{b})
+#define obj(n)     pool().make(Native{n})
+#define unit       unit()
 #define list(...)  makeList({__VA_ARGS__})
 
   ExtendedEvaluator::ExtendedEvaluator():
@@ -63,7 +64,7 @@ namespace Eval {
       return str(expectNative<Expr const*>(expect<Cons>(e).head)->toString(ctx));
     });
     addPrimitive("expr_fprint", true, [this](Tree*, Tree* e) -> Result {
-      return str(Core::FOLForm::fromExpr(expectNative<Expr const*>(expect<Cons>(e).head)).toString(ctx));
+      return str(core::FOLForm::fromExpr(expectNative<Expr const*>(expect<Cons>(e).head)).toString(ctx));
     });
     addPrimitive("expr_check", true, [this](Tree*, Tree* e) -> Result {
       try {
@@ -111,7 +112,7 @@ namespace Eval {
   }
 
   auto ExtendedEvaluator::treeExpr(Tree* e) -> Expr const* {
-#define expr epool.emplace
+#define expr epool.make
     auto const& [h, t] = expect<Cons>(e);
     auto const& sym = expect<Symbol>(h).val;
     if (sym == "Sort") {
@@ -162,4 +163,5 @@ namespace Eval {
 #undef obj
 #undef unit
 #undef list
+#include "macros_close.hpp"
 }

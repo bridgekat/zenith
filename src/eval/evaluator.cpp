@@ -9,9 +9,10 @@ using std::string;
 using std::vector;
 using std::pair;
 using std::optional, std::get_if;
-using Parsing::AutomatonBuilder, Parsing::GrammarBuilder;
+using apimu::parsing::AutomatonBuilder, apimu::parsing::GrammarBuilder;
 
-namespace Eval {
+namespace apimu::eval {
+#include "macros_open.hpp"
 
   auto Evaluator::parseNextStatement() -> bool {
     assert(bool(parser));
@@ -31,8 +32,9 @@ namespace Eval {
     auto res = vector<ParsingError>();
     // See:
     // https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
+    /*
     for (auto const& e: parser->parser.errors()) {
-      auto s = string("Parsing error, expected ");
+      auto s = string("parsing error, expected ");
       if (!e.expected.empty()) {
         s += "one of: ";
         for (auto const& sym: e.expected)
@@ -50,6 +52,7 @@ namespace Eval {
         res.emplace_back(s, stream->string().size(), stream->string().size() + 1);
       }
     }
+    */
     return res;
   }
 
@@ -75,9 +78,9 @@ namespace Eval {
     return *e == *pat;
   }
 
-  auto stringToCharVec(string const& s) -> vector<Parsing::Char> {
-    auto res = vector<Parsing::Char>();
-    for (auto const c: s) res.push_back(static_cast<Parsing::Char>(c));
+  auto stringToCharVec(string const& s) -> vector<parsing::Char> {
+    auto res = vector<parsing::Char>();
+    for (auto const c: s) res.push_back(static_cast<parsing::Char>(c));
     return res;
   }
 
@@ -93,8 +96,8 @@ namespace Eval {
       auto const& [lbound, u] = expect<Cons>(t);
       auto const& [ubound, _] = expect<Cons>(u);
       return builder.range(
-        static_cast<Parsing::Char>(expect<Nat64>(lbound).val),
-        static_cast<Parsing::Char>(expect<Nat64>(ubound).val)
+        static_cast<parsing::Char>(expect<Nat64>(lbound).val),
+        static_cast<parsing::Char>(expect<Nat64>(ubound).val)
       );
     }
     if (stag == "word") return builder.word(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
@@ -112,14 +115,14 @@ namespace Eval {
     return res;
   }
 
-  auto Evaluator::listSymbols(Tree* e) -> vector<pair<Parsing::Symbol, Parsing::Precedence>> {
-    auto res = vector<pair<Parsing::Symbol, Parsing::Precedence>>();
+  auto Evaluator::listSymbols(Tree* e) -> vector<parsing::GrammarBuilder::InputPair> {
+    auto res = vector<parsing::GrammarBuilder::InputPair>();
     for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) {
       auto const& [sym, t] = expect<Cons>(it->head);
       auto const& [prec, _] = expect<Cons>(t);
       res.emplace_back(
         symbol(false, expect<Symbol>(sym).val),
-        static_cast<Parsing::Precedence>(expect<Nat64>(prec).val)
+        static_cast<parsing::Precedence>(expect<Nat64>(prec).val)
       );
     }
     return res;
@@ -142,10 +145,10 @@ namespace Eval {
     // Add ignored and starting symbols.
     symbolIsTerminal.emplace_back(false);
     symbolNames.emplace_back("_");
-    grammarBuilder.withIgnoredSymbol(ignoredSymbol);
+    grammarBuilder.ignored(ignoredSymbol);
     symbolIsTerminal.emplace_back(false);
     symbolNames.emplace_back("_");
-    grammarBuilder.withStartSymbol(startSymbol);
+    grammarBuilder.start(startSymbol);
 
     // Add patterns.
     for (auto it = get_if<Cons>(patterns); it; it = get_if<Cons>(it->tail)) {
@@ -153,7 +156,7 @@ namespace Eval {
       auto const& [rhs, _] = expect<Cons>(t);
       auto const& sname = expect<Symbol>(lhs).val;
       auto const sid = sname == "_" ? ignoredSymbol : symbol(true, sname);
-      automatonBuilder.withPattern(sid, treePattern(automatonBuilder, rhs));
+      automatonBuilder.pattern(sid, treePattern(automatonBuilder, rhs));
     }
 
     // Add rules.
@@ -166,25 +169,25 @@ namespace Eval {
       auto const& sname = expect<Symbol>(sym).val;
       auto const& rname = expect<Symbol>(name).val;
       auto const sid = sname == "_" ? startSymbol : symbol(false, sname);
-      auto const sprec = static_cast<Parsing::Precedence>(expect<Nat64>(prec).val);
-      grammarBuilder.withRule(std::pair(sid, sprec), listSymbols(rhs));
+      auto const sprec = static_cast<parsing::Precedence>(expect<Nat64>(prec).val);
+      grammarBuilder.rule({sid, sprec}, listSymbols(rhs));
       ruleNames.push_back(rname);
     }
 
     // Finalise.
     if (parser) parser->buffer.invalidate();
-    automaton = std::make_unique<Parsing::DFA const>(automatonBuilder.makeDFA(true));
-    grammar = std::make_unique<Parsing::Grammar const>(grammarBuilder.make());
+    automaton = std::make_unique<parsing::NFA const>(automatonBuilder.makeNFA());
+    grammar = std::make_unique<parsing::Grammar const>(grammarBuilder.makeGrammar());
     if (parser) parser = std::make_unique<Parser>(*automaton, *grammar, *stream);
   }
 
-#define cons       pool.emplace
-#define nil        nil
-#define sym(s)     pool.emplace(Symbol{s})
-#define str(s)     pool.emplace(String{s})
-#define nat(n)     pool.emplace(Nat64{n})
-#define boolean(b) pool.emplace(Bool{b})
-#define unit       unit
+#define cons       pool().make
+#define nil        nil()
+#define sym(s)     pool().make(Symbol{s})
+#define str(s)     pool().make(String{s})
+#define nat(n)     pool().make(Nat64{n})
+#define boolean(b) pool().make(Bool{b})
+#define unit       unit()
 #define list(...)  makeList({__VA_ARGS__})
 
   // Initialize with built-in patterns, rules, forms and procedures
@@ -192,10 +195,10 @@ namespace Eval {
   // See: https://github.com/digama0/mm0/blob/master/mm0-hs/mm1.md#Prim-functions
   Evaluator::Evaluator() {
     // Commonly used constants
-    // auto const& nzero  = pool.emplace(Nat64{ 0 });
-    // auto const& sempty = pool.emplace(String{ "" });
-    auto const& btrue = pool.emplace(Bool{true});
-    auto const& bfalse = pool.emplace(Bool{false});
+    // auto const& nzero  = pool().make(Nat64{ 0 });
+    // auto const& sempty = pool().make(String{ "" });
+    auto const& btrue = pool().make(Bool{true});
+    auto const& bfalse = pool().make(Bool{false});
 
     // =========================
     // Default syntax and macros
@@ -328,7 +331,7 @@ namespace Eval {
     // [√] Introduction rule for `Closure`
     addPrimitive("lambda", false, [this](Tree* env, Tree* e) -> Result {
       auto const& [formal, es] = expect<Cons>(e);
-      return pool.emplace(Closure{env, formal, es});
+      return pool().make(Closure{env, formal, es});
     });
 
     // [√] Elimination rule for `Bool`
@@ -532,13 +535,13 @@ namespace Eval {
 #define unary(T, name, op)                                    \
   addPrimitive(name, true, [this](Tree*, Tree* e) -> Result { \
     auto const& [lhs, _] = expect<Cons>(e);                   \
-    return pool.emplace(T{op(expect<T>(lhs).val)});           \
+    return pool().make(T{op(expect<T>(lhs).val)});            \
   })
-#define binary(T, name, op)                                           \
-  addPrimitive(name, true, [this](Tree*, Tree* e) -> Result {         \
-    auto const& [lhs, t] = expect<Cons>(e);                           \
-    auto const& [rhs, _] = expect<Cons>(t);                           \
-    return pool.emplace(T{expect<T>(lhs).val op expect<T>(rhs).val}); \
+#define binary(T, name, op)                                          \
+  addPrimitive(name, true, [this](Tree*, Tree* e) -> Result {        \
+    auto const& [lhs, t] = expect<Cons>(e);                          \
+    auto const& [rhs, _] = expect<Cons>(t);                          \
+    return pool().make(T{expect<T>(lhs).val op expect<T>(rhs).val}); \
   })
 #define binpred(T, name, op)                                            \
   addPrimitive(name, true, [btrue, bfalse](Tree*, Tree* e) -> Result {  \
@@ -571,7 +574,7 @@ namespace Eval {
 
     // [√] For debugging?
     addPrimitive("print", true, [this](Tree*, Tree* e) -> Result {
-      return pool.emplace(String{expect<Cons>(e).head->toString()});
+      return pool().make(String{expect<Cons>(e).head->toString()});
     });
 
     // [?] TODO: output to ostream
@@ -608,7 +611,7 @@ namespace Eval {
     return nullptr;
   }
 
-  auto Evaluator::resolve(Parsing::Node const& node, vector<Tree*> const& tails, size_t maxDepth) -> vector<Tree*> {
+  auto Evaluator::resolve(parsing::Node const& node, vector<Tree*> const& tails, size_t maxDepth) -> vector<Tree*> {
     if (maxDepth == 0) return {};
     auto const& nodes = parser->parser.nodes();
     auto const& tokens = parser->parser.tokens();
@@ -703,7 +706,7 @@ namespace Eval {
       auto const& [head, tail] = *econs;
       auto const& ehead = expand(head);
       auto const& etail = expandList(tail);
-      return (ehead == head && etail == tail) ? e : pool.emplace(ehead, etail);
+      return (ehead == head && etail == tail) ? e : pool().make(ehead, etail);
     }
     return expand(e);
   }
@@ -715,7 +718,7 @@ namespace Eval {
       if (auto const& sym = get_if<Symbol>(e)) {
         // Symbols: evaluate to their bound values
         if (auto const& val = lookup(env, sym->val)) return val;
-        if (auto const& it = namePrims.find(sym->val); it != namePrims.end()) return pool.emplace(Prim{it->second});
+        if (auto const& it = namePrims.find(sym->val); it != namePrims.end()) return pool().make(Prim{it->second});
         throw PartialEvalError("unbound symbol \"" + sym->val + "\"", e);
 
       } else if (auto const& econs = get_if<Cons>(e)) {
@@ -772,7 +775,7 @@ namespace Eval {
       auto const& [head, tail] = *econs;
       auto const& ehead = eval(env, head);
       auto const& etail = evalList(env, tail);
-      return (ehead == head && etail == tail) ? e : pool.emplace(ehead, etail);
+      return (ehead == head && etail == tail) ? e : pool().make(ehead, etail);
     }
     return eval(env, e);
   }
@@ -789,7 +792,7 @@ namespace Eval {
       eval(env, head);
     }
     expect<Nil>(e);
-    return unit;
+    return unit();
   }
 
   // Evaluates a quasiquoted list
@@ -799,8 +802,10 @@ namespace Eval {
       if (*head == Tree(Symbol{"unquote"})) return eval(env, expect<Cons>(tail).head);
       auto const& ehead = quasiquote(env, head);
       auto const& etail = quasiquote(env, tail);
-      return (ehead == head && etail == tail) ? e : pool.emplace(ehead, etail);
+      return (ehead == head && etail == tail) ? e : pool().make(ehead, etail);
     }
     return e;
   }
+
+#include "macros_close.hpp"
 }

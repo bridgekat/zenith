@@ -5,14 +5,15 @@ using std::string;
 using std::vector;
 using std::pair;
 
-namespace Core {
+namespace apimu::core {
+#include "macros_open.hpp"
 
   FOLContext::FOLContext():
     Context() {
-#define prop        pools.back().emplace(Expr::SProp)
-#define type        pools.back().emplace(Expr::SType)
-#define setvar      pools.back().emplace(Expr::VFree, SetVar)
-#define pi(s, t, r) pools.back().emplace(Expr::PPi, s, t, r)
+#define prop        pool().make(Expr::SProp)
+#define type        pool().make(Expr::SType)
+#define setvar      pool().make(Expr::VFree, SetVar)
+#define pi(s, t, r) pool().make(Expr::PPi, s, t, r)
 
     assert(SetVar == addDefinition("setvar", type));
     assert(Arbitrary == pushAssumption("arbitrary", setvar));
@@ -34,7 +35,7 @@ namespace Core {
 #undef pi
   }
 
-  FOLForm FOLForm::fromExpr(Expr const* e) noexcept {
+  auto FOLForm::fromExpr(Expr const* e) noexcept -> FOLForm {
     using Constant = FOLContext::Constant;
     using enum Expr::Tag;
     using enum Expr::VarTag;
@@ -70,9 +71,9 @@ namespace Core {
     return {Other, e};
   }
 
-#define expr(...) pool.emplace(__VA_ARGS__)
+#define expr(...) pool.make(__VA_ARGS__)
 
-  Expr const* FOLForm::toExpr(Allocator<Expr>& pool) const {
+  auto FOLForm::toExpr(Allocator<Expr>& pool) const -> Expr const* {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     using enum Expr::LamTag;
@@ -93,7 +94,7 @@ namespace Core {
     unreachable;
   }
 
-  pair<Expr const*, Expr const*> FOLForm::splitIff(Allocator<Expr>& pool) const {
+  auto FOLForm::splitIff(Allocator<Expr>& pool) const -> pair<Expr const*, Expr const*> {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     if (tag != Iff) unreachable;
@@ -105,7 +106,7 @@ namespace Core {
 
   // Splits "unique x, P" into "exists x, P" and "forall x, P implies (forall y, P implies x = y)"
   // Pre (checked): `tag` is `Unique`
-  pair<Expr const*, Expr const*> FOLForm::splitUnique(Allocator<Expr>& pool) const {
+  auto FOLForm::splitUnique(Allocator<Expr>& pool) const -> pair<Expr const*, Expr const*> {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     using enum Expr::LamTag;
@@ -128,7 +129,7 @@ namespace Core {
 
 #define invprec(tag_) static_cast<std::underlying_type_t<Tag>>(tag_)
 
-  string FOLForm::toString(Context const& ctx, vector<string>& stk) const {
+  auto FOLForm::toString(Context const& ctx, vector<string>& stk) const -> string {
     switch (tag) {
       case Other: {
         auto fe = (unary.e->tag != Expr::Sort && unary.e->tag != Expr::Var && unary.e->tag != Expr::App);
@@ -194,4 +195,5 @@ namespace Core {
 #undef invprec
 #undef expr
 
+#include "macros_close.hpp"
 }

@@ -1,7 +1,7 @@
 // Core :: FOLContext, FOLForm
 
-#ifndef FOL_HPP_
-#define FOL_HPP_
+#ifndef APIMU_CORE_FOL_HPP
+#define APIMU_CORE_FOL_HPP
 
 #include <string>
 #include <utility>
@@ -10,7 +10,8 @@
 #include "../expr.hpp"
 
 // clang-format off
-namespace Core {
+namespace apimu::core {
+#include "macros_open.hpp"
 
   // Specialized context for first-order logic, with pre-defined constants
   class FOLContext: public Context {
@@ -35,7 +36,7 @@ namespace Core {
       struct { Expr const* r; } binder;      // Forall, Exists, Unique
     };
     // I have to move this outside the union, or it will be impossible to make a copy constructor...
-    std::string const s{};
+    std::string const s;
 
     FOLForm(Tag tag): tag(tag), unary{nullptr} {
       switch (tag) { case True: case False: return; default: unreachable; }
@@ -49,32 +50,32 @@ namespace Core {
     FOLForm(Tag tag, std::string s, Expr const* r): tag(tag), binder{r}, s(std::move(s)) {
       switch (tag) { case Forall: case Exists: case Unique: return; default: unreachable; }
     }
-    FOLForm(FOLForm const&) = default;
 
     // Try matching on an expression.
     // If it has first-order form (e.g. the principal connective is "and") then return it.
     // Otherwise returns `Other`.
-    static FOLForm fromExpr(Expr const* e) noexcept;
+    static auto fromExpr(Expr const* e) noexcept -> FOLForm;
 
     // Convert to expresssion (lifetime bounded by subexpression pointers and `pool`).
-    Expr const* toExpr(Allocator<Expr>& pool) const;
+    auto toExpr(Allocator<Expr>& pool) const -> Expr const*;
 
     // Splits "P iff Q" into "P implies Q" and "Q implies P"
     // Pre (checked): `tag` is `Iff`
-    std::pair<Expr const*, Expr const*> splitIff(Allocator<Expr>& pool) const;
+    auto splitIff(Allocator<Expr>& pool) const -> std::pair<Expr const*, Expr const*>;
 
     // Splits "unique x, P" into "exists x, P" and "forall x, P implies (forall y, P implies x = y)"
     // Pre (checked): `tag` is `Unique`
-    std::pair<Expr const*, Expr const*> splitUnique(Allocator<Expr>& pool) const;
+    auto splitUnique(Allocator<Expr>& pool) const -> std::pair<Expr const*, Expr const*>;
 
     // Render as much as possible the "root part" of an expression as first-order formula
-    std::string toString(Context const& ctx, std::vector<std::string>& stk) const;
-    std::string toString(Context const& ctx) const {
+    auto toString(Context const& ctx, std::vector<std::string>& stk) const -> std::string;
+    auto toString(Context const& ctx) const -> std::string {
       std::vector<std::string> stk;
       return toString(ctx, stk);
     }
   };
 
+#include "macros_close.hpp"
 }
 
-#endif // FOL_HPP_
+#endif // APIMU_CORE_FOL_HPP

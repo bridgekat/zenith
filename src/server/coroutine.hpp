@@ -1,14 +1,12 @@
-// Server :: Coroutine
-
-#ifndef COROUTINE_HPP_
-#define COROUTINE_HPP_
+#ifndef APIMU_SERVER_COROUTINE_HPP
+#define APIMU_SERVER_COROUTINE_HPP
 
 #include <coroutine>
 #include <exception>
 #include <memory>
 #include <optional>
 
-namespace Server {
+namespace apimu::server {
 
   using std::optional;
   using std::shared_ptr;
@@ -164,4 +162,4 @@ namespace Server {
 
 }
 
-#endif // COROUTINE_HPP_
+#endif // APIMU_SERVER_COROUTINE_HPP

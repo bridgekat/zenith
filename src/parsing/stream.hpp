@@ -1,12 +1,11 @@
-// Parsing :: Stream...
-
-#ifndef PARSING_STREAM_HPP_
-#define PARSING_STREAM_HPP_
+#ifndef APIMU_PARSING_STREAM_HPP
+#define APIMU_PARSING_STREAM_HPP
 
 #include <string>
 #include "basic.hpp"
 
-namespace Parsing {
+namespace apimu::parsing {
+#include "macros_open.hpp"
 
   // A class is a (finite) "revertable stream" of `T` if...
   template <typename T>
@@ -14,11 +13,11 @@ namespace Parsing {
     interface(IStream);
   public:
     // It allows generating the next element (or empty if reached the end):
-    virtual auto advance() -> std::optional<T> required;
+    virtual auto advance() -> std::optional<T> = 0;
     // It allows obtaining the current position:
-    virtual auto position() const -> size_t required;
+    virtual auto position() const -> size_t = 0;
     // It allows reverting to a previous position (i.e. `0 <= i <= position()`):
-    virtual auto revert(size_t i) -> void required;
+    virtual auto revert(size_t i) -> void = 0;
   };
 
   // A "buffered stream" copy-stores all generated elements, so as to avoid repeated calls to `advance()`.
@@ -28,7 +27,7 @@ namespace Parsing {
   public:
     // It allows invalidating its cache past the current position
     // (in context-dependent parsing, this might be necessary before changing syntax):
-    virtual auto invalidate() -> void required;
+    virtual auto invalidate() -> void = 0;
   };
 
   // A class is a "marked stream" of `T` if it is a "revertable stream" of `T`, and...
@@ -37,11 +36,11 @@ namespace Parsing {
     interface(IMarkedStream);
   public:
     // It allows adding a "mark" to the stream:
-    virtual auto mark() -> void required;
+    virtual auto mark() -> void = 0;
     // It allows advancing the underlying stream without inserting a mark:
-    virtual auto next() -> std::optional<T> required;
+    virtual auto next() -> std::optional<T> = 0;
     // It allows clearing all markings:
-    virtual auto clear() -> void required;
+    virtual auto clear() -> void = 0;
     // ...and `advance()` is implemented in term of them:
     auto advance() -> std::optional<T> final {
       auto const res = next();
@@ -140,6 +139,7 @@ namespace Parsing {
     size_t _position = 0; // Current position.
   };
 
+#include "macros_close.hpp"
 }
 
-#endif // PARSING_STREAM_HPP_
+#endif // APIMU_PARSING_STREAM_HPP

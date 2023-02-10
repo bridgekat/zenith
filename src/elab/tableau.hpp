@@ -1,18 +1,18 @@
-// Elab :: Tableau
-
 // TODO: refactor
 
-#ifndef TABLEAU_HPP_
-#define TABLEAU_HPP_
+#ifndef APIMU_ELAB_TABLEAU_HPP
+#define APIMU_ELAB_TABLEAU_HPP
 
+#include <array>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 #include "procs.hpp"
 
-namespace Elab {
+namespace apimu::elab {
+#include "macros_open.hpp"
 
-  using namespace Core;
+  using namespace core;
 
   // "Expression with hash" (a wrapper for `Expr const*` that overloads the `==` operator)
   struct ExprHash {
@@ -23,11 +23,12 @@ namespace Elab {
     explicit ExprHash(Expr const* e) noexcept:
       e(e),
       hash(e->hash()) {}
-    bool operator==(ExprHash const& r) const noexcept { return hash == r.hash && *e == *(r.e); }
-    bool operator!=(ExprHash const& r) const noexcept { return hash != r.hash || *e != *(r.e); }
+
+    auto operator==(ExprHash const& r) const noexcept -> bool { return hash == r.hash && *e == *(r.e); }
+    auto operator!=(ExprHash const& r) const noexcept -> bool { return hash != r.hash || *e != *(r.e); }
 
     struct GetHash {
-      size_t operator()(ExprHash const& eh) const noexcept { return eh.hash; }
+      auto operator()(ExprHash const& eh) const noexcept -> size_t { return eh.hash; }
     };
   };
 
@@ -58,36 +59,30 @@ namespace Elab {
     // Succedents in `cedents[...][R]` and `hashset[R]`
     // Cedents are classified as either "ι" (atomic), "α" (non-branching), "β" (branching), "γ" (universal) or "δ"
     // (existential). (TODO: "ε" (equational) and "φ" (second-order universal))
-    enum Position : unsigned int { L, R };
-    enum Type : unsigned int { Iota, Alpha, Beta, Gamma, GammaRetry, Delta, N };
+    enum Position : uint32_t { L, R };
+    enum Type : uint32_t { Iota, Alpha, Beta, Gamma, GammaRetry, Delta, N };
 
     struct Branch {
-      std::vector<Expr const*> cedents[N][2];
-      std::unordered_set<ExprHash, ExprHash::GetHash> hashset[2];
-      size_t indices[N][2];
-      std::vector<bool> betaUsed[2];
+      std::array<std::array<std::vector<Expr const*>, 2>, N> cedents;
+      std::array<std::unordered_set<ExprHash, ExprHash::GetHash>, 2> hashset;
+      std::array<std::array<size_t, 2>, N> indices;
+      std::array<std::vector<bool>, 2> betaUsed;
       size_t depth, numUniversal;
 
-      size_t numCedents;                       // DEBUG CODE
-      std::vector<size_t> timestamps[N][2];    // DEBUG CODE
-      std::vector<size_t> numUniversals[N][2]; // DEBUG CODE
+      size_t numCedents;                                               // DEBUG CODE
+      std::array<std::array<std::vector<size_t>, 2>, N> timestamps;    // DEBUG CODE
+      std::array<std::array<std::vector<size_t>, 2>, N> numUniversals; // DEBUG CODE
 
-      bool operator==(Branch const& r) const noexcept = default;
+      auto operator==(Branch const& r) const noexcept -> bool = default;
     };
 
-    Tableau(Context const& ctx) noexcept:
-      pools(),
-      ctx(ctx),
-      branch{},
-      cont(),
-      numSkolem{},
-      maxDepth{},
-      maxTabDepth{} {}
+    explicit Tableau(Context const& ctx) noexcept:
+      ctx(ctx) {}
 
-    void addAntecedent(Expr const* e) {
-      auto it = branch.hashset[L].insert(ExprHash(e));
+    auto addAntecedent(Expr const* e) -> void {
+      auto const it = branch.hashset[L].insert(ExprHash(e));
       if (it.second) {
-        unsigned int i = classify(L, e);
+        auto const i = classify(L, e);
         branch.cedents[i][L].push_back(e);
         branch.timestamps[i][L].push_back(branch.numCedents++);
         branch.numUniversals[i][L].push_back(0);
@@ -95,10 +90,10 @@ namespace Elab {
       }
     }
 
-    void addSuccedent(Expr const* e) {
-      auto it = branch.hashset[R].insert(ExprHash(e));
+    auto addSuccedent(Expr const* e) -> void {
+      auto const it = branch.hashset[R].insert(ExprHash(e));
       if (it.second) {
-        unsigned int i = classify(R, e);
+        auto const i = classify(R, e);
         branch.cedents[i][R].push_back(e);
         branch.timestamps[i][R].push_back(branch.numCedents++);
         branch.numUniversals[i][R].push_back(0);
@@ -108,10 +103,10 @@ namespace Elab {
 
     // TODO: initial check (the given proof state may already be closed)
 
-    void clear() noexcept {
+    auto clear() noexcept -> void {
       pools.clear();
       pools.emplace_back();
-      for (unsigned int i = 0; i < N; i++) {
+      for (auto i = uint32_t{0}; i < N; i++) {
         branch.cedents[i][L].clear();
         branch.cedents[i][R].clear();
         branch.indices[i][L] = 0;
@@ -130,37 +125,43 @@ namespace Elab {
       branch.numCedents = 0;
     }
 
-    bool search(size_t setMaxDepth, size_t setMaxTabDepth);
-    bool iterativeDeepening(size_t setMaxTabDepth, size_t step);
-    std::string printState();
-    std::string printStateDebug();
-    std::string printStats();
+    auto search(size_t setMaxDepth, size_t setMaxTabDepth) -> bool;
+    auto iterativeDeepening(size_t setMaxTabDepth, size_t step) -> bool;
+    auto printState() -> std::string;
+    auto printStateDebug() -> std::string;
+    auto printStats() -> std::string;
 
   private:
     std::vector<Allocator<Expr>> pools;
     Context const& ctx;
 
-    Branch branch; // Current branch
+    Branch branch = Branch{}; // Current branch
 
     // Ephemeral states
     std::vector<Branch> cont; // Other branches (to the right of current)
-    size_t numSkolem, maxDepth, maxTabDepth;
+    size_t numSkolem = 0;
+    size_t maxDepth = 0;
+    size_t maxTabDepth = 0;
 
     // Statistics
-    size_t maxDepthReached = 0, invocations = 0, branches = 0, backtrackPoints = 0;
+    size_t maxDepthReached = 0;
+    size_t invocations = 0;
+    size_t branches = 0;
+    size_t backtrackPoints = 0;
 
     friend class WithCedent;
 
-    static Position invert(Position pos) noexcept { return (pos == L) ? R : L; };
-    static Type classify(Position antesucc, Expr const* e) noexcept;
-    void applySubs(Procs::Subs const& subs, bool assertNoChange);
-    bool dfs(size_t depth);
+    static auto invert(Position pos) noexcept -> Position { return (pos == L) ? R : L; };
+    static auto classify(Position antesucc, Expr const* e) noexcept -> Type;
+    auto applySubs(procs::Subs const& subs, bool assertNoChange) -> void;
+    auto dfs(size_t depth) -> bool;
 
-    void checkBranch(Branch const& b);
-    void check();
-    void debughtml(std::string const& filename);
+    auto checkBranch(Branch const& b) -> void;
+    auto check() -> void;
+    auto debughtml(std::string const& filename) -> void;
   };
 
+#include "macros_close.hpp"
 }
 
-#endif // TABLEAU_HPP_
+#endif // APIMU_ELAB_TABLEAU_HPP

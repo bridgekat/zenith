@@ -1,7 +1,5 @@
-// Elab :: Procs
-
-#ifndef PROCS_HPP_
-#define PROCS_HPP_
+#ifndef APIMU_ELAB_PROCS_HPP
+#define APIMU_ELAB_PROCS_HPP
 
 #include <algorithm>
 #include <optional>
@@ -12,9 +10,10 @@
 #include <core/fol/fol.hpp>
 
 // Some potentially useful syntactic operations
-namespace Elab::Procs {
+namespace apimu::elab::procs {
+#include "macros_open.hpp"
 
-  using namespace Core;
+  using namespace core;
 
   // Pre (checked): `e` is a propositional formula
   auto propValue(Expr const* e, std::vector<bool> const& fvmap) -> bool;
@@ -37,8 +36,8 @@ namespace Elab::Procs {
 
   // Returns { VFree, skolem } applied to a number of meta-variables ("implicitly universally quantified" variables)
   inline auto makeSkolem(uint64_t skolem, std::vector<uint64_t> const& metas, Allocator<Expr>& pool) -> Expr const* {
-    auto res = pool.emplace(Expr::VFree, skolem);
-    for (auto const i: metas) res = pool.emplace(res, pool.emplace(Expr::VMeta, i));
+    auto res = pool.make(Expr::VFree, skolem);
+    for (auto const i: metas) res = pool.make(res, pool.make(Expr::VMeta, i));
     return res;
   }
 
@@ -107,7 +106,7 @@ namespace Elab::Procs {
   auto unify(std::vector<std::pair<Expr const*, Expr const*>> eqs, Allocator<Expr>& pool) -> std::optional<Subs>;
 
   // TODO: Huet's higher-order unification, E-unification, etc.
-
+#include "macros_close.hpp"
 }
 
-#endif // PROCS_HPP_
+#endif // APIMU_ELAB_PROCS_HPP

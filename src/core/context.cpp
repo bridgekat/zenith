@@ -3,7 +3,8 @@
 
 using std::string;
 
-namespace Core {
+namespace apimu::core {
+#include "macros_open.hpp"
 
   Context::Context():
     pools(),
@@ -12,13 +13,13 @@ namespace Core {
     pools.emplace_back();
   }
 
-  size_t Context::addDefinition(string const& s, Expr const* e) {
+  auto Context::addDefinition(string const& s, Expr const* e) -> size_t {
     e->checkType(*this, temp());
     entries.emplace_back(s, e->reduce(temp())->clone(pools.back()));
     return entries.size() - 1;
   }
 
-  size_t Context::pushAssumption(string const& s, Expr const* e) {
+  auto Context::pushAssumption(string const& s, Expr const* e) -> size_t {
     e->checkType(*this, temp());
     pools.emplace_back();
     entries.emplace_back(s, e->reduce(temp())->clone(pools.back()));
@@ -27,7 +28,7 @@ namespace Core {
   }
 
   // Context-changing rules (implies/forall-intro) & definition generalization rules here
-  bool Context::pop() {
+  auto Context::pop() -> bool {
     using enum Expr::VarTag;
     using enum Expr::PiTag;
 
@@ -37,8 +38,7 @@ namespace Core {
     auto const index = indices.back();
     auto const [s, x] = entries[index];
 
-#define expr(...) pool2.emplace(__VA_ARGS__)
-
+#define expr(...) pool2.make(__VA_ARGS__)
     // Add abstractions over the hypothesized variable, copying all expressions from `pool1` to `pool2`
     // Make bound + remap index
     auto modify = [&pool2, index](uint64_t n, Expr const* x) -> Expr const* {
@@ -60,7 +60,6 @@ namespace Core {
         entries[i].second->checkType(*this, pool1);
       } catch (InvalidExpr&) { unreachable; }
     }
-
 #undef expr
 
     indices.pop_back();
@@ -68,4 +67,5 @@ namespace Core {
     return true;
   }
 
+#include "macros_close.hpp"
 }

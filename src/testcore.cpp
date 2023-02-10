@@ -10,28 +10,28 @@
 using std::string;
 using std::cout, std::endl;
 
-using namespace Core;
+using namespace apimu;
+using namespace core;
 using enum Expr::Tag;
 using enum Expr::SortTag;
 using enum Expr::VarTag;
 using enum FOLContext::Constant;
 
-// TODO: read text & binary files
-
-int main() {
+// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers)
+auto main() -> int {
 
   cout << sizeof(string) << endl;
   cout << sizeof(Expr) << endl;
 
-#define fv(id)       pool.emplace(VFree, id)
-#define bv(id)       pool.emplace(VBound, id)
-#define uv(id)       pool.emplace(VMeta, id)
-#define prop         pool.emplace(SProp)
-#define type         pool.emplace(SType)
+#define fv(id)       pool.make(VFree, id)
+#define bv(id)       pool.make(VBound, id)
+#define uv(id)       pool.make(VMeta, id)
+#define prop         pool.make(SProp)
+#define type         pool.make(SType)
 #define setvar       fv(SetVar)
-#define app(l, r)    pool.emplace(l, r)
-#define lam(s, t, r) pool.emplace(Expr::LLam, s, t, r)
-#define pi(s, t, r)  pool.emplace(Expr::PPi, s, t, r)
+#define app(l, r)    pool.make(l, r)
+#define lam(s, t, r) pool.make(Expr::LLam, s, t, r)
+#define pi(s, t, r)  pool.make(Expr::PPi, s, t, r)
 
 #define tt             fv(True)
 #define ff             fv(False)
@@ -231,7 +231,7 @@ int main() {
 #endif
 
   {
-    using namespace Elab;
+    using namespace elab;
     Allocator<Expr> pool;
     FOLContext ctx;
     Tableau tableau(ctx);
@@ -244,12 +244,12 @@ int main() {
     auto e = bin(bin(fv(p), Iff, fv(q)), Iff, un(Not, bin(fv(r), Implies, fv(s))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    auto snf = Procs::skolemize(un(Not, e), ctx, pool);
+    auto snf = procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
-    Elab::Procs::foreachValuation({p, q, r, s}, [&e, &snf](std::vector<bool> const& fvmap) {
-      cout << Elab::Procs::propValue(e, fvmap);
-      cout << !Elab::Procs::propValue(snf, fvmap);
+    cout << procs::showClauses(procs::cnf(snf, pool), ctx) << endl;
+    procs::foreachValuation({p, q, r, s}, [&e, &snf](std::vector<bool> const& fvmap) {
+      cout << procs::propValue(e, fvmap);
+      cout << !procs::propValue(snf, fvmap);
     });
     cout << endl;
     cout << endl;
@@ -258,9 +258,9 @@ int main() {
     e = un(Not, bin(fv(p), Or, un(Not, fv(p))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    snf = Procs::skolemize(un(Not, e), ctx, pool);
+    snf = procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
+    cout << procs::showClauses(procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -272,9 +272,9 @@ int main() {
     e = bin(fv(p), Or, un(Not, fv(p)));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    snf = Procs::skolemize(un(Not, e), ctx, pool);
+    snf = procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
+    cout << procs::showClauses(procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -287,9 +287,9 @@ int main() {
     e = un(Not, bin(fv(p), Iff, un(Not, fv(p))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    snf = Procs::skolemize(un(Not, e), ctx, pool);
+    snf = procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
+    cout << procs::showClauses(procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -299,7 +299,7 @@ int main() {
   }
 
   {
-    using namespace Elab;
+    using namespace elab;
     Allocator<Expr> pool;
     FOLContext ctx;
 
@@ -319,7 +319,7 @@ int main() {
     );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    cout << FOLForm::fromExpr(Procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
+    cout << FOLForm::fromExpr(procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
 
     e = forall(
       "x",
@@ -334,13 +334,13 @@ int main() {
     );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    cout << FOLForm::fromExpr(Procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
+    cout << FOLForm::fromExpr(procs::skolemize(e, ctx, pool)).toString(ctx) << endl;
 
     cout << endl;
   }
 
   {
-    using namespace Elab::Procs;
+    using namespace elab::procs;
     Allocator<Expr> pool;
     FOLContext ctx;
 
@@ -403,7 +403,7 @@ int main() {
   }
 
   {
-    using namespace Elab;
+    using namespace elab;
     Allocator<Expr> pool;
     FOLContext ctx;
     Tableau tableau(ctx);
@@ -439,9 +439,9 @@ int main() {
     auto e = exists("x", forall("y", bin(app(fv(R), bv(1)), Implies, app(fv(R), bv(0)))));
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    auto snf = Procs::skolemize(un(Not, e), ctx, pool);
+    auto snf = procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
+    cout << procs::showClauses(procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -470,9 +470,9 @@ int main() {
     );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    snf = Procs::skolemize(un(Not, e), ctx, pool);
+    snf = procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
+    cout << procs::showClauses(procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -520,7 +520,7 @@ int main() {
   }
 
   {
-    using namespace Elab;
+    using namespace elab;
     Allocator<Expr> pool;
     FOLContext ctx;
     Tableau tableau(ctx);
@@ -620,9 +620,9 @@ int main() {
     );
     cout << e->checkType(ctx, temp())->toString(ctx) << endl;
     cout << FOLForm::fromExpr(e).toString(ctx) << endl;
-    auto snf = Procs::skolemize(un(Not, e), ctx, pool);
+    auto snf = procs::skolemize(un(Not, e), ctx, pool);
     cout << FOLForm::fromExpr(snf).toString(ctx) << endl;
-    cout << Procs::showClauses(Procs::cnf(snf, pool), ctx) << endl;
+    cout << procs::showClauses(procs::cnf(snf, pool), ctx) << endl;
 
     tableau.addSuccedent(e);
     cout << tableau.printState();
@@ -673,7 +673,7 @@ int main() {
     tableau.addSuccedent(goal);
     /*
     auto const negated = bin(bin(bin(e1, And, e2), And, e3), And, un(Not, goal));
-    tableau.addAntecedent(Procs::collectClauses(Procs::cnf(Procs::nnf(negated, pool), ctx, pool), pool));
+    tableau.addAntecedent(procs::collectClauses(procs::cnf(procs::nnf(negated, pool), ctx, pool), pool));
     */
 
     cout << tableau.printState();
@@ -685,3 +685,4 @@ int main() {
 
   return 0;
 }
+// NOLINTEND(cppcoreguidelines-avoid-magic-numbers)

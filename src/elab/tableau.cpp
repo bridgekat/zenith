@@ -6,31 +6,19 @@
 
 using std::string;
 using std::vector;
-using Elab::Procs::Subs;
+using apimu::elab::procs::Subs;
 
 #define SEMANTIC_BRANCHING
 // #define CHECK_INVARIANTS
 // #define DEBUG_TRACE
 
-namespace Elab {
+namespace apimu::elab {
+#include "macros_open.hpp"
 
   // std::random_device rd;
   // std::mt19937 e{ rd() };
 
-  // Simple case: disjoint
-  /*
-  Subs simpleCompose(Subs const& a, Subs const& b) noexcept {
-    Subs res(std::max(a.size(), b.size()), nullptr);
-    for (size_t i = 0; i < res.size(); i++) {
-      bool af = i < a.size() && a[i], bf = i < b.size() && b[i];
-      if (af && bf) unreachable;
-      res[i] = af ? a[i] : bf ? b[i] : nullptr;
-    }
-    return res;
-  }
-  */
-
-  string typeToString(unsigned int t) noexcept {
+  auto typeToString(unsigned int t) noexcept -> string {
     using enum Tableau::Type;
     switch (t) {
       case Iota: return "ι";
@@ -43,9 +31,9 @@ namespace Elab {
     return "?";
   }
 
-  Tableau::Type Tableau::classify(Position antesucc, Expr const* e) noexcept {
+  auto Tableau::classify(Position antesucc, Expr const* e) noexcept -> Tableau::Type {
     using enum FOLForm::Tag;
-    auto fof = FOLForm::fromExpr(e);
+    auto const fof = FOLForm::fromExpr(e);
     switch (antesucc) {
       case L:
         switch (fof.tag) {
@@ -84,14 +72,14 @@ namespace Elab {
   }
 
   // Apply `subs` to all of `cont`
-  void Tableau::applySubs(Subs const& subs, [[maybe_unused]] bool assertNoChange) {
-    for (size_t ind = 0; ind < cont.size(); ind++) {
+  auto Tableau::applySubs(Subs const& subs, [[maybe_unused]] bool assertNoChange) -> void {
+    for (auto ind = 0_z; ind < cont.size(); ind++) {
       auto& br = cont[ind];
       br.hashset[L].clear();
       br.hashset[R].clear();
-      for (unsigned int i = 0; i < N; i++) {
+      for (auto i = uint32_t{0}; i < N; i++) {
         for (auto& e: br.cedents[i][L]) {
-          Expr const* newe = Procs::applySubs(e, subs, pools.back());
+          auto const newe = procs::applySubs(e, subs, pools.back());
 #ifdef CHECK_INVARIANTS
           if (assertNoChange && *e != *newe) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
@@ -108,7 +96,7 @@ namespace Elab {
           br.hashset[L].insert(ExprHash(e));
         }
         for (auto& e: br.cedents[i][R]) {
-          Expr const* newe = Procs::applySubs(e, subs, pools.back());
+          auto const newe = procs::applySubs(e, subs, pools.back());
 #ifdef CHECK_INVARIANTS
           if (assertNoChange && *e != *newe) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
@@ -129,8 +117,8 @@ namespace Elab {
   }
 
   // Check if `subs` does not contain variables with ID less than `offset`
-  bool subsStartsFrom(Subs const& subs, size_t offset) {
-    for (size_t i = 0; i < subs.size() && i < offset; i++)
+  auto subsStartsFrom(Subs const& subs, size_t offset) -> bool {
+    for (auto i = 0_z; i < subs.size() && i < offset; i++)
       if (subs[i]) return false;
     return true;
   }
@@ -141,14 +129,18 @@ namespace Elab {
   public:
     T* const p;
     T const prev;
+
     WithValue(T* p, T const& value):
       p(p),
       prev(*p) {
       *p = value;
     }
-    WithValue(WithValue const&) = delete;
-    WithValue& operator=(WithValue const&) = delete;
     ~WithValue() { *p = prev; }
+
+    WithValue(WithValue const&) = delete;
+    WithValue(WithValue&&) = delete;
+    auto operator=(WithValue const&) -> WithValue& = delete;
+    auto operator=(WithValue&&) -> WithValue& = delete;
   };
 
   // Scope guard for "insert antecedents/succedents, check if closed, recurse, and remove them"
@@ -158,14 +150,14 @@ namespace Elab {
     Tableau::Type i;
     Tableau::Position pos;
     ExprHash ehash;
-    bool inserted, reAdd;
+    bool inserted = false;
+    bool reAdd = false;
 
     WithCedent(Tableau* p, Expr const* e, Tableau::Position pos, bool* closed, bool reAdd = false):
       p(p),
       i(Tableau::classify(pos, e)),
       pos(pos),
       ehash(ExprHash(e)),
-      inserted(false),
       reAdd(reAdd) {
       if (reAdd) i = Tableau::Type::GammaRetry;
       inserted = p->branch.hashset[pos].insert(ehash).second;
@@ -178,8 +170,6 @@ namespace Elab {
         if (i == Tableau::Type::Beta) p->branch.betaUsed[pos].push_back(false);
       }
     }
-    WithCedent(WithCedent const&) = delete;
-    WithCedent& operator=(WithCedent const&) = delete;
     ~WithCedent() {
       if (inserted || reAdd) {
         p->branch.cedents[i][pos].pop_back();
@@ -190,10 +180,15 @@ namespace Elab {
       }
       if (inserted) p->branch.hashset[pos].erase(ehash);
     }
+
+    WithCedent(WithCedent const&) = delete;
+    WithCedent(WithCedent&&) = delete;
+    auto operator=(WithCedent const&) -> WithCedent& = delete;
+    auto operator=(WithCedent&&) -> WithCedent& = delete;
   };
 
   // All states will be unmodified/restored
-  bool Tableau::dfs(size_t depth) {
+  auto Tableau::dfs(size_t depth) -> bool {
     check();
 
     // TODO: make early test in branching situations
@@ -211,13 +206,13 @@ namespace Elab {
 
     auto closing = [this](size_t depth) {
       if (cont.empty()) return true;
-      Branch backup = branch;
+      auto backup = branch;
       branch = cont.back();
       cont.pop_back();
 #ifdef CHECK_INVARIANTS
-      Branch t = branch;
+      auto t = branch;
 #endif
-      bool res = dfs(depth);
+      auto res = dfs(depth);
 #ifdef CHECK_INVARIANTS
       if (branch != t) unreachable;
 #endif
@@ -232,20 +227,20 @@ namespace Elab {
     auto iota = [this, closing, depth](Position pos, Expr const* e) {
       // Try unify and close branch (no need to check for other closures...)
       // TODO: try optimise candidate selection...
-      vector<Subs> unifiers;
+      auto unifiers = vector<Subs>();
       for (auto& [q, _]: branch.hashset[invert(pos)]) {
-        auto unifier = Procs::unify({std::make_pair(e, q)}, pool);
+        auto unifier = procs::unify({std::make_pair(e, q)}, pool);
         if (unifier.has_value()) {
-          if (!Procs::equalAfterSubs(e, q, unifier.value())) unreachable;
+          if (!procs::equalAfterSubs(e, q, unifier.value())) unreachable;
           // If there's a unifier that doesn't affect other branches, we use that one and discard the rest.
           if (cont.empty() || subsStartsFrom(unifier.value(), cont.back().numUniversal)) {
-            vector<Branch> backup = cont;
+            auto backup = cont;
             pools.emplace_back();
             applySubs(unifier.value(), true);
 #ifdef CHECK_INVARIANTS
-            vector<Branch> t = cont;
+            auto t = cont;
 #endif
-            bool res = closing(depth);
+            auto res = closing(depth);
 #ifdef CHECK_INVARIANTS
             if (cont != t) unreachable;
 #endif
@@ -258,14 +253,14 @@ namespace Elab {
       }
       if (!unifiers.empty()) {
         backtrackPoints++;
-        vector<Branch> backup = cont;
-        for (Subs const& unifier: unifiers) {
+        auto backup = cont;
+        for (auto& unifier: unifiers) {
           pools.emplace_back();
           applySubs(unifier, false);
 #ifdef CHECK_INVARIANTS
-          vector<Branch> t = cont;
+          auto t = cont;
 #endif
-          bool res = closing(depth);
+          auto res = closing(depth);
 #ifdef CHECK_INVARIANTS
           if (cont != t) unreachable;
 #endif
@@ -279,16 +274,16 @@ namespace Elab {
 
     // Unary
     auto unary = [this, closing, depth](Position pos, Expr const* e) {
-      bool closed = false;
-      WithCedent g(this, e, pos, &closed);
+      auto closed = false;
+      auto g = WithCedent(this, e, pos, &closed);
       return closed ? closing(depth) : dfs(depth);
     };
 
     // Alpha
     auto alpha = [this, closing, depth](Position pos1, Expr const* e1, Position pos2, Expr const* e2) {
-      bool closed = false;
-      WithCedent g1(this, e1, pos1, &closed);
-      WithCedent g2(this, e2, pos2, &closed);
+      auto closed = false;
+      auto g1 = WithCedent(this, e1, pos1, &closed);
+      auto g2 = WithCedent(this, e2, pos2, &closed);
       return closed ? closing(depth) : dfs(depth);
     };
 
@@ -300,25 +295,25 @@ namespace Elab {
       }
       // e1->size() < e2->size()
 #ifdef CHECK_INVARIANTS
-      vector<Branch> t = cont;
+      auto t = cont;
 #endif
-      bool inserted = false;
+      auto inserted = false;
       {
-        bool closed = false;
+        auto closed = false;
 #ifdef SEMANTIC_BRANCHING
-        WithCedent g1(this, e1, invert(pos1), &closed);
+        auto g1 = WithCedent(this, e1, invert(pos1), &closed);
 #endif
-        WithCedent g2(this, e2, pos2, &closed);
-        WithValue gd(&branch.depth, branch.depth + 1);
+        auto g2 = WithCedent(this, e2, pos2, &closed);
+        auto gd = WithValue(&branch.depth, branch.depth + 1);
         if (!closed) {
           cont.push_back(branch);
           inserted = true;
         }
       }
-      bool closed = false;
-      WithCedent g(this, e1, pos1, &closed);
-      WithValue gd(&branch.depth, closed ? branch.depth : (branch.depth + 1));
-      bool res = closed ? closing(depth) : dfs(depth + 1);
+      auto closed = false;
+      auto g = WithCedent(this, e1, pos1, &closed);
+      auto gd = WithValue(&branch.depth, closed ? branch.depth : (branch.depth + 1));
+      auto res = closed ? closing(depth) : dfs(depth + 1);
       if (inserted) cont.pop_back();
 #ifdef CHECK_INVARIANTS
       if (cont != t) unreachable;
@@ -332,18 +327,18 @@ namespace Elab {
     // Gamma
     auto gamma = [this, closing, depth](Position pos, Expr const* e, bool reentrant) {
       // TODO: selection in reentrant gamma expansions
-      bool closed = false;
-      size_t id = branch.numUniversal;
-      Expr const* body = e->app.r->lam.r->makeReplace(pool.emplace(VMeta, id), pool);
-      WithValue gn(&branch.numUniversal, branch.numUniversal + 1);
-      WithCedent g(this, body, pos, &closed);
+      auto closed = false;
+      auto id = branch.numUniversal;
+      auto body = e->app.r->lam.r->makeReplace(pool.make(VMeta, id), pool);
+      auto gn = WithValue(&branch.numUniversal, branch.numUniversal + 1);
+      auto g = WithCedent(this, body, pos, &closed);
 
       // If `e` contains undetermined variables, it must be a result of some previous application of γ-rule.
       // In this case, the original template is already re-added, so we may avoid re-adding `e` again.
       // (TODO: try delay this to instantiation time?)
-      if (e->isGround()) {                           // TODO: fix "forall, exists, forall"
-        WithCedent gre(this, e, pos, &closed, true); // Re-add
-        WithValue gd(&branch.depth, closed ? branch.depth : reentrant ? (branch.depth + 1) : branch.depth);
+      if (e->isGround()) {                                  // TODO: fix "forall, exists, forall"
+        auto gre = WithCedent(this, e, pos, &closed, true); // Re-add
+        auto gd = WithValue(&branch.depth, closed ? branch.depth : reentrant ? (branch.depth + 1) : branch.depth);
         return closed ? closing(depth) : dfs(reentrant ? (depth + 1) : depth);
       } else {
         if (reentrant) unreachable;
@@ -353,26 +348,24 @@ namespace Elab {
 
     // Delta
     auto delta = [this, closing, depth](Position pos, Expr const* e) {
-      bool closed = false;
-      size_t id = numSkolem + ctx.size();
-      vector<uint64_t> metas;
-      for (uint64_t i = 0; i < branch.numUniversal; i++) metas.push_back(i);
-      Expr const* body = e->app.r->lam.r->makeReplace(Procs::makeSkolem(id, metas, pool), pool);
-      WithValue gn(&numSkolem, numSkolem + 1);
-      WithCedent g(this, body, pos, &closed);
+      auto closed = false;
+      auto id = numSkolem + ctx.size();
+      auto metas = vector<uint64_t>();
+      for (auto i = uint64_t{0}; i < branch.numUniversal; i++) metas.push_back(i);
+      auto body = e->app.r->lam.r->makeReplace(procs::makeSkolem(id, metas, pool), pool);
+      auto gn = WithValue(&numSkolem, numSkolem + 1);
+      auto g = WithCedent(this, body, pos, &closed);
       return closed ? closing(depth) : dfs(depth);
     };
 
-    constexpr static unsigned int order[] = {Iota, Alpha, Delta, Gamma};
-
-    for (unsigned int i: order) {
+    for (auto const i: std::array{Iota, Alpha, Delta, Gamma}) {
       auto &ante = branch.cedents[i][L], &succ = branch.cedents[i][R];
-      size_t &antei = branch.indices[i][L], &succi = branch.indices[i][R];
+      auto &antei = branch.indices[i][L], &succi = branch.indices[i][R];
 
       // Left logical rules (try breaking down one antecedent)
       if (antei < ante.size()) {
-        Expr const* e = ante[antei];
-        WithValue gi(&antei, antei + 1);
+        auto e = ante[antei];
+        auto gi = WithValue(&antei, antei + 1);
         if (!(classify(L, e) == i || (classify(L, e) == Gamma && i == GammaRetry))) unreachable;
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
@@ -400,8 +393,8 @@ namespace Elab {
 
       // Right logical rules (try breaking down one succedent)
       if (succi < succ.size()) {
-        Expr const* e = succ[succi];
-        WithValue gi(&succi, succi + 1);
+        auto e = succ[succi];
+        auto gi = WithValue(&succi, succi + 1);
         if (!(classify(R, e) == i || (classify(R, e) == Gamma && i == GammaRetry))) unreachable;
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
@@ -428,16 +421,16 @@ namespace Elab {
     // So I have to use a separate `betaUsed` mechanism...
     // TODO: sort by complexity?
     if (branch.depth < maxTabDepth) {
-      unsigned int i = Beta;
+      auto const i = Beta;
       auto &ante = branch.cedents[i][L], &succ = branch.cedents[i][R];
       // size_t& antei = branch.indices[i][L], & succi = branch.indices[i][R];
       auto &anteu = branch.betaUsed[L], &succu = branch.betaUsed[R];
 
-      for (size_t ii = 0; ii < ante.size(); ii++)
+      for (auto ii = 0_z; ii < ante.size(); ii++)
         if (!anteu[ii]) {
-          Expr const* e = ante[ii];
+          auto e = ante[ii];
           anteu[ii] = true;
-          bool res = false;
+          auto res = false;
           auto fof = FOLForm::fromExpr(e);
           switch (fof.tag) {
             case Or: res = beta(L, fof.binary.l, L, fof.binary.r); break;
@@ -447,12 +440,12 @@ namespace Elab {
           anteu[ii] = false;
           if (res) return true;
         }
-      for (size_t ii = 0; ii < succ.size(); ii++)
+      for (auto ii = 0_z; ii < succ.size(); ii++)
         if (!succu[ii]) {
-          Expr const* e = succ[ii];
+          auto e = succ[ii];
           // Ahhhhhhh this is too messy
           succu[ii] = true;
-          bool res = false;
+          auto res = false;
           auto fof = FOLForm::fromExpr(e);
           switch (fof.tag) {
             case And: res = beta(R, fof.binary.l, R, fof.binary.r); break;
@@ -473,12 +466,12 @@ namespace Elab {
 
     // The relative order of γ's are unimportant, so we could proceed with the insertion order
     if (branch.depth < maxTabDepth) {
-      unsigned int i = GammaRetry;
+      auto i = GammaRetry;
       auto &ante = branch.cedents[i][L], &succ = branch.cedents[i][R];
-      size_t &antei = branch.indices[i][L], &succi = branch.indices[i][R];
-      for (size_t ii = antei; ii < ante.size(); ii++) {
-        Expr const* e = ante[ii];
-        WithValue gi(&antei, ii + 1);
+      auto &antei = branch.indices[i][L], &succi = branch.indices[i][R];
+      for (auto ii = antei; ii < ante.size(); ii++) {
+        auto e = ante[ii];
+        auto gi = WithValue(&antei, ii + 1);
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Forall:
@@ -487,9 +480,9 @@ namespace Elab {
           default: unreachable;
         }
       }
-      for (size_t ii = succi; ii < succ.size(); ii++) {
-        Expr const* e = succ[ii];
-        WithValue gi(&succi, ii + 1);
+      for (auto ii = succi; ii < succ.size(); ii++) {
+        auto e = succ[ii];
+        auto gi = WithValue(&succi, ii + 1);
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Exists:
@@ -506,11 +499,11 @@ namespace Elab {
     return false;
   }
 
-  bool Tableau::search(size_t setMaxDepth, size_t setMaxTabDepth) {
+  auto Tableau::search(size_t setMaxDepth, size_t setMaxTabDepth) -> bool {
     pools.clear();
     pools.emplace_back();
     cont.clear();
-    for (unsigned int i = 0; i < N; i++) {
+    for (auto i = uint32_t{0}; i < N; i++) {
       branch.indices[i][L] = 0;
       branch.indices[i][R] = 0;
     }
@@ -526,24 +519,24 @@ namespace Elab {
     return dfs(0);
   }
 
-  bool Tableau::iterativeDeepening(size_t setMaxTabDepth, size_t step) {
+  auto Tableau::iterativeDeepening(size_t setMaxTabDepth, size_t step) -> bool {
     // Try with smaller depths
-    size_t currMaxDepth = 2;
-    for (size_t i = 1; i < setMaxTabDepth; i += step, currMaxDepth += step * 4) {
+    auto currMaxDepth = 2_z;
+    for (auto i = 1_z; i < setMaxTabDepth; i += step, currMaxDepth += step * 4) {
       std::cout << "** Current tableau depth: " << i << ", search depth: " << currMaxDepth << ", ";
-      bool res = search(currMaxDepth, i);
+      auto res = search(currMaxDepth, i);
       std::cout << "DFS invocations: " << invocations << std::endl;
       if (res) return true;
     }
     // Try with maximum depth
     std::cout << "** Current tableau depth: " << setMaxTabDepth << ", search depth: " << currMaxDepth << ", ";
-    bool res = search(currMaxDepth, setMaxTabDepth);
+    auto res = search(currMaxDepth, setMaxTabDepth);
     std::cout << "DFS invocations: " << invocations << std::endl;
     return res;
   }
 
-  string Tableau::printState() {
-    string res;
+  auto Tableau::printState() -> string {
+    auto res = string();
     res += "+------------------------------------\n";
     for (unsigned int i = 0; i < N; i++)
       for (Expr const* e: branch.cedents[i][L]) res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
@@ -553,8 +546,8 @@ namespace Elab {
     return res;
   }
 
-  string Tableau::printStateDebug() {
-    string res;
+  auto Tableau::printStateDebug() -> string {
+    auto res = string();
     res += "+------------------------------------\n";
     for (unsigned int i = 0; i < N; i++) {
       res += "| (" + typeToString(i) + ") " + std::to_string(branch.indices[i][L]) + "\n";
@@ -568,8 +561,8 @@ namespace Elab {
     return res;
   }
 
-  string Tableau::printStats() {
-    string res;
+  auto Tableau::printStats() -> string {
+    auto res = string();
     res += "+------------------------------------\n";
     res += "| Number of DFS invocations: " + std::to_string(invocations) + "\n";
     res += "| Maximum search depth: " + std::to_string(maxDepthReached) + "\n";
@@ -578,11 +571,11 @@ namespace Elab {
     return res;
   }
 
-  void Tableau::checkBranch(Branch const& b) {
-    std::unordered_set<ExprHash, ExprHash::GetHash> ths[2] = {b.hashset[0], b.hashset[1]};
-    for (unsigned int i = 0; i < N; i++) {
-      for (unsigned int pos = 0; pos < 2; pos++) {
-        for (Expr const* e: b.cedents[i][pos]) {
+  auto Tableau::checkBranch(Branch const& b) -> void {
+    auto ths = std::array<std::unordered_set<ExprHash, ExprHash::GetHash>, 2>{b.hashset[0], b.hashset[1]};
+    for (auto i = uint32_t{0}; i < N; i++) {
+      for (auto pos = uint32_t{0}; pos < 2; pos++) {
+        for (auto e: b.cedents[i][pos]) {
           if (!ths[pos].contains(ExprHash(e))) {
             std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
             std::cout << "    " << e->toString(ctx) << std::endl;
@@ -592,18 +585,18 @@ namespace Elab {
         }
       }
     }
-    for (unsigned int i = 0; i < N; i++) {
-      for (unsigned int pos = 0; pos < 2; pos++) {
-        for (Expr const* e: b.cedents[i][pos]) { ths[pos].erase(ExprHash(e)); }
+    for (auto i = uint32_t{0}; i < N; i++) {
+      for (auto pos = uint32_t{0}; pos < 2; pos++) {
+        for (auto e: b.cedents[i][pos]) { ths[pos].erase(ExprHash(e)); }
       }
     }
-    for (ExprHash const& eh: ths[0]) {
+    for (auto& eh: ths[0]) {
       std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
       std::cout << "    " << eh.e->toString(ctx) << std::endl;
       std::cout << "not found in cedents." << std::endl;
       unreachable;
     }
-    for (ExprHash const& eh: ths[1]) {
+    for (auto& eh: ths[1]) {
       std::cout << "Assertion failed: inconsistent state, formula" << std::endl;
       std::cout << "    " << eh.e->toString(ctx) << std::endl;
       std::cout << "not found in cedents." << std::endl;
@@ -611,18 +604,18 @@ namespace Elab {
     }
   }
 
-  void Tableau::check() {
+  auto Tableau::check() -> void {
 #ifdef CHECK_INVARIANTS
     checkBranch(branch);
-    for (size_t ind = 0; ind < cont.size(); ind++) {
-      Branch const& branch = cont[ind];
+    for (auto ind = 0_z; ind < cont.size(); ind++) {
+      auto const& branch = cont[ind];
       checkBranch(branch);
-      if (branch.cedents[β][L].size() != branch.betaUsed[L].size()) unreachable;
-      if (branch.cedents[β][R].size() != branch.betaUsed[R].size()) unreachable;
-      for (unsigned int i = 0; i < N; i++) {
+      if (branch.cedents[Beta][L].size() != branch.betaUsed[L].size()) unreachable;
+      if (branch.cedents[Beta][R].size() != branch.betaUsed[R].size()) unreachable;
+      for (auto i = uint32_t{0}; i < N; i++) {
         if (branch.cedents[i][L].size() != branch.timestamps[i][L].size()) unreachable;
         if (branch.cedents[i][L].size() != branch.numUniversals[i][L].size()) unreachable;
-        for (Expr const* e: branch.cedents[i][L]) {
+        for (auto e: branch.cedents[i][L]) {
           if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
             std::cout << "Branch has numUniversal = " << branch.numUniversal << std::endl;
@@ -634,7 +627,7 @@ namespace Elab {
         }
         if (branch.cedents[i][R].size() != branch.timestamps[i][R].size()) unreachable;
         if (branch.cedents[i][R].size() != branch.numUniversals[i][R].size()) unreachable;
-        for (Expr const* e: branch.cedents[i][R]) {
+        for (auto e: branch.cedents[i][R]) {
           if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
             std::cout << "Branch has numUniversal = " << branch.numUniversal << std::endl;
@@ -649,9 +642,9 @@ namespace Elab {
 #endif
   }
 
-  void Tableau::debughtml(string const& filename) {
+  auto Tableau::debughtml(string const& filename) -> void {
     using std::endl;
-    std::ofstream out(filename + ".html");
+    auto out = std::ofstream(filename + ".html");
 
     out << "<head><style>"
            "  table td, table td * { vertical-align: top; }"
@@ -708,4 +701,5 @@ namespace Elab {
     out << "</tr></tbody></table></body>" << endl;
   }
 
+#include "macros_close.hpp"
 }

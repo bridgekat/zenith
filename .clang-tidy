@@ -8,4 +8,6 @@ Checks: <
   modernize-*,
   -cppcoreguidelines-macro-usage,
   -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-pro-type-member-init,
   -modernize-use-nodiscard

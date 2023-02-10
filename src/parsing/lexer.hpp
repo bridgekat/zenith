@@ -1,12 +1,11 @@
-// Parsing :: Automaton, AutomatonBuilder, AutomatonLexer...
-
-#ifndef PARSING_LEXER_HPP_
-#define PARSING_LEXER_HPP_
+#ifndef APIMU_PARSING_LEXER_HPP
+#define APIMU_PARSING_LEXER_HPP
 
 #include <array>
 #include "stream.hpp"
 
-namespace Parsing {
+namespace apimu::parsing {
+#include "macros_open.hpp"
 
   // A class is a "string automaton" if...
   class Automaton {
@@ -58,6 +57,7 @@ namespace Parsing {
     auto chars(std::vector<Char> const& ls) -> Subgraph;
     auto except(std::vector<Char> const& ls) -> Subgraph;
     auto range(Char a, Char b) -> Subgraph;
+    auto rangeExcept(Char a, Char b, std::vector<Char> const& ls) -> Subgraph;
     auto word(std::vector<Char> const& word) -> Subgraph;
     auto alt(std::vector<Subgraph> const& ls) -> Subgraph;
     auto concat(std::vector<Subgraph> const& ls) -> Subgraph;
@@ -67,7 +67,7 @@ namespace Parsing {
 
     // Registers a pattern constructed from functions above.
     // Input subgraph must be newly constructed in full. No "parts" can be reused.
-    auto withPattern(Symbol sym, Subgraph a) -> AutomatonBuilder&;
+    auto pattern(Symbol sym, Subgraph a) -> AutomatonBuilder&;
 
     // Constructs a well-formed NFA.
     auto makeNFA() const -> NFA;
@@ -81,6 +81,14 @@ namespace Parsing {
 
     auto _node() -> size_t;
     auto _transition(size_t s, Char c, size_t t) -> void;
+  };
+
+  // A token emitted by a lexer.
+  struct Token {
+    std::optional<Symbol> id; // Terminal symbol ID (empty if unrecognised).
+    std::string_view lexeme;  // Lexeme. `lexeme.size() == end - begin`.
+    size_t begin;             // Start index in original character stream.
+    size_t end;               // End index in original character stream.
   };
 
   // A lexer is a "revertable stream" of `Token`.
@@ -108,6 +116,8 @@ namespace Parsing {
     size_t _offset;               // Initial offset.
     std::vector<size_t> _offsets; // Offsets of marks.
   };
+
+#include "macros_close.hpp"
 }
 
-#endif // PARSING_LEXER_HPP_
+#endif // APIMU_PARSING_LEXER_HPP

@@ -7,11 +7,12 @@ using std::vector;
 using std::tuple;
 using std::pair;
 using std::optional;
-using enum Core::Expr::Tag;
-using enum Core::Expr::VarTag;
-using enum Elab::Procs::FOLForm::Tag;
+using enum apimu::core::Expr::Tag;
+using enum apimu::core::Expr::VarTag;
+using enum apimu::core::FOLForm::Tag;
 
-namespace Elab::Procs {
+namespace apimu::elab::procs {
+#include "macros_open.hpp"
 
   auto propValue(Expr const* e, vector<bool> const& fvmap) -> bool {
     auto const fof = FOLForm::fromExpr(e);
@@ -86,7 +87,7 @@ namespace Elab::Procs {
       case Iff: return skolemize(nnf(e, pool), meta, skolem, metas, pool);
       case Forall: {
         metas.push_back(meta);
-        auto const ee = fof.binder.r->makeReplace(pool.emplace(VMeta, meta++), pool);
+        auto const ee = fof.binder.r->makeReplace(pool.make(VMeta, meta++), pool);
         auto const res = skolemize(ee, meta, skolem, metas, pool);
         metas.pop_back();
         return res;
@@ -169,7 +170,7 @@ namespace Elab::Procs {
     // Add quantifiers for universals (metas)
     // uint64_t m = res->numMeta();
     // res = res->updateVars([m, &pool] (uint64_t n, Expr const* x) {
-    //   return (x->var.tag == Expr::VMeta)? pool.emplace(Expr::VBound, n + m - 1 - x->var.id) : x;
+    //   return (x->var.tag == Expr::VMeta)? pool.make(Expr::VBound, n + m - 1 - x->var.id) : x;
     // }, pool);
     // for (uint64_t i = 0; i < m; i++) res = FOLForm(Forall, "", res).toExpr(pool);
     return res;
@@ -219,7 +220,7 @@ namespace Elab::Procs {
         auto const id = ls.size();
         ls.push_back(lhs);
         rs.push_back(rhs);
-        return pool.emplace(Expr::VMeta, id);
+        return pool.make(Expr::VMeta, id);
       };
       if (lhs->tag != rhs->tag) return different();
       // lhs->tag == rhs->tag
@@ -229,17 +230,17 @@ namespace Elab::Procs {
         case App: {
           auto const l = dfs(lhs->app.l, rhs->app.l);
           auto const r = dfs(lhs->app.r, rhs->app.r);
-          return (l == lhs->app.l && r == lhs->app.r) ? lhs : pool.emplace(l, r);
+          return (l == lhs->app.l && r == lhs->app.r) ? lhs : pool.make(l, r);
         }
         case Lam: {
           auto const t = dfs(lhs->lam.t, rhs->lam.t);
           auto const r = dfs(lhs->lam.r, rhs->lam.r);
-          return (t == lhs->lam.t && r == lhs->lam.r) ? lhs : pool.emplace(Expr::LLam, lhs->lam.s, t, r);
+          return (t == lhs->lam.t && r == lhs->lam.r) ? lhs : pool.make(Expr::LLam, lhs->lam.s, t, r);
         }
         case Pi: {
           auto const t = dfs(lhs->pi.t, rhs->pi.t);
           auto const r = dfs(lhs->pi.r, rhs->pi.r);
-          return (t == lhs->pi.t && r == lhs->pi.r) ? lhs : pool.emplace(Expr::PPi, lhs->pi.s, t, r);
+          return (t == lhs->pi.t && r == lhs->pi.r) ? lhs : pool.make(Expr::PPi, lhs->pi.s, t, r);
         }
       }
       unreachable;
@@ -323,4 +324,5 @@ namespace Elab::Procs {
     return res;
   }
 
+#include "macros_close.hpp"
 }

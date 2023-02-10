@@ -1,7 +1,5 @@
-// Core :: Context
-
-#ifndef CONTEXT_HPP_
-#define CONTEXT_HPP_
+#ifndef APIMU_CORE_CONTEXT_HPP
+#define APIMU_CORE_CONTEXT_HPP
 
 #include <optional>
 #include <string>
@@ -9,7 +7,8 @@
 #include <vector>
 #include <common.hpp>
 
-namespace Core {
+namespace apimu::core {
+#include "macros_open.hpp"
 
   class Expr;
 
@@ -39,10 +38,14 @@ namespace Core {
       // Unsigned count down: https://nachtimwald.com/2019/06/02/unsigned-count-down/
       for (size_t i = entries.size(); i-- > 0;)
         if (entries[i].first == s) return i;
-      return std::nullopt;
+      return {};
     }
 
   protected:
+    // Returns the top layer pool.
+    auto pool() -> Allocator<Expr>& { return pools.back(); }
+
+  private:
     // Allocators
     std::vector<Allocator<Expr>> pools;
     // All entries
@@ -51,6 +54,7 @@ namespace Core {
     std::vector<size_t> indices;
   };
 
+#include "macros_close.hpp"
 }
 
-#endif // CONTEXT_HPP_
+#endif // APIMU_CORE_CONTEXT_HPP

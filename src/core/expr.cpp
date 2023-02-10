@@ -1,23 +1,24 @@
 #include "expr.hpp"
 #include <type_traits>
 
-namespace Core {
+using std::string;
+using std::vector;
 
-  using std::string;
-  using std::vector;
+namespace apimu::core {
+#include "macros_open.hpp"
 
-  Expr const* Expr::clone(Allocator<Expr>& pool) const {
+  auto Expr::clone(Allocator<Expr>& pool) const -> Expr const* {
     switch (tag) {
-      case Sort: return pool.emplace(sort.tag);
-      case Var: return pool.emplace(var.tag, var.id);
-      case App: return pool.emplace(app.l->clone(pool), app.r->clone(pool));
-      case Lam: return pool.emplace(LLam, lam.s, lam.t->clone(pool), lam.r->clone(pool));
-      case Pi: return pool.emplace(PPi, pi.s, pi.t->clone(pool), pi.r->clone(pool));
+      case Sort: return pool.make(sort.tag);
+      case Var: return pool.make(var.tag, var.id);
+      case App: return pool.make(app.l->clone(pool), app.r->clone(pool));
+      case Lam: return pool.make(LLam, lam.s, lam.t->clone(pool), lam.r->clone(pool));
+      case Pi: return pool.make(PPi, pi.s, pi.t->clone(pool), pi.r->clone(pool));
     }
     unreachable;
   }
 
-  bool Expr::operator==(Expr const& rhs) const noexcept {
+  auto Expr::operator==(Expr const& rhs) const noexcept -> bool {
     if (this == &rhs) return true;
     if (tag != rhs.tag) return false;
     // Mid: tag == rhs.tag
@@ -31,7 +32,7 @@ namespace Core {
     unreachable;
   }
 
-  size_t Expr::hash() const noexcept {
+  auto Expr::hash() const noexcept -> size_t {
     auto res = static_cast<size_t>(tag);
     switch (tag) {
       case Sort: res = combineHash(res, static_cast<std::underlying_type_t<SortTag>>(sort.tag)); return res;
@@ -58,7 +59,7 @@ namespace Core {
   }
 
   // Give unnamed bound variables a random name
-  string Expr::newName(size_t i) {
+  auto Expr::newName(size_t i) -> string {
     constexpr size_t Letters = 26;
     string res = "__";
     do {
@@ -69,7 +70,7 @@ namespace Core {
   }
 
   // Undefined variables should be OK, as long as pointers are valid.
-  string Expr::toString(Context const& ctx, vector<string>& stk) const {
+  auto Expr::toString(Context const& ctx, vector<string>& stk) const -> string {
     switch (tag) {
       case Sort:
         switch (sort.tag) {
@@ -120,13 +121,13 @@ namespace Core {
   // (2) Returns `Type` itself;
   // (3) Returns a well-formed, beta-reduced expression of type `Prop`, representing the proposition it proves;
   // (4) Returns `Prop` itself.
-  Expr const*
-  Expr::checkType(Context const& ctx, Allocator<Expr>& pool, vector<Expr const*>& stk, vector<string>& names) const {
+  auto Expr::checkType(Context const& ctx, Allocator<Expr>& pool, vector<Expr const*>& stk, vector<string>& names) const
+    -> Expr const* {
     switch (tag) {
       case Sort:
         switch (sort.tag) {
-          case SProp: return pool.emplace(SType);
-          case SType: return pool.emplace(SKind);
+          case SProp: return pool.make(SType);
+          case SType: return pool.make(SKind);
           case SKind: throw InvalidExpr("\"Kind\" does not have a type", ctx, this);
         }
         unreachable;
@@ -163,7 +164,7 @@ namespace Core {
         auto const tr = lam.r->checkType(ctx, pool, stk, names);
         names.pop_back();
         stk.pop_back();
-        return pool.emplace(PPi, lam.s, lam.t->reduce(pool), tr);
+        return pool.make(PPi, lam.s, lam.t->reduce(pool), tr);
       }
       case Pi: { // Π-formation
         auto const tt = pi.t->checkType(ctx, pool, stk, names);
@@ -176,13 +177,13 @@ namespace Core {
           throw InvalidExpr("expected proposition or type, got " + tr->toString(ctx, names), ctx, pi.r);
         names.pop_back();
         stk.pop_back();
-        return pool.emplace(imax(tt->sort.tag, tr->sort.tag));
+        return pool.make(imax(tt->sort.tag, tr->sort.tag));
       }
     }
     unreachable;
   }
 
-  Expr const* Expr::reduce(Allocator<Expr>& pool) const {
+  auto Expr::reduce(Allocator<Expr>& pool) const -> Expr const* {
     switch (tag) {
       case Sort: return this;
       case Var: return this;
@@ -191,23 +192,23 @@ namespace Core {
         auto const l = app.l->reduce(pool);
         auto const r = app.r->reduce(pool);
         if (l->tag == Lam) return l->lam.r->makeReplace(r, pool)->reduce(pool);
-        return (l == app.l && r == app.r) ? this : pool.emplace(l, r);
+        return (l == app.l && r == app.r) ? this : pool.make(l, r);
       }
       case Lam: {
         auto const t = lam.t->reduce(pool);
         auto const r = lam.r->reduce(pool);
-        return (t == lam.t && r == lam.r) ? this : pool.emplace(LLam, lam.s, t, r);
+        return (t == lam.t && r == lam.r) ? this : pool.make(LLam, lam.s, t, r);
       }
       case Pi: {
         auto const t = pi.t->reduce(pool);
         auto const r = pi.r->reduce(pool);
-        return (t == pi.t && r == pi.r) ? this : pool.emplace(PPi, pi.s, t, r);
+        return (t == pi.t && r == pi.r) ? this : pool.make(PPi, pi.s, t, r);
       }
     }
     unreachable;
   }
 
-  size_t Expr::size() const noexcept {
+  auto Expr::size() const noexcept -> size_t {
     switch (tag) {
       case Sort: return 1;
       case Var: return 1;
@@ -218,7 +219,7 @@ namespace Core {
     unreachable;
   }
 
-  bool Expr::occurs(VarTag vartag, uint64_t id) const noexcept {
+  auto Expr::occurs(VarTag vartag, uint64_t id) const noexcept -> bool {
     switch (tag) {
       case Sort: return false;
       case Var: return var.tag == vartag && var.id == id;
@@ -229,7 +230,7 @@ namespace Core {
     unreachable;
   }
 
-  size_t Expr::numMeta() const noexcept {
+  auto Expr::numMeta() const noexcept -> size_t {
     switch (tag) {
       case Sort: return 0;
       case Var: return (var.tag == VMeta) ? (var.id + 1) : 0;
@@ -240,4 +241,5 @@ namespace Core {
     unreachable;
   }
 
+#include "macros_close.hpp"
 }

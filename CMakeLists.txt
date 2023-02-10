@@ -37,7 +37,6 @@ add_executable (testeval
   src/core/expr.cpp
   src/core/fol/fol.cpp
   src/elab/procs.cpp
-  src/elab/elab.cpp
   src/parsing/lexer.cpp
   src/parsing/parser.cpp
   src/eval/tree.cpp

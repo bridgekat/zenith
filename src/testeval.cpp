@@ -11,6 +11,7 @@
 
 using std::string;
 using std::cin, std::cout, std::endl;
+using namespace apimu;
 
 // See: https://stackoverflow.com/questions/116038/how-do-i-read-an-entire-file-into-a-stdstring-in-c
 auto readFile(std::ifstream&& in) -> string {
@@ -21,7 +22,7 @@ auto readFile(std::ifstream&& in) -> string {
 
 auto main(int argc, char* argv[]) -> int {
   auto const args = std::span(argv, static_cast<size_t>(argc));
-  auto evaluator = Eval::ExtendedEvaluator();
+  auto evaluator = eval::ExtendedEvaluator();
   auto in = string();
   for (auto i = 1_z; i < args.size(); i++) in += readFile(std::ifstream(args[i])) + "\n";
 
@@ -68,7 +69,7 @@ auto main(int argc, char* argv[]) -> int {
       try {
         auto const& res = evaluator.evalParsedStatement();
         cout << res->toString() << endl;
-      } catch (Eval::EvalError& ex) {
+      } catch (eval::EvalError& ex) {
         auto const& [found, prefix] = ex.e->toStringUntil(ex.at);
         cout << endl;
         if (found) {

@@ -1,13 +1,12 @@
-// Parsing :: Grammar, GrammarBuilder, Node, EarleyParser...
-
-#ifndef PARSING_PARSER_HPP_
-#define PARSING_PARSER_HPP_
+#ifndef APIMU_PARSING_PARSER_HPP
+#define APIMU_PARSING_PARSER_HPP
 
 #include <unordered_map>
 #include "lexer.hpp"
 #include "stream.hpp"
 
-namespace Parsing {
+namespace apimu::parsing {
+#include "macros_open.hpp"
 
   // Preprocessed context-free grammar for use by `Parser`.
   struct Grammar {
@@ -30,13 +29,19 @@ namespace Parsing {
   // Grammar preprocessor.
   class GrammarBuilder {
   public:
-    auto withStartSymbol(Symbol value) -> GrammarBuilder&;
-    auto withIgnoredSymbol(Symbol value) -> GrammarBuilder&;
-    auto withRule(std::pair<Symbol, Precedence> lhs, std::vector<std::pair<Symbol, Precedence>> const& rhs)
-      -> GrammarBuilder&;
+    // Pair of (symbol ID, precedence) with convenient constructors.
+    struct InputPair {
+      std::pair<Symbol, Precedence> value;
+      constexpr InputPair(Symbol symbol, Precedence precedence = PrecedenceMax):
+        value(symbol, precedence) {}
+    };
+
+    auto start(Symbol value) -> GrammarBuilder&;
+    auto ignored(Symbol value) -> GrammarBuilder&;
+    auto rule(InputPair lhs, std::vector<InputPair> const& rhs) -> GrammarBuilder&;
 
     // Constructs a well-formed `Grammar`.
-    auto make() const -> Grammar;
+    auto makeGrammar() const -> Grammar;
 
   private:
     Symbol _startSymbol = 0;
@@ -45,7 +50,6 @@ namespace Parsing {
   };
 
   // A left-match SPPF node emitted by a parser.
-  // All pointers should be non-empty and valid.
   struct Node {
     struct State {
       size_t begin;    // Start index in sentence.
@@ -63,8 +67,29 @@ namespace Parsing {
       size_t child;   // Index of completed child node (for non-leaf nodes) or token (for leaf nodes).
     };
     State state;            // Payload.
-    std::vector<Link> next; // Forward links (construction deferred).
+    std::vector<Link> next; // Forward links (temporary).
     std::vector<Link> prev; // Backward links.
+  };
+
+  // Error recovery parameters.
+  struct ErrorRecoveryParams {
+    bool rollback = false; // Try rolling back to last successful position before error recovery.
+    size_t maxSkipped = 4; // Max number of skipped tokens around an error.
+    size_t threshold = 4;  // Number of tokens to be recognised before declaring success.
+  };
+
+  // Error handler interface.
+  class IErrorHandler {
+    interface(IErrorHandler);
+  public:
+    // Params: expected symbol IDs (terminals and nonterminals), problematic token (empty if reached EOF).
+    virtual auto parsingError(std::vector<Symbol> expected, std::optional<Token> got) -> void required;
+  };
+
+  // An "error handler" that does nothing on error.
+  class BasicErrorHandler: public IErrorHandler {
+  public:
+    auto parsingError(std::vector<Symbol>, std::optional<Token>) -> void override {}
   };
 
   // Earley parser!
@@ -83,43 +108,37 @@ namespace Parsing {
       size_t begin; // Index of the first node (in the DP array) at this position.
       size_t end;   // Index of the last node (in the DP array) at this position + 1.
     };
-    struct ErrorRecoveryParams {
-      size_t maxSkipped; // Max number of skipped tokens around an error.
-      size_t threshold;  // Number of tokens to be recognised before declaring success.
-    };
-    struct Error {
-      std::vector<Symbol> expected; // Expected symbol IDs (including terminals and nonterminals).
-      std::optional<Token> got;     // The problematic token (empty if reached EOF).
-    };
 
     // Given references must be valid over the `Parser`'s lifetime.
-    EarleyParser(Grammar const& grammar, IStream<Token>& stream, ErrorRecoveryParams const& params):
+    EarleyParser(Grammar const& grammar, IStream<Token>& stream, ErrorRecoveryParams params, IErrorHandler& handler):
       _grammar(grammar),
       _marked(stream),
-      _params(params) {}
+      _params(std::move(params)),
+      _handler(handler) {}
 
     // Parse with error recovery.
+    // Returns true if no error is detected (and the parse forest is complete).
     auto parse() -> bool;
 
     // Retrieves results.
+    auto grammar() const -> Grammar const& { return _grammar; }
     auto tokens() const -> std::vector<Token> const& { return _tokens; }
     auto nodes() const -> std::vector<Node> const& { return _nodes; }
     auto ranges() const -> std::vector<IndexRange> const& { return _ranges; }
-    auto errors() const -> std::vector<Error> const& { return _errors; }
-    auto finalStates() const -> std::vector<size_t>;
+    auto finalStates(std::optional<size_t> optPosition = {}) const -> std::vector<size_t>;
 
-    // Debug output.
-    auto showState(Node const& node, std::vector<std::string> const& names) const -> std::string;
-    auto showStates(std::vector<std::string> const& names) const -> std::string;
+    // Temporarily constructs forward links for unvisited nodes. Useful in disambiguation stage.
+    auto propagate(std::vector<size_t> stk) -> size_t;
+    auto unpropagate(std::vector<size_t> stk) -> void;
 
   private:
-    Grammar const& _grammar;         // Grammar.
-    MarkedStream<Token> _marked;     // Input `Token` stream with markers.
-    std::vector<Token> _tokens;      // Parsed tokens.
-    std::vector<Node> _nodes;        // The DP array, aka. "shared packed parse forest (SPPF)".
-    std::vector<IndexRange> _ranges; // Position -> index range of nodes at this position.
-    ErrorRecoveryParams _params;     // Error recovery parameters.
-    std::vector<Error> _errors;      // Logged errors.
+    Grammar const& _grammar;           // Grammar.
+    MarkedStream<Token> _marked;       // Input `Token` stream with markers.
+    std::vector<Token> _tokens;        // Parsed tokens.
+    std::vector<Node> _nodes;          // The DP array, aka. "shared packed parse forest (SPPF)".
+    std::vector<IndexRange> _ranges;   // Position -> index range of nodes at this position.
+    ErrorRecoveryParams const _params; // Error recovery parameters.
+    IErrorHandler& _handler;           // Error handler.
 
     // Map for state deduplication: state -> node index.
     std::unordered_map<Node::State, size_t, Node::State::Hasher> _map;
@@ -132,10 +151,12 @@ namespace Parsing {
     auto _skipTokens(size_t count) -> void;
     auto _node(size_t begin, size_t end, size_t rule, size_t progress) -> size_t;
     auto _transition(size_t prev, bool leaf, size_t child, size_t next) -> void;
-    auto _run(bool initialCompletions = true, size_t length = std::numeric_limits<size_t>::max()) -> bool;
+    enum class Result { eofSuccess, eofFailure, emptyFailure, reachedLength };
+    auto _run(bool recoveryMode, std::optional<size_t> optLength = {}) -> Result;
     auto _restore(size_t i) -> void;
   };
 
+#include "macros_close.hpp"
 }
 
-#endif // PARSING_PARSER_HPP_
+#endif // APIMU_PARSING_PARSER_HPP
