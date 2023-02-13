@@ -1,7 +1,5 @@
 #include "evaluator.hpp"
-// TEMP CODE?
 #include <fstream>
-#include <iostream>
 #include <limits>
 #include <string>
 
@@ -14,46 +12,93 @@ using apimu::parsing::AutomatonBuilder, apimu::parsing::GrammarBuilder;
 namespace apimu::eval {
 #include "macros_open.hpp"
 
-  auto Evaluator::parseNextStatement() -> bool {
-    assert(bool(parser));
-    return parser->parser.parse();
-    // std::cout << parser->showStates(symbolNames) << std::endl;
-  }
-
-  auto Evaluator::evalParsedStatement() -> Tree* {
-    auto e = resolve(); // std::cout << e->toString() << std::endl;
-    e = expand(e);
-    std::cout << e->toString() << std::endl;
-    e = eval(globalEnv, e);
-    return e;
-  }
-
-  auto Evaluator::parsingErrors() -> vector<ParsingError> {
-    auto res = vector<ParsingError>();
-    // See:
-    // https://stackoverflow.com/questions/30448182/is-it-safe-to-use-a-c11-range-based-for-loop-with-an-rvalue-range-init
-    /*
-    for (auto const& e: parser->parser.errors()) {
-      auto s = string("parsing error, expected ");
-      if (!e.expected.empty()) {
-        s += "one of: ";
-        for (auto const& sym: e.expected)
-          if (symbolIsTerminal[sym]) s += symbolNames[sym] + ", ";
+  auto Evaluator::ErrorHandler::parsingError(std::vector<parsing::Symbol> expected, std::optional<parsing::Token> got)
+    -> void {
+    auto const& sv = evaluator.stream->string();
+    auto const info = got ? std::pair(got->begin, got->end) : std::pair(sv.size(), sv.size());
+    auto ss = std::ostringstream();
+    ss << "Expected ";
+    if (expected.empty()) {
+      ss << "end-of-file";
+    } else {
+      auto tnames = std::vector<std::string>();
+      for (auto const sym: expected)
+        if (evaluator.symbolIsTerminal[sym]) tnames.push_back(evaluator.symbolNames[sym]);
+      if (tnames.empty()) {
+        ss << "nothing";
+      } else if (tnames.size() == 1) {
+        ss << tnames[0];
       } else {
-        s += "end-of-file, ";
-      }
-      if (auto const& tok = e.got) {
-        s += "got token ";
-        if (tok->id) s += symbolNames[*tok->id] + " ";
-        s += "\"" + string(tok->lexeme) + "\"";
-        res.emplace_back(s, tok->begin, tok->end);
-      } else {
-        s += "but reached end-of-file";
-        res.emplace_back(s, stream->string().size(), stream->string().size() + 1);
+        ss << "one of ";
+        for (auto i = 0_z; i < tnames.size(); i++) {
+          ss << tnames[i];
+          if (i + 2 < tnames.size()) ss << ", ";
+          else if (i + 1 < tnames.size()) ss << " or ";
+        }
       }
     }
-    */
-    return res;
+    ss << ", ";
+    if (got) {
+      ss << "found `" << got->lexeme << "` ";
+      if (got->id) {
+        ss << "(token kind: " << evaluator.symbolNames[*got->id] << ")";
+      } else {
+        ss << "(unrecognised token)";
+      }
+    } else {
+      ss << "but reached end-of-file";
+    }
+    ss << "\n";
+    evaluator._messages.emplace_back(Message{true, ss.str(), info.first, info.second});
+  }
+
+  auto Evaluator::evalNextStatement() -> std::optional<std::tuple<Tree*, size_t, size_t>> {
+    assert(parser);
+    if (!parser->parser.parse()) return {};
+    auto const& tokens = parser->parser.tokens();
+    assert(!tokens.empty());
+    auto const& info = std::pair(tokens.front().begin, tokens.back().end);
+
+    out = std::ostringstream();
+    if (auto const resolved = resolve()) { // std::cout << (*resolved)->toString() << std::endl;
+      try {
+        auto const expanded = expand(*resolved); // std::cout << expanded->toString() << std::endl;
+        try {
+          auto const evaluated = eval(globalEnv, expanded); // std::cout << (*evaluated)->toString() << std::endl;
+          auto const outs = out->str();
+          if (!outs.empty()) _messages.emplace_back(Message{false, outs, info.first, info.second});
+          return std::tuple(evaluated, info.first, info.second);
+
+        } catch (EvalError& ex) {
+          // auto const& [found, prefix] = ex.e->toStringUntil(ex.at);
+          auto ss = std::ostringstream();
+          ss << "Error expanding, " << ex.what() << "\n";
+          ss << "at: " << ex.at->toString() << "\n";
+          ss << "in: " << ex.e->toString() << "\n";
+          _messages.emplace_back(Message{true, ss.str(), info.first, info.second});
+          return {};
+        }
+
+      } catch (EvalError& ex) {
+        // auto const& [found, prefix] = ex.e->toStringUntil(ex.at);
+        auto ss = std::ostringstream();
+        ss << "Error evaluating, " << ex.what() << "\n";
+        ss << "at: " << ex.at->toString() << "\n";
+        ss << "in: " << ex.e->toString() << "\n";
+        _messages.emplace_back(Message{true, ss.str(), info.first, info.second});
+        return {};
+      }
+
+    } else {
+      /*
+      auto ss = std::ostringstream();
+      ss << "Error resolving\n";
+      _messages.emplace_back(Message{true, ss.str(), info.first, info.second});
+      */
+      return {};
+    }
+
+    return {};
   }
 
   // Match an Tree against another Tree (pattern)
@@ -176,9 +221,9 @@ namespace apimu::eval {
 
     // Finalise.
     if (parser) parser->buffer.invalidate();
-    automaton = std::make_unique<parsing::NFA const>(automatonBuilder.makeNFA());
-    grammar = std::make_unique<parsing::Grammar const>(grammarBuilder.makeGrammar());
-    if (parser) parser = std::make_unique<Parser>(*automaton, *grammar, *stream);
+    automaton = automatonBuilder.makeNFA();
+    grammar = grammarBuilder.makeGrammar();
+    if (parser) parser.emplace(*this, *automaton, *grammar, *stream);
   }
 
 #define cons       pool().make
@@ -331,7 +376,7 @@ namespace apimu::eval {
     // [√] Introduction rule for `Closure`
     addPrimitive("lambda", false, [this](Tree* env, Tree* e) -> Result {
       auto const& [formal, es] = expect<Cons>(e);
-      return pool().make(Closure{env, formal, es});
+      return {pool().make(Closure{env, formal, es})};
     });
 
     // [√] Elimination rule for `Bool`
@@ -340,14 +385,14 @@ namespace apimu::eval {
       auto const& [iftrue, u] = expect<Cons>(t);
       auto const& iffalse = (get_if<Cons>(u) ? get_if<Cons>(u)->head : unit);
       bool result = expect<Bool>(eval(env, test)).val;
-      return {env, result ? iftrue : iffalse};
+      return {result ? iftrue : iffalse, env};
     });
 
     // [√] Introduction rule for sealed `Tree`
     addPrimitive("quote", false, [this](Tree* env, Tree* e) -> Result {
-      return quasiquote(env, expect<Cons>(e).head);
+      return {quasiquote(env, expect<Cons>(e).head)};
     });
-    addPrimitive("unquote", false, [this](Tree* env, Tree* e) -> Result { return eval(env, expect<Cons>(e).head); });
+    addPrimitive("unquote", false, [this](Tree* env, Tree* e) -> Result { return {eval(env, expect<Cons>(e).head)}; });
 
     // [√] Elimination rule for sealed `Tree`
     addPrimitive("match", false, [this](Tree* env, Tree* e) -> Result {
@@ -359,7 +404,7 @@ namespace apimu::eval {
         auto newEnv = env;
         if (treeMatch(target, pat, newEnv)) {
           auto const& [expr, _2] = expect<Cons>(u);
-          return {newEnv, expr};
+          return {expr, newEnv};
         }
       }
       // All failed, throw exception
@@ -383,7 +428,7 @@ namespace apimu::eval {
         auto const& [rhs, _] = expect<Cons>(t);
         env = extend(env, expect<Symbol>(lhs).val, eval(env, rhs));
       }
-      return {env, beginList(env, es)};
+      return {beginList(env, es), env};
     });
 
     // [√] Currently we don't have a `letrec`, and this is just a synonym of `letrec*`...
@@ -404,7 +449,7 @@ namespace apimu::eval {
         auto const& [rhs, _] = expect<Cons>(t);
         *refs[i++] = eval(env, rhs);
       }
-      return {env, beginList(env, es)};
+      return {beginList(env, es), env};
     });
 
     // [√] Global definitions will become effective only on the curr statement...
@@ -413,15 +458,15 @@ namespace apimu::eval {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
       globalEnv = extend(globalEnv, expect<Symbol>(lhs).val, eval(env, rhs));
-      return unit;
+      return {unit};
     });
 
-    // [?]
+    // [√]
     addPrimitive("define_macro", false, [this](Tree* env, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
       addMacro(expect<Symbol>(lhs).val, expect<Closure>(eval(env, rhs)));
-      return unit;
+      return {unit};
     });
 
     // [√] This modifies nodes reachable through `env` (which prevents making `Tree*` into const pointers)
@@ -436,14 +481,14 @@ namespace apimu::eval {
           if (auto const& v = get_if<Cons>(u->tail))
             if (auto const& sym = get_if<Symbol>(u->head); sym && sym->val == s) {
               v->head = value;
-              return unit;
+              return {unit};
             }
       // Not found, throw exception
       throw PartialEvalError("unbound symbol \"" + s + "\"", lhs);
     });
 
     // [√]
-    addPrimitive("begin", false, [this](Tree* env, Tree* e) -> Result { return {env, beginList(env, e)}; });
+    addPrimitive("begin", false, [this](Tree* env, Tree* e) -> Result { return {beginList(env, e), env}; });
 
     // ====================
     // Primitive procedures
@@ -453,48 +498,48 @@ namespace apimu::eval {
     addPrimitive("eval", true, [](Tree* env, Tree* e) -> Result {
       auto const& [h, t] = expect<Cons>(e);
       if (auto const& tcons = get_if<Cons>(t)) env = tcons->head;
-      return {env, h}; // Let it restart and evaluate
+      return {h, env}; // Let it restart and evaluate
     });
-    addPrimitive("env", true, [](Tree* env, Tree*) -> Result { return env; });
-    addPrimitive("get_syntax", true, [this](Tree*, Tree*) -> Result { return cons(patterns, cons(rules, nil)); });
+    addPrimitive("env", true, [](Tree* env, Tree*) -> Result { return {env}; });
+    addPrimitive("get_syntax", true, [this](Tree*, Tree*) -> Result { return {cons(patterns, cons(rules, nil))}; });
     addPrimitive("set_syntax", true, [this](Tree*, Tree* e) -> Result {
       auto const& [p, t] = expect<Cons>(e);
       auto const& [r, _] = expect<Cons>(t);
       setSyntax(p, r);
-      return unit;
+      return {unit};
     });
-    addPrimitive("get_global_env", true, [this](Tree*, Tree*) -> Result { return globalEnv; });
+    addPrimitive("get_global_env", true, [this](Tree*, Tree*) -> Result { return {globalEnv}; });
     addPrimitive("set_global_env", true, [this](Tree*, Tree* e) -> Result {
       globalEnv = expect<Cons>(e).head;
-      return unit;
+      return {unit};
     });
 
     // [√] In principle these can be implemented using patterns and `quote`s,
     // but making them into primitives will make things run faster.
-    addPrimitive("nil", true, [this](Tree*, Tree*) -> Result { return nil; });
+    addPrimitive("nil", true, [this](Tree*, Tree*) -> Result { return {nil}; });
     addPrimitive("cons", true, [this](Tree*, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
-      return cons(lhs, rhs);
+      return {cons(lhs, rhs)};
     });
-    addPrimitive("list", true, [](Tree*, Tree* e) -> Result { return e; });
-    addPrimitive("id", true, [](Tree*, Tree* e) -> Result { return expect<Cons>(e).head; });
+    addPrimitive("list", true, [](Tree*, Tree* e) -> Result { return {e}; });
+    addPrimitive("id", true, [](Tree*, Tree* e) -> Result { return {expect<Cons>(e).head}; });
 
     // [√] String functions
     addPrimitive("string_symbol", true, [this](Tree*, Tree* e) -> Result {
-      return sym(expect<String>(expect<Cons>(e).head).val);
+      return {sym(expect<String>(expect<Cons>(e).head).val)};
     });
     addPrimitive("string_nat64", true, [this](Tree*, Tree* e) -> Result {
-      return nat(std::stoull(expect<String>(expect<Cons>(e).head).val, nullptr, 0));
+      return {nat(std::stoull(expect<String>(expect<Cons>(e).head).val, nullptr, 0))};
     });
     addPrimitive("string_escape", true, [this](Tree*, Tree* e) -> Result {
-      return str(Tree::escapeString(expect<String>(expect<Cons>(e).head).val));
+      return {str(Tree::escapeString(expect<String>(expect<Cons>(e).head).val))};
     });
     addPrimitive("string_unescape", true, [this](Tree*, Tree* e) -> Result {
-      return str(Tree::unescapeString(expect<String>(expect<Cons>(e).head).val));
+      return {str(Tree::unescapeString(expect<String>(expect<Cons>(e).head).val))};
     });
     addPrimitive("string_length", true, [this](Tree*, Tree* e) -> Result {
-      return nat(expect<String>(expect<Cons>(e).head).val.size());
+      return {nat(expect<String>(expect<Cons>(e).head).val.size())};
     });
     addPrimitive("string_char", true, [this](Tree*, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
@@ -502,19 +547,19 @@ namespace apimu::eval {
       auto const& sv = expect<String>(lhs).val;
       auto const iv = expect<Nat64>(rhs).val;
       if (iv >= sv.size()) throw PartialEvalError("Index " + std::to_string(iv) + " out of range", rhs);
-      return nat(static_cast<unsigned char>(sv[iv]));
+      return {nat(static_cast<unsigned char>(sv[iv]))};
     });
     addPrimitive("char_string", true, [this](Tree*, Tree* e) -> Result {
       auto const& [chr, _] = expect<Cons>(e);
       auto const cv = expect<Nat64>(chr).val;
       if (cv > std::numeric_limits<unsigned char>::max())
         throw PartialEvalError("Character code " + std::to_string(cv) + " out of range", chr);
-      return str(string(1, static_cast<char>(cv)));
+      return {str(string(1, static_cast<char>(cv)))};
     });
     addPrimitive("string_concat", true, [this](Tree*, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
-      return str(expect<String>(lhs).val + expect<String>(rhs).val);
+      return {str(expect<String>(lhs).val + expect<String>(rhs).val)};
     });
     addPrimitive("string_substr", true, [this](Tree*, Tree* e) -> Result {
       auto const& [s, t] = expect<Cons>(e);
@@ -523,31 +568,31 @@ namespace apimu::eval {
       auto const& sv = expect<String>(s).val;
       auto posv = expect<Nat64>(pos).val;
       if (posv > sv.size()) posv = sv.size();
-      return str(sv.substr(posv, expect<Nat64>(len).val));
+      return {str(sv.substr(posv, expect<Nat64>(len).val))};
     });
     addPrimitive("string_eq", true, [this](Tree*, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
-      return boolean(expect<String>(lhs).val == expect<String>(rhs).val);
+      return {boolean(expect<String>(lhs).val == expect<String>(rhs).val)};
     });
 
 // [√]
 #define unary(T, name, op)                                    \
   addPrimitive(name, true, [this](Tree*, Tree* e) -> Result { \
     auto const& [lhs, _] = expect<Cons>(e);                   \
-    return pool().make(T{op(expect<T>(lhs).val)});            \
+    return {pool().make(T{op(expect<T>(lhs).val)})};          \
   })
-#define binary(T, name, op)                                          \
-  addPrimitive(name, true, [this](Tree*, Tree* e) -> Result {        \
-    auto const& [lhs, t] = expect<Cons>(e);                          \
-    auto const& [rhs, _] = expect<Cons>(t);                          \
-    return pool().make(T{expect<T>(lhs).val op expect<T>(rhs).val}); \
+#define binary(T, name, op)                                            \
+  addPrimitive(name, true, [this](Tree*, Tree* e) -> Result {          \
+    auto const& [lhs, t] = expect<Cons>(e);                            \
+    auto const& [rhs, _] = expect<Cons>(t);                            \
+    return {pool().make(T{expect<T>(lhs).val op expect<T>(rhs).val})}; \
   })
-#define binpred(T, name, op)                                            \
-  addPrimitive(name, true, [btrue, bfalse](Tree*, Tree* e) -> Result {  \
-    auto const& [lhs, t] = expect<Cons>(e);                             \
-    auto const& [rhs, _] = expect<Cons>(t);                             \
-    return (expect<T>(lhs).val op expect<T>(rhs).val) ? btrue : bfalse; \
+#define binpred(T, name, op)                                              \
+  addPrimitive(name, true, [btrue, bfalse](Tree*, Tree* e) -> Result {    \
+    auto const& [lhs, t] = expect<Cons>(e);                               \
+    auto const& [rhs, _] = expect<Cons>(t);                               \
+    return {(expect<T>(lhs).val op expect<T>(rhs).val) ? btrue : bfalse}; \
   })
 
     unary(Nat64, "minus", 0 -);
@@ -574,14 +619,14 @@ namespace apimu::eval {
 
     // [√] For debugging?
     addPrimitive("print", true, [this](Tree*, Tree* e) -> Result {
-      return pool().make(String{expect<Cons>(e).head->toString()});
+      return {pool().make(String{expect<Cons>(e).head->toString()})};
     });
 
-    // [?] TODO: output to ostream
+    // [√]
     addPrimitive("display", true, [this](Tree*, Tree* e) -> Result {
       auto const& [head, tail] = expect<Cons>(e);
-      std::cout << expect<String>(head).val << std::endl;
-      return unit;
+      if (out) *out << expect<String>(head).val << "\n";
+      return {unit};
     });
     addPrimitive("debug_save_file", true, [this](Tree*, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
@@ -589,7 +634,7 @@ namespace apimu::eval {
       auto out = std::ofstream(expect<String>(lhs).val);
       if (!out.is_open()) throw PartialEvalError("Could not open file", lhs);
       out << expect<String>(rhs).val << std::endl;
-      return unit;
+      return {unit};
     });
   }
 
@@ -635,32 +680,6 @@ namespace apimu::eval {
     return res;
   }
 
-  auto Evaluator::resolve(size_t maxDepth) -> Tree* {
-    assert(grammar && parser);
-    auto const& nodes = parser->parser.nodes();
-    auto const& finalStates = parser->parser.finalStates();
-    auto all = vector<Tree*>();
-    for (auto const ni: finalStates) {
-      auto const& [state, _, links] = nodes[ni];
-      auto const& [lhs, rhs] = grammar->rules[state.rule];
-      if (state.begin == 0 && lhs.first == startSymbol && state.progress == rhs.size()) {
-        auto const& final = resolve(nodes[ni], {nil}, maxDepth);
-        for (auto const f: final) all.push_back(f);
-      }
-    }
-    if (all.empty()) {
-      // Failed to resolve (possibly due to excessive depth or infinite expansion).
-      unimplemented;
-    }
-    if (all.size() > 1) {
-      // Ambiguous.
-      for (auto const& parse: all) std::cout << parse->toString() << std::endl;
-      unimplemented;
-    }
-    // Mid: all.size() == 1
-    return all[0];
-  }
-
 #undef cons
 #undef nil
 #undef sym
@@ -668,6 +687,40 @@ namespace apimu::eval {
 #undef nat
 #undef boolean
 #undef unit
+
+  auto Evaluator::resolve(size_t maxDepth) -> std::optional<Tree*> {
+    assert(parser);
+    auto const& tokens = parser->parser.tokens();
+    auto const& nodes = parser->parser.nodes();
+    auto const& finalStates = parser->parser.finalStates();
+    assert(!tokens.empty());
+    auto const info = std::pair(tokens.front().begin, tokens.back().end);
+    // Start resolving.
+    auto all = vector<Tree*>();
+    for (auto const ni: finalStates) {
+      auto const& [state, _, links] = nodes[ni];
+      auto const& [lhs, rhs] = grammar->rules[state.rule];
+      if (state.begin == 0 && lhs.first == startSymbol && state.progress == rhs.size()) {
+        auto const& final = resolve(nodes[ni], {nil()}, maxDepth);
+        for (auto const f: final) all.push_back(f);
+      }
+    }
+    if (all.empty()) {
+      // Failed to resolve (possibly due to excessive depth or infinite expansion).
+      _messages.emplace_back(Message{true, "Failed to resolve statement", info.first, info.second});
+      return {};
+    }
+    if (all.size() > 1) {
+      // Ambiguous.
+      auto ss = std::ostringstream();
+      ss << "Ambiguous parses:\n";
+      for (auto const& parse: all) ss << parse->toString() << "\n";
+      _messages.emplace_back(Message{true, ss.str(), info.first, info.second});
+      return {};
+    }
+    // Mid: all.size() == 1
+    return all[0];
+  }
 
   // TODO: custom expansion order
   auto Evaluator::expand(Tree* e) -> Tree* {
@@ -711,17 +764,17 @@ namespace apimu::eval {
     return expand(e);
   }
 
-  auto Evaluator::eval(Tree* env, Tree* e) -> Tree* {
+  auto Evaluator::eval(Tree* env, Tree* expr) -> Tree* {
     while (true) {
       // Evaluate current `e` under current `env`
 
-      if (auto const& sym = get_if<Symbol>(e)) {
+      if (auto const& sym = get_if<Symbol>(expr)) {
         // Symbols: evaluate to their bound values
         if (auto const& val = lookup(env, sym->val)) return val;
         if (auto const& it = namePrims.find(sym->val); it != namePrims.end()) return pool().make(Prim{it->second});
-        throw PartialEvalError("unbound symbol \"" + sym->val + "\"", e);
+        throw PartialEvalError("unbound symbol \"" + sym->val + "\"", expr);
 
-      } else if (auto const& econs = get_if<Cons>(e)) {
+      } else if (auto const& econs = get_if<Cons>(expr)) {
         // Non-empty lists: evaluate as function application
         try {
           auto const& [head, tail] = *econs;
@@ -732,10 +785,10 @@ namespace apimu::eval {
             auto const& [evalParams, f] = prims[prim->id];
             auto const& res = f(env, evalParams ? evalList(env, tail) : tail);
             // No tail call, return
-            if (!res.env) return res.e;
+            if (!res.env) return res.expr;
             // Tail call
             env = res.env;
-            e = res.e;
+            expr = res.expr;
             continue;
           }
 
@@ -748,22 +801,22 @@ namespace apimu::eval {
               throw EvalError(
                 "pattern matching failed: " + cl->formal->toString() + " ?= " + params->toString(),
                 tail,
-                e
+                expr
               );
-            e = beginList(env, cl->es);
+            expr = beginList(env, cl->es);
             continue;
           }
 
-          throw EvalError("head element " + ehead->toString() + " is not a function", head, e);
+          throw EvalError("head element " + ehead->toString() + " is not a function", head, expr);
 
         } catch (PartialEvalError& ex) {
           // "Decorate" partial exceptions with more context, and rethrow a (complete) exception
-          throw EvalError(ex.what(), ex.at, e);
+          throw EvalError(ex.what(), ex.at, expr);
         }
 
       } else {
         // Everything else: evaluates to itself
-        return e;
+        return expr;
       }
     }
   }

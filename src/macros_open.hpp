@@ -1,3 +1,5 @@
+#undef assert
+
 // "Syntax enhancements".
 #define required = 0
 

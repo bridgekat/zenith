@@ -20,8 +20,8 @@ jobs:
               -DAPIMU_ENABLE_MOST_WARNINGS=ON
               -DAPIMU_LD_EXTEND_STACK=ON
           - os: macos-latest
-            cc: clang
-            cxx: clang++
+            cc: gcc-12
+            cxx: g++-12
             cmake_args: >
               -DAPIMU_ENABLE_MOST_WARNINGS=ON
               -DAPIMU_MACOS_LD_EXTEND_STACK=ON
@@ -43,13 +43,13 @@ jobs:
       with:
         submodules: recursive
 
-    # See: https://github.com/actions/virtual-environments
-    # See: https://github.com/egor-tensin/setup-gcc
-    # - if: ${{ matrix.os == 'ubuntu-latest' }}
-    #   name: Set up GCC
-    #   uses: egor-tensin/setup-gcc@v1
-    #   with:
-    #     version: 12
+    # Override CC and CXX on macOS.
+    # See: https://stackoverflow.com/questions/57968497/how-do-i-set-an-env-var-with-a-bash-expression-in-github-actions
+    # - name: CC/CXX override
+    #   if: ${{ matrix.os == 'macos-latest' }}
+    #   run: |
+    #     echo "CC=$(brew --prefix llvm@15)/bin/clang" >> $GITHUB_ENV &&
+    #     echo "CXX=$(brew --prefix llvm@15)/bin/clang++" >> $GITHUB_ENV
 
     # See https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
     - name: CMake FetchContent Cache

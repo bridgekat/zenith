@@ -18,8 +18,8 @@
 
   // Identifiers
   (tok_symbol
-    (concat (alt (range 97 122) (range 65 90) (char "_'") (utf8seg))
-            (star (alt (range 97 122) (range 65 90) (range 48 57) (char "_'") (utf8seg)))))
+    (concat (alt (range 97 122) (range 65 90) (char "_.'") (utf8seg))
+            (star (alt (range 97 122) (range 65 90) (range 48 57) (char "_.'") (utf8seg)))))
 
   // Non-negative integers
   (tok_nat64
@@ -84,7 +84,7 @@
 
 ))
 
-// Syntax rules
+// Grammar rules
 (define rules `(
 
   // Basic part
@@ -102,15 +102,6 @@
   (tree' (tree 0) ((op_left_bracket 0) (list 0) (op_right_bracket 0)))
 
   // Extended part
-  // A more natural way (with less parentheses) to write BNF grammars
-  (syncat_default' (syncat 0) ((op_less 0) (symbol 0) (op_greater 0)))
-  (syncat_prec' (syncat 0) ((op_less 0) (symbol 0) (nat64 0) (op_greater 0)))
-  (syncat_ignored' (syncat 0) ((syncat 0) (op_asterisk 0))) // For use with `add_rule_auto` only
-  (nil' (syncats 0) ())
-  (cons' (syncats 0) ((syncat 0) (syncats 0)))
-  (pattern' (tree 0) ((op_left_bracket 0) (symbol 0) (op_double_colon_equals 0) (tree 0) (op_right_bracket 0)))
-  (rule' (tree 0) ((op_left_bracket 0) (symbol 0) (syncat 0) (op_double_colon_equals 0) (syncats 0) (op_right_bracket 0)))
-
   // A more natural way (with less parentheses) to write expressions
   (list_init' (expr_list 0) ((expr 100) (expr 100)))
   (list_cons' (expr_list 0) ((expr 100) (expr_list 0)))
@@ -158,16 +149,7 @@
 
 ))
 
-// Helper macros
-(define true (eq 1 1))
-(define false (eq 1 2))
-
-(define_macro syncat_default' (lambda (_ x _) `(,x 0)))
-(define_macro syncat_prec' (lambda (_ l r _) `(,l ,r)))
-(define_macro syncat_ignored' (lambda (x _) `(,x)))
-(define_macro pattern' (lambda (_ l _ r _) ``(,l ,r)))
-(define_macro rule' (lambda (_ m l _ r _) ``(,m ,l ,r)))
-
+// Syntax expansion macros
 (define_macro list_init' (lambda (l r) (list l r)))
 (define_macro list_cons' (lambda (l r) (cons l r)))
 (define_macro minus' (lambda (_ x) `(minus ,x)))
@@ -186,7 +168,6 @@
 (define_macro or' (lambda (l _ r) `(or ,l ,r)))
 (define_macro implies' (lambda (l _ r) `(implies ,l ,r)))
 (define_macro iff' (lambda (l _ r) `(iff ,l ,r)))
-
 (define_macro single' (lambda (l) (list l)))
 (define_macro binding' (lambda (sym _ val) `(,sym ,val)))
 (define_macro let' (lambda (_ bindings _ _ body) `(let ,bindings ,body)))
@@ -203,63 +184,101 @@
 // Update syntax
 (set_syntax patterns rules) -- After this right parenthesis, we can write everything in the enhanced syntax!
 
+-- ============================
+-- Syntax definition facilities
+-- ============================
+
+letrec
+  staging_patterns = `[];
+  staging_rules = `[];
+
+  concat = fun [l r] =>
+    match l with
+    | []       => r
+    | [x . xs] => cons x (concat xs r)
+    end;
+
+  declare_pattern = fun [pattern] =>
+    set staging_patterns (concat staging_patterns (list pattern));
+
+  declare_rule = fun [rule] =>
+    set staging_rules (concat staging_rules (list rule));
+
+  split_rule_rhs = fun [syncats n] =>
+    match syncats with
+    | []       => list `[] `[] `[]
+    | [x . xs] => match split_rule_rhs xs (n + 1) with [rhs arg_list body] =>
+      match x with
+      | [x]        => list (cons x rhs) (cons `_ arg_list) body
+      | [sym prec] => let var_sym = string_symbol (string_concat "_" (print n)) in list (cons x rhs) (cons var_sym arg_list) (cons (list `unquote var_sym) body)
+      end
+    end;
+
+  declare_simple_rule = fun [[func_name lhs rhs]] =>
+    let macro_name = string_symbol (string_concat "macro_generated_by_'declare_simple_rule'." (print func_name)) in
+    match split_rule_rhs rhs 0 with [rhs arg_list body] =>
+    begin
+      set staging_rules (concat staging_rules (list (list macro_name lhs rhs)));
+      eval `[define_macro ,macro_name (fun ,arg_list => `,[cons func_name body])];
+    end;
+
+  update_syntax = fun [] => match [get_syntax] with [patterns rules] =>
+    begin
+      set_syntax (concat patterns staging_patterns) (concat rules staging_rules);
+      display (string_concat "Added patterns: " (print staging_patterns));
+      display (string_concat "Added rules: " (print staging_rules));
+      set staging_patterns `[];
+      set staging_rules `[];
+    end;
+
+in begin
+  define declare_pattern declare_pattern;
+  define declare_rule declare_rule;
+  define declare_simple_rule declare_simple_rule;
+  define update_syntax update_syntax;
+end;
+
+declare_pattern `[kw_declare_pattern [word "declare_pattern"]];
+declare_pattern `[kw_declare_rule [word "declare_rule"]];
+declare_pattern `[kw_declare_simple_rule [word "declare_simple_rule"]];
+
+declare_rule `[syncat_default' [syncat 0] [[op_less 0] [symbol 0] [op_greater 0]]];
+declare_rule `[syncat_prec' [syncat 0] [[op_less 0] [symbol 0] [nat64 0] [op_greater 0]]];
+declare_rule `[syncat_ignored' [syncat 0] [[syncat 0] [op_asterisk 0]]]; -- For use with `declare_simple_rule` only
+declare_rule `[nil' [syncats 0] []];
+declare_rule `[cons' [syncats 0] [[syncat 0] [syncats 0]]];
+declare_rule `[pattern' [syntax_pattern 0] [[op_less 0] [symbol 0] [op_greater 0] [op_double_colon_equals 0] [tree 0]]];
+declare_rule `[rule' [syntax_rule 0] [[symbol 0] [syncat 0] [op_double_colon_equals 0] [syncats 0]]];
+declare_rule `[declare_pattern' [tree 0] [[kw_declare_pattern 0] [syntax_pattern 0]]];
+declare_rule `[declare_rule' [tree 0] [[kw_declare_rule 0] [syntax_rule 0]]];
+declare_rule `[declare_simple_rule' [tree 0] [[kw_declare_simple_rule 0] [syntax_rule 0]]];
+
+define_macro syncat_default'      [lambda [_ x _] `[,x 0]];
+define_macro syncat_prec'         [lambda [_ l r _] `[,l ,r]];
+define_macro syncat_ignored'      [lambda [x _] `[,x]];
+define_macro pattern'             [lambda [_ l _ _ r] ``[,l ,r]];
+define_macro rule'                [lambda [m l _ r] ``[,m ,l ,r]];
+define_macro declare_pattern'     [lambda [_ x] `[declare_pattern ,x]];
+define_macro declare_rule'        [lambda [_ x] `[declare_rule ,x]];
+define_macro declare_simple_rule' [lambda [_ x] `[declare_simple_rule ,x]];
+
+[update_syntax];
+
 -- =================
 -- Utility functions
 -- =================
 
-define reset_syntax (fun [] => set_syntax patterns rules);
-define get_patterns (fun [] => match [get_syntax] with [patterns rules] => patterns);
-define get_rules (fun [] => match [get_syntax] with [patterns rules] => rules);
-
-letrec sum = fun [l] =>
-  match l with
-  | []       => 0
-  | [x . xs] => x + sum xs
-  end
-in define sum sum;
-
-letrec concat = fun [l r] =>
+define symbol_eq (fun [a b] => string_eq (print a) (print b));
+define max (fun [a b] => if a >= b then a else b);
+define concat (fun [l r] =>
   match l with
   | []       => r
   | [x . xs] => cons x (concat xs r)
-  end
-in define concat concat;
+  end);
 
-define symbol_eq (fun [a b] => string_eq (print a) (print b));
-define max (fun [a b] => if a >= b then a else b);
+declare_pattern                   <op_double_plus>        ::= [word "++"];
+declare_pattern                   <op_period_double_plus> ::= [word ".++"];
+declare_simple_rule concat        <expr 70>               ::= <expr 71> <op_double_plus>* <expr 70>;
+declare_simple_rule string_concat <expr 70>               ::= <expr 71> <op_period_double_plus>* <expr 70>;
 
-define add_pattern (fun [pattern] => match [get_syntax] with [patterns rules] => set_syntax (concat patterns (list pattern)) rules);
-define add_rule (fun [rule] => match [get_syntax] with [patterns rules] => set_syntax patterns (concat rules (list rule)));
-
--- Helper function for the next one
-letrec split_rule_rhs = fun [syncats n] =>
-  match syncats with
-  | []       => list `[] `[] `[]
-  | [x . xs] => match split_rule_rhs xs (n + 1) with [rhs arg_list body] =>
-    match x with
-    | [x]        => list (cons x rhs) (cons `_ arg_list) body
-    | [sym prec] => let var_sym = string_symbol (string_concat "_" (print n))
-                    in list (cons x rhs) (cons var_sym arg_list) (cons (list `unquote var_sym) body)
-    end
-  end
-in define split_rule_rhs split_rule_rhs;
-
--- Automatically generates code that defines a "symbol-discarding" macro like the ones on lines 154~184
--- Along with the new syntax rule, of course
-define add_rule_auto (fun [[func_name lhs rhs]] =>
-  let macro_name = string_symbol (string_concat (print func_name) "'") in
-  match split_rule_rhs rhs 0 with [rhs arg_list body] =>
-  `(begin
-      match [get_syntax] with [patterns rules] => set_syntax patterns (concat rules (quote [[,macro_name ,lhs ,rhs]]));
-      define_macro ,macro_name (fun ,arg_list => quote ,[cons func_name body]);
-    end));
-define_macro add_rule_auto' (fun [_ e] => add_rule_auto (eval e));
-
-add_pattern `[kw_add_rule_auto [word "add_rule_auto"]];
-add_rule `[add_rule_auto' [tree 0] [[kw_add_rule_auto 0] [tree 0]]];
-
--- Additional operators
-add_pattern   [op_double_plus ::= [word "++"]];
-add_pattern   [op_period_double_plus ::= [word ".++"]];
-add_rule_auto [concat <expr 70> ::= <expr 71> <op_double_plus>* <expr 70>];
-add_rule_auto [string_concat <expr 70> ::= <expr 71> <op_period_double_plus>* <expr 70>];
+[update_syntax];

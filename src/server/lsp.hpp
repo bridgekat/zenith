@@ -1,7 +1,5 @@
-// Server :: LSP
-
-#ifndef LSP_HPP_
-#define LSP_HPP_
+#ifndef APIMU_SERVER_LSP_HPP
+#define APIMU_SERVER_LSP_HPP
 
 #include <cstdint>
 #include <optional>
@@ -9,93 +7,92 @@
 #include <vector>
 #include <nlohmann/json_fwd.hpp>
 
-namespace Server::LSP {
+namespace apimu::server::lsp {
 
-  using std::string;
-  using std::vector;
-  using std::optional;
-
-#define structconv(T)                        \
+#define STRUCT_CONV(T)                       \
   struct T;                                  \
-  void to_json(nlohmann::json&, const T&);   \
-  void from_json(const nlohmann::json&, T&); \
+  void to_json(nlohmann::json&, T const&);   \
+  void from_json(nlohmann::json const&, T&); \
   struct T
 
-#define enumconv(T)                          \
-  enum class T : uint32_t;                   \
-  void to_json(nlohmann::json&, const T&);   \
-  void from_json(const nlohmann::json&, T&); \
-  enum class T : uint32_t
+#define ENUM_CONV(T)                         \
+  enum class T : std::uint32_t;              \
+  void to_json(nlohmann::json&, T const&);   \
+  void from_json(nlohmann::json const&, T&); \
+  enum class T : std::uint32_t
 
-  enum class DiagnosticSeverity : uint32_t { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFORMATION = 3, HINT = 4 };
-  enum class DiagnosticTag : uint32_t { UNKNOWN = 0, UNNECESSARY = 1, DEPRECATED = 2 };
-  enum class MessageType : uint32_t { UNKNOWN = 0, ERROR = 1, WARNING = 2, INFO = 3, LOG = 4 };
-  enumconv(MarkupKind){PLAINTEXT = 0, MARKDOWN = 1};
+  enum class DiagnosticSeverity : std::uint32_t { unknown = 0, error, warning, information, hint };
+  enum class DiagnosticTag : std::uint32_t { unknown = 0, unnecessary, deprecated };
+  enum class MessageType : std::uint32_t { unknown = 0, error, warning, info, log };
+  ENUM_CONV(MarkupKind){plaintext = 0, markdown};
 
-  using DocumentUri = string;
-  using URI = string;
+  using DocumentUri = std::string;
+  using Uri = std::string;
 
-  structconv(Position) {
-    uint32_t line{};
-    uint32_t character{};
+  STRUCT_CONV(Position) {
+    std::uint32_t line = 0;
+    std::uint32_t character = 0;
   };
 
-  structconv(Range) {
-    Position start{};
-    Position end{};
+  STRUCT_CONV(Range) {
+    Position start;
+    Position end;
   };
 
-  structconv(TextDocumentItem) {
-    DocumentUri uri{};
-    optional<string> languageId{};
-    optional<int32_t> version{};
-    optional<string> text{};
+  STRUCT_CONV(TextDocumentItem) {
+    DocumentUri uri;
+    std::optional<std::string> languageId;
+    std::optional<std::int32_t> version;
+    std::optional<std::string> text;
   };
 
-  structconv(TextDocumentIdentifier) { DocumentUri uri{}; };
+  STRUCT_CONV(TextDocumentIdentifier) { DocumentUri uri; };
 
-  structconv(VersionedTextDocumentIdentifier): public TextDocumentIdentifier { int32_t version{}; };
-
-  structconv(TextDocumentContentChangeEvent) {
-    optional<Range> range{};
-    string text{};
+  STRUCT_CONV(VersionedTextDocumentIdentifier):
+    TextDocumentIdentifier {
+    std::int32_t version = 0;
   };
 
-  structconv(CodeDescription) { URI href{}; };
-
-  structconv(Location) {
-    DocumentUri uri{};
-    Range range{};
+  STRUCT_CONV(TextDocumentContentChangeEvent) {
+    std::optional<Range> range;
+    std::string text;
   };
 
-  structconv(DiagnosticsRelatedInformation) {
-    Location location{};
-    string message{};
+  STRUCT_CONV(CodeDescription) { Uri href; };
+
+  STRUCT_CONV(Location) {
+    DocumentUri uri;
+    Range range;
   };
 
-  structconv(Diagnostic) {
-    Range range{};
-    string message{};
-    optional<DiagnosticSeverity> severity{};
-    optional<int32_t> code{};
-    optional<CodeDescription> codeDescription{};
-    optional<vector<DiagnosticTag>> tags{};
-    optional<vector<DiagnosticsRelatedInformation>> relatedInformation{};
-    optional<string> source{};
+  STRUCT_CONV(DiagnosticsRelatedInformation) {
+    Location location;
+    std::string message;
   };
 
-  structconv(MarkupContent) {
-    MarkupKind kind{};
-    string value{};
+  STRUCT_CONV(Diagnostic) {
+    Range range;
+    std::string message;
+    std::optional<DiagnosticSeverity> severity;
+    std::optional<std::int32_t> code = {};
+    std::optional<CodeDescription> codeDescription = {};
+    std::optional<std::vector<DiagnosticTag>> tags = {};
+    std::optional<std::vector<DiagnosticsRelatedInformation>> relatedInformation = {};
+    std::optional<std::string> source = {};
   };
 
-  structconv(MarkedString) { // Outgoing only?
-    string language{};
-    string value{};
+  STRUCT_CONV(MarkupContent) {
+    MarkupKind kind;
+    std::string value;
   };
 
-#undef structconv
+  STRUCT_CONV(MarkedString) { // Outgoing only?
+    std::string language;
+    std::string value;
+  };
 
+#undef STRUCT_CONV
+#undef ENUM_CONV
 }
 
-#endif // LSP_HPP_
+#endif // APIMU_SERVER_LSP_HPP

@@ -279,12 +279,14 @@ namespace apimu::parsing {
       // If success, return.
       if (result == Result::eofSuccess) return !errors;
       // Try rolling back.
-      if (_params.rollback)
+      if (_params.rollback) {
+        if (_tokens.empty()) return false; // Reached EOF with no tokens consumed.
         for (auto i = _tokens.size(); i-- > 1;)
-          if (!finalStates(i).empty()) {
+          if (!finalStates(i).empty()) { // Rollback successful.
             _restore(i);
             return !errors;
           }
+      }
 
       // Enter error recovery mode.
       assert(result == Result::eofFailure || result == Result::emptyFailure);

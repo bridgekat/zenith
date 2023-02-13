@@ -1,12 +1,11 @@
-#include "jsonrpc2.hpp"
+#include "json_rpc_server.hpp"
 #include <iostream>
 #include <optional>
 
-namespace Server {
+namespace apimu::server {
+#include "macros_open.hpp"
 
-  using std::optional, std::nullopt;
-
-  void JSONRPC2Server::callNotification(const string& method, const json& params) {
+  auto JsonRpcServer::callNotification(std::string const& method, nlohmann::json const& params) -> void {
     send({
       {"jsonrpc",  "2.0"},
       { "method", method},
@@ -14,8 +13,8 @@ namespace Server {
     });
   }
 
-  JSONRPC2Server::RequestAwaiter JSONRPC2Server::callMethod(const string& method, const json& params) {
-    RequestAwaiter res{this, nextid};
+  auto JsonRpcServer::callMethod(std::string const& method, nlohmann::json const& params) -> RequestAwaitable {
+    auto res = RequestAwaitable{this, nextid};
     send({
       {"jsonrpc",  "2.0"},
       {     "id", nextid},
@@ -27,39 +26,40 @@ namespace Server {
   }
 
   // The only supported value for Content-Type
-  const string CONTENT_TYPE_VALUE = "application/vscode-jsonrpc; charset=utf-8";
+  constexpr std::string_view contentType = "application/vscode-jsonrpc; charset=utf-8";
 
   // Returns `nullopt` if read past EOF.
   // For discussions on non-blocking `cin`, see:
   // https://stackoverflow.com/questions/16592357/non-blocking-stdgetline-exit-if-no-input The following code uses
   // blocking input, which is enough for the current purpose.
-  optional<string> JSONRPC2Server::readNextPacket() {
-
+  auto JsonRpcServer::readNextPacket() -> std::optional<std::string> {
     // `std::getline()` and then trim trailing "\r\n"
     // ("\r\n" is used as EOL in LSP 3.16 header part)
     auto getline = [this]() {
-      string res = "";
+      auto res = std::string();
       std::getline(in, res);
       if (!res.empty() && res.back() == '\r') res.pop_back();
       return res;
     };
 
     // Read header part
-    size_t n = 0;
-    string s = getline();
+    auto n = 0_z;
+    auto s = getline();
 
     while (s != "") {
-      size_t p = s.find(": ");
-      if (p == string::npos) unimplemented;
-      string key = s.substr(0, p), value = s.substr(p + 2);
+      auto const p = s.find(": ");
+      if (p == std::string::npos) unimplemented;
+      auto const key = s.substr(0, p), value = s.substr(p + 2);
       // log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
 
       if (key == "Content-Length") {
-        std::stringstream ss(value);
+        auto ss = std::stringstream(value);
         ss >> n;
       } else if (key == "Content-Type") {
-        if (value != CONTENT_TYPE_VALUE) unimplemented;
-      } else unimplemented;
+        if (value != contentType) unimplemented;
+      } else {
+        unimplemented;
+      }
 
       // Get next line
       s = getline();
@@ -67,21 +67,20 @@ namespace Server {
 
     // End of header, get content
     s.resize(n);
-    in.read(s.data(), n);
+    in.read(s.data(), static_cast<std::streamsize>(n));
     // log << "<< " << s << std::endl << std::endl;
 
-    if (in.eof()) return nullopt;
+    if (in.eof()) return {};
     return s;
   }
 
-  void JSONRPC2Server::startListen() {
-
+  auto JsonRpcServer::startListen() -> void {
     // Start the listener thread (`inThread`)
     // For an example of using `std::jthread`, see: https://en.cppreference.com/w/cpp/thread/stop_token
     inThread = std::jthread([this](std::stop_token stopToken) {
       // Main loop
       while (!stopToken.stop_requested()) {
-        optional<string> o = readNextPacket();
+        auto const o = readNextPacket();
 
         // Though LSP 3.16 says [1] that an Exit Notification after a Shutdown Request actually stops the server,
         // VSCode simply closes the input stream without giving an Exit Notification.
@@ -90,11 +89,11 @@ namespace Server {
         if (!o.has_value()) break;
 
         // Parse JSON-RPC 2.0 requests/notifications
-        json j;
+        auto j = nlohmann::json();
         try {
-          j = json::parse(*o);
-        } catch (json::parse_error& e) {
-          sendError(PARSE_ERROR, e.what());
+          j = nlohmann::json::parse(*o);
+        } catch (nlohmann::json::parse_error& e) {
+          sendError(ErrorCode::parseError, e.what());
           continue;
         }
 
@@ -102,21 +101,20 @@ namespace Server {
         if (j.is_object()) handleRequest(j);
         else if (j.is_array()) unimplemented;
         else {
-          sendError(INVALID_REQUEST, "ill-formed JSON request, expected array or object");
+          sendError(ErrorCode::invalidRequest, "ill-formed JSON request, expected array or object");
           continue;
         }
       }
     });
   }
 
-  void JSONRPC2Server::handleRequest(const json& j) {
-
+  auto JsonRpcServer::handleRequest(nlohmann::json const& j) -> void {
     // Check if the the version number is present and correct
     if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0") unimplemented;
 
     // Determine the type of the message
-    bool hasid = false;
-    int64_t id;
+    auto hasid = false;
+    auto id = int64_t{};
     if (j.contains("id") && !j["id"].is_null()) {
       if (j["id"].is_string()) unimplemented;
       if (j["id"].is_number_integer()) {
@@ -125,110 +123,100 @@ namespace Server {
       }
     }
 
+    // clang-format off
     if (j.contains("method") && j["method"].is_string()) {
-      json params;
+      auto params = nlohmann::json();
       if (j.contains("params") && !j["params"].is_null()) {
         if (j["params"].is_array()) unimplemented;
         if (j["params"].is_object()) params = j["params"];
       }
       if (hasid) {
         // Request: method call
-        auto it = methods.find(j["method"]);
+        auto const it = methods.find(j["method"]);
         if (it != methods.end()) {
           // Don't use captures, since they will be destroyed after lambda is destroyed...
           // See: https://en.cppreference.com/w/cpp/language/coroutines
-          auto handler = [](
-                           JSONRPC2Server* srv, int id, std::function<Coroutine<json>(JSONRPC2Server*, json)> func,
-                           const json& params
-                         ) -> Coroutine<void> {
+          auto handler =
+            [](
+              JsonRpcServer* srv, int64_t id, std::function<Coroutine<nlohmann::json>(JsonRpcServer*, nlohmann::json)> func,
+              nlohmann::json const& params
+            ) -> Coroutine<void> {
             try {
-              json res = co_await func(srv, params);
+              auto res = co_await func(srv, params);
               srv->sendResult(id, res);
-            } catch (const JSONRPC2Exception& e) {
-              srv->sendError(id, e.code, e.what());
-            } catch (const std::exception& e) {
+            } catch (JsonRpcException& e) { srv->sendError(id, e.code, e.what()); } catch (std::exception& e) {
               // Using LSP methods to log the error
-              srv->callNotification(
-                "window/logMessage",
-                {
-                  {   "type",        1},
-                  {"message", e.what()}
-              }
-              );
+              srv->callNotification("window/logMessage", {
+                {   "type",        1},
+                {"message", e.what()}});
             }
           };
           handler(this, id, it->second, params);
         } else {
-          sendError(id, METHOD_NOT_FOUND, "method \"" + string(j["method"]) + "\" not found");
+          sendError(id, ErrorCode::methodNotFound, "method \"" + std::string(j["method"]) + "\" not found");
         }
       } else {
         // Request: notification call
-        auto it = notifications.find(j["method"]);
+        auto const it = notifications.find(j["method"]);
         if (it != notifications.end()) {
-          auto handler = [](
-                           JSONRPC2Server* srv, std::function<Coroutine<void>(JSONRPC2Server*, json)> func,
-                           const json& params
-                         ) -> Coroutine<void> {
+          auto handler =
+            [](
+              JsonRpcServer* srv,
+              std::function<Coroutine<void>(JsonRpcServer*, nlohmann::json)> func,
+              nlohmann::json const& params
+            ) -> Coroutine<void> {
             try {
               co_await func(srv, params);
-            } catch (const JSONRPC2Exception& e) {
+            } catch (JsonRpcException& e) {
               // Using LSP methods to log the error
-              srv->callNotification(
-                "window/logMessage",
-                {
-                  {   "type",        1},
-                  {"message", e.what()}
-              }
-              );
-            } catch (const std::exception& e) {
+              srv->callNotification("window/logMessage", {
+                {   "type",        1},
+                {"message", e.what()}});
+            } catch (std::exception& e) {
               // Using LSP methods to log the error
-              srv->callNotification(
-                "window/logMessage",
-                {
-                  {   "type",        1},
-                  {"message", e.what()}
-              }
-              );
+              srv->callNotification("window/logMessage", {
+                {   "type",        1},
+                {"message", e.what()}});
             }
           };
           handler(this, it->second, params);
         }
       }
-
     } else if (hasid && j.contains("result")) {
       // Response: result
-      auto it = requests.find(id);
+      auto const it = requests.find(id);
       if (it != requests.end()) {
         it->second.result = j["result"];
         it->second.k.resume();
       }
       // Erase using `id` instead of `it`, as `requests` could have been modified by the coroutine
       requests.erase(id);
-
     } else if (j.contains("error") && j["error"].is_object() && j["error"].contains("code") && j["error"]["code"].is_number_integer()) {
       // Discard errors without ID, although they are allowed
       if (!hasid) return;
       // Response: error
-      auto it = requests.find(id);
+      auto const it = requests.find(id);
       if (it != requests.end()) {
-        ErrorCode code = static_cast<ErrorCode>(j["error"]["code"].get<short>());
-        string msg = j["error"].value("message", "");
-        it->second.exptr = std::make_exception_ptr(JSONRPC2Exception(code, msg));
+        auto const code = static_cast<ErrorCode>(j["error"]["code"].get<short>());
+        auto const msg = j["error"].value("message", "");
+        it->second.exptr = std::make_exception_ptr(JsonRpcException(code, msg));
         it->second.k.resume();
       }
       // Erase using `id` instead of `it`, as `requests` could have been modified by the coroutine
       requests.erase(id);
-
-    } else unimplemented;
+    } else {
+      unimplemented;
+    }
+    // clang-format on
   }
 
-  void JSONRPC2Server::send(const json& j) {
-    string s = j.dump();
+  auto JsonRpcServer::send(nlohmann::json const& j) -> void {
+    auto const s = j.dump();
     // See: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
     out << "Content-Length: " << s.size() << "\r\n";
-    out << "Content-Type: " << CONTENT_TYPE_VALUE << "\r\n";
+    out << "Content-Type: " << contentType << "\r\n";
     out << "\r\n";
-    out.write(s.data(), s.size());
+    out.write(s.data(), static_cast<std::streamsize>(s.size()));
     out.flush();
     /*
     log << ">> " << "Content-Length: " << s.size() << std::endl;
@@ -237,7 +225,7 @@ namespace Server {
     */
   }
 
-  void JSONRPC2Server::sendResult(int64_t id, const json& result) {
+  auto JsonRpcServer::sendResult(int64_t id, nlohmann::json const& result) -> void {
     send({
       {"jsonrpc",  "2.0"},
       {     "id",     id},
@@ -245,7 +233,7 @@ namespace Server {
     });
   }
 
-  void JSONRPC2Server::sendError(ErrorCode code, const string& msg) {
+  auto JsonRpcServer::sendError(ErrorCode code, std::string const& msg) -> void {
     send({
       {"jsonrpc",                              "2.0"},
       {     "id",                            nullptr},
@@ -253,7 +241,7 @@ namespace Server {
     });
   }
 
-  void JSONRPC2Server::sendError(int64_t id, ErrorCode code, const string& msg) {
+  auto JsonRpcServer::sendError(int64_t id, ErrorCode code, std::string const& msg) -> void {
     send({
       {"jsonrpc",                              "2.0"},
       {     "id",                                 id},
@@ -261,4 +249,5 @@ namespace Server {
     });
   }
 
+#include "macros_close.hpp"
 }

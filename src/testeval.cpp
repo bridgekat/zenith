@@ -54,35 +54,14 @@ auto main(int argc, char* argv[]) -> int {
       }
     }
     evaluator.setString(in);
-    while (true) {
-      auto const more = evaluator.parseNextStatement();
-      auto const& err = evaluator.parsingErrors();
-      for (auto const& ex: err) {
-        cout << endl;
-        cout << "× " << ex.what() << endl;
-        cout << "| " << endl;
-        cout << "| " << in << endl;
-        cout << "| " << std::string(ex.begin, ' ') << std::string(ex.end - ex.begin, '~') << endl;
-        cout << endl;
+    while (!evaluator.eof()) {
+      auto const& res = evaluator.evalNextStatement();
+      if (res) {
+        auto const& [expr, begin, end] = *res;
+        cout << expr->toString() << endl;
       }
-      if (!more || !err.empty()) break;
-      try {
-        auto const& res = evaluator.evalParsedStatement();
-        cout << res->toString() << endl;
-      } catch (eval::EvalError& ex) {
-        auto const& [found, prefix] = ex.e->toStringUntil(ex.at);
-        cout << endl;
-        if (found) {
-          cout << "× Error evaluating, " << ex.what() << endl;
-          cout << "| " << endl;
-          cout << "| " << ex.e->toString() << endl;
-          cout << "| " << std::string(prefix.size(), ' ') << std::string(ex.at->toString().size(), '~') << endl;
-        } else {
-          cout << "× Error evaluating, " << ex.what() << endl;
-          cout << "  At: " << ex.at->toString() << endl;
-          cout << "  In: " << ex.e->toString() << endl;
-        }
-        cout << endl;
+      for (auto const& [error, desc, begin, end]: evaluator.messages()) {
+        cout << desc << endl; // TODO: formatted output
       }
     }
     in.clear();

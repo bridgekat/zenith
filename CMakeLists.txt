@@ -15,6 +15,7 @@ include (Prelude NO_POLICY_SCOPE)
 # See: https://stackoverflow.com/questions/49768454/whats-the-differences-between-pthread-and-pthread-options-in-cmake
 set (THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads REQUIRED)
+
 # See: https://json.nlohmann.me/integration/cmake/#fetchcontent
 set (JSON_Install OFF CACHE INTERNAL "")
 set (JSON_MultipleHeaders ON)
@@ -46,19 +47,23 @@ add_executable (testeval
 target_default_compile_options  (testeval)
 target_include_directories      (testeval PRIVATE src)
 
-# add_executable (testserver
-#   src/core/context.cpp
-#   src/core/expr.cpp
-#   src/core/fol/fol.cpp
-#   src/parsing/lexer.cpp
-#   src/parsing/parser.cpp
-#   src/server/jsonrpc2.cpp
-#   src/server/language_server.cpp
-#   src/server/lsp.cpp
-#   src/testserver.cpp)
-# target_default_compile_options  (testserver)
-# target_include_directories      (testserver PRIVATE src)
-# target_link_libraries           (testserver PRIVATE Threads::Threads nlohmann_json::nlohmann_json)
+add_executable (testserver
+  src/core/context.cpp
+  src/core/expr.cpp
+  src/core/fol/fol.cpp
+  src/elab/procs.cpp
+  src/parsing/lexer.cpp
+  src/parsing/parser.cpp
+  src/eval/tree.cpp
+  src/eval/evaluator.cpp
+  src/eval/extended_evaluator.cpp
+  src/server/json_rpc_server.cpp
+  src/server/document.cpp
+  src/server/lsp.cpp
+  src/testserver.cpp)
+target_default_compile_options  (testserver)
+target_include_directories      (testserver PRIVATE src)
+target_link_libraries           (testserver PRIVATE Threads::Threads nlohmann_json::nlohmann_json)
 
 # ===== Tests =====
 enable_testing ()
