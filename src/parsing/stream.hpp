@@ -65,17 +65,22 @@ namespace apimu::parsing {
   class BufferedStream: public IBufferedStream<T> {
   public:
     explicit BufferedStream(IStream<T>& stream):
-      _underlying(stream),
-      _offset(stream.position()) {}
+        _underlying(stream),
+        _offset(stream.position()) {}
 
     auto advance() -> std::optional<T> override {
       assert(_position <= _buffer.size());
-      if (_position == _buffer.size()) _buffer.push_back(_underlying.advance());
+      if (_position == _buffer.size())
+        _buffer.push_back(_underlying.advance());
       // Mid: _position < _elements.size()
       return _buffer[_position++];
     }
-    auto position() const -> size_t override { return _position; }
-    auto revert(size_t i) -> void override { assert(i <= _position), _position = i; }
+    auto position() const -> size_t override {
+      return _position;
+    }
+    auto revert(size_t i) -> void override {
+      assert(i <= _position), _position = i;
+    }
     auto invalidate() -> void override {
       assert(_position <= _buffer.size());
       _underlying.revert(_offset + _position);
@@ -96,18 +101,26 @@ namespace apimu::parsing {
   class MarkedStream: public IMarkedStream<T> {
   public:
     explicit MarkedStream(IStream<T>& stream):
-      _underlying(stream),
-      _offset(stream.position()) {}
+        _underlying(stream),
+        _offset(stream.position()) {}
 
-    auto position() const -> size_t override { return _offsets.size(); }
+    auto position() const -> size_t override {
+      return _offsets.size();
+    }
     auto revert(size_t i) -> void override {
       assert(i <= _offsets.size());
       _offsets.resize(i);
       _underlying.revert(_offsets.empty() ? _offset : _offsets.back());
     }
-    auto mark() -> void override { _offsets.push_back(_underlying.position()); }
-    auto next() -> std::optional<T> override { return _underlying.advance(); }
-    auto clear() -> void override { _offset = _underlying.position(), _offsets.clear(); }
+    auto mark() -> void override {
+      _offsets.push_back(_underlying.position());
+    }
+    auto next() -> std::optional<T> override {
+      return _underlying.advance();
+    }
+    auto clear() -> void override {
+      _offset = _underlying.position(), _offsets.clear();
+    }
 
   private:
     IStream<T>& _underlying;      // Underlying stream.
@@ -119,16 +132,23 @@ namespace apimu::parsing {
   class CharStream: public ICharStream {
   public:
     explicit CharStream(std::string string):
-      _string(std::move(string)) {}
+        _string(std::move(string)) {}
 
     auto advance() -> std::optional<Char> override {
-      if (_position >= _string.size()) return {};
+      if (_position >= _string.size())
+        return {};
       return static_cast<Char>(_string[_position++]);
     }
-    auto position() const -> size_t override { return _position; }
-    auto revert(size_t i) -> void override { assert(i <= _position), _position = i; }
+    auto position() const -> size_t override {
+      return _position;
+    }
+    auto revert(size_t i) -> void override {
+      assert(i <= _position), _position = i;
+    }
 
-    auto string() const -> std::string_view override { return _string; }
+    auto string() const -> std::string_view override {
+      return _string;
+    }
     auto slice(size_t start, size_t end) const -> std::string_view override {
       assert(start <= end && end <= _position);
       return std::string_view(_string).substr(start, end - start);

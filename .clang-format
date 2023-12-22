@@ -17,7 +17,7 @@ BreakBeforeBraces: Attach
 # Indentations
 AccessModifierOffset: -2
 IndentAccessModifiers: false
-ConstructorInitializerIndentWidth: 2
+ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 2
 PPIndentWidth: 2
 NamespaceIndentation: All
@@ -48,7 +48,7 @@ AlwaysBreakTemplateDeclarations: Yes
 RequiresClausePosition: WithPreceding
 
 AttributeMacros: []
-StatementMacros: ['defineExpect']
+StatementMacros: []
 
 # Empty lines
 MaxEmptyLinesToKeep: 1
@@ -58,13 +58,13 @@ EmptyLineAfterAccessModifier: Leave
 SeparateDefinitionBlocks: Leave
 
 # One-liners
-AllowShortBlocksOnASingleLine: Always
-AllowShortCaseLabelsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
 AllowShortEnumsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: All
-AllowShortIfStatementsOnASingleLine: AllIfsAndElse
-AllowShortLambdasOnASingleLine: All
-AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: false
 
 CompactNamespaces: false
 RemoveBracesLLVM: false

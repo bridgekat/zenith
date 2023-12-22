@@ -13,7 +13,7 @@ namespace apimu::parsing {
   template <typename T, Precedence P>
   struct WithPrecedence: T {
     WithPrecedence(T value):
-      T(value) {}
+        T(value) {}
   };
 
   namespace detail {
@@ -100,11 +100,21 @@ namespace apimu::parsing {
       return *this;
     }
 
-    auto numSymbols() const -> Symbol { return static_cast<Symbol>(_patternHandlers.size()); }
-    auto mapped() const -> auto const& { return _mapped; }
-    auto names() const -> auto const& { return _names; }
-    auto patternHandlers() const -> auto const& { return _patternHandlers; }
-    auto ruleHandlers() const -> auto const& { return _ruleHandlers; }
+    auto numSymbols() const -> Symbol {
+      return static_cast<Symbol>(_patternHandlers.size());
+    }
+    auto mapped() const -> auto const& {
+      return _mapped;
+    }
+    auto names() const -> auto const& {
+      return _names;
+    }
+    auto patternHandlers() const -> auto const& {
+      return _patternHandlers;
+    }
+    auto ruleHandlers() const -> auto const& {
+      return _ruleHandlers;
+    }
 
   private:
     std::optional<Symbol> _last;
@@ -125,7 +135,8 @@ namespace apimu::parsing {
 
     // Maps an `std::type_index` to `Parsing::Symbol`.
     auto _map(std::type_index tid) -> Symbol {
-      if (auto const it = _mapped.find(tid); it != _mapped.end()) return it->second;
+      if (auto const it = _mapped.find(tid); it != _mapped.end())
+        return it->second;
       auto const id = _names.size();
       _names.emplace_back();
       _patternHandlers.emplace_back();
@@ -133,7 +144,9 @@ namespace apimu::parsing {
     }
 
     auto _pattern(Symbol sym, Subgraph g) -> void {
-      _patternHandlers[sym] = [](Handle& out, std::string_view sv) { View<std::string_view>(out) << sv; };
+      _patternHandlers[sym] = [](Handle& out, std::string_view sv) {
+        View<std::string_view>(out) << sv;
+      };
       AutomatonBuilder::pattern(sym, g);
     }
 

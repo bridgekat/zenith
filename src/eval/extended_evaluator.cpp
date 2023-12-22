@@ -20,9 +20,9 @@ namespace apimu::eval {
 #define list(...)  makeList({__VA_ARGS__})
 
   ExtendedEvaluator::ExtendedEvaluator():
-    Evaluator(),
-    ctx(),
-    epool() {
+      Evaluator(),
+      ctx(),
+      epool() {
 
     // =========================
     // ApiMu-specific procedures
@@ -41,7 +41,8 @@ namespace apimu::eval {
     addPrimitive("context_get", true, [this](Tree*, Tree* e) -> Result {
       auto const& i = expect<Nat64>(expect<Cons>(e).head).val;
       auto const& index = static_cast<size_t>(i);
-      if (index < ctx.size()) return {cons(sym(ctx.identifier(index)), cons(obj(ctx[index]), nil))};
+      if (index < ctx.size())
+        return {cons(sym(ctx.identifier(index)), cons(obj(ctx[index]), nil))};
       return {unit};
     });
     addPrimitive("context_push", true, [this](Tree*, Tree* e) -> Result {
@@ -52,13 +53,17 @@ namespace apimu::eval {
       try {
         ctx.pushAssumption(s, expr);
         return {unit};
-      } catch (std::runtime_error& ex) { return {str(ex.what())}; }
+      } catch (std::runtime_error& ex) {
+        return {str(ex.what())};
+      }
     });
     addPrimitive("context_pop", true, [this](Tree*, Tree*) -> Result {
       try {
         ctx.pop();
         return {unit};
-      } catch (std::runtime_error& ex) { return {str(ex.what())}; }
+      } catch (std::runtime_error& ex) {
+        return {str(ex.what())};
+      }
     });
     addPrimitive("expr_print", true, [this](Tree*, Tree* e) -> Result {
       return {str(expectNative<Expr const*>(expect<Cons>(e).head)->toString(ctx))};
@@ -69,7 +74,9 @@ namespace apimu::eval {
     addPrimitive("expr_check", true, [this](Tree*, Tree* e) -> Result {
       try {
         return {obj(expectNative<Expr const*>(expect<Cons>(e).head)->checkType(ctx, epool))};
-      } catch (std::runtime_error& ex) { return {str(ex.what())}; }
+      } catch (std::runtime_error& ex) {
+        return {str(ex.what())};
+      }
     });
 
     // [?] TEMP CODE
@@ -92,21 +99,30 @@ namespace apimu::eval {
     switch (e->tag) {
       case Sort:
         switch (e->sort.tag) {
-          case SProp: return cons(sym("Sort"), cons(sym("Prop"), nil));
-          case SType: return cons(sym("Sort"), cons(sym("Type"), nil));
-          case SKind: return cons(sym("Sort"), cons(sym("Kind"), nil));
+          case SProp:
+            return cons(sym("Sort"), cons(sym("Prop"), nil));
+          case SType:
+            return cons(sym("Sort"), cons(sym("Type"), nil));
+          case SKind:
+            return cons(sym("Sort"), cons(sym("Kind"), nil));
         }
         break;
       case Var:
         switch (e->var.tag) {
-          case VBound: return cons(sym("Var"), cons(sym("Bound"), cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
-          case VFree: return cons(sym("Var"), cons(sym("Free"), cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
-          case VMeta: return cons(sym("Var"), cons(sym("Meta"), cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
+          case VBound:
+            return cons(sym("Var"), cons(sym("Bound"), cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
+          case VFree:
+            return cons(sym("Var"), cons(sym("Free"), cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
+          case VMeta:
+            return cons(sym("Var"), cons(sym("Meta"), cons(nat(static_cast<uint64_t>(e->var.id)), nil)));
         }
         break;
-      case App: return cons(sym("App"), cons(exprTree(e->app.l), cons(exprTree(e->app.r), nil)));
-      case Lam: return cons(sym("Lam"), cons(sym(e->lam.s), cons(exprTree(e->lam.t), cons(exprTree(e->lam.r), nil))));
-      case Pi: return cons(sym("Pi"), cons(sym(e->pi.s), cons(exprTree(e->pi.t), cons(exprTree(e->pi.r), nil))));
+      case App:
+        return cons(sym("App"), cons(exprTree(e->app.l), cons(exprTree(e->app.r), nil)));
+      case Lam:
+        return cons(sym("Lam"), cons(sym(e->lam.s), cons(exprTree(e->lam.t), cons(exprTree(e->lam.r), nil))));
+      case Pi:
+        return cons(sym("Pi"), cons(sym(e->pi.s), cons(exprTree(e->pi.t), cons(exprTree(e->pi.r), nil))));
     }
     unreachable;
   }
@@ -119,20 +135,28 @@ namespace apimu::eval {
       auto const& [h1, _] = expect<Cons>(t);
       expect<Nil>(_);
       auto const& tag = expect<Symbol>(h1).val;
-      if (tag == "Prop") return expr(Expr::SProp);
-      else if (tag == "Type") return expr(Expr::SType);
-      else if (tag == "Kind") return expr(Expr::SKind);
-      else throw PartialEvalError(R"(tag must be "Prop", "Type" or "Kind")", h1);
+      if (tag == "Prop")
+        return expr(Expr::SProp);
+      else if (tag == "Type")
+        return expr(Expr::SType);
+      else if (tag == "Kind")
+        return expr(Expr::SKind);
+      else
+        throw PartialEvalError(R"(tag must be "Prop", "Type" or "Kind")", h1);
     } else if (sym == "Var") {
       auto const& [h1, u] = expect<Cons>(t);
       auto const& [h2, _] = expect<Cons>(u);
       expect<Nil>(_);
       auto const& tag = expect<Symbol>(h1).val;
       auto const id = expect<Nat64>(h2).val;
-      if (tag == "Bound") return expr(Expr::VBound, static_cast<uint64_t>(id));
-      else if (tag == "Free") return expr(Expr::VFree, static_cast<uint64_t>(id));
-      else if (tag == "Meta") return expr(Expr::VMeta, static_cast<uint64_t>(id));
-      else throw PartialEvalError(R"(tag must be "Bound", "Free" or "Meta")", h1);
+      if (tag == "Bound")
+        return expr(Expr::VBound, static_cast<uint64_t>(id));
+      else if (tag == "Free")
+        return expr(Expr::VFree, static_cast<uint64_t>(id));
+      else if (tag == "Meta")
+        return expr(Expr::VMeta, static_cast<uint64_t>(id));
+      else
+        throw PartialEvalError(R"(tag must be "Bound", "Free" or "Meta")", h1);
     } else if (sym == "App") {
       auto const& [h1, u] = expect<Cons>(t);
       auto const& [h2, _] = expect<Cons>(u);
@@ -150,7 +174,8 @@ namespace apimu::eval {
       auto const& [h3, _] = expect<Cons>(v);
       expect<Nil>(_);
       return expr(Expr::PPi, expect<Symbol>(h1).val, treeExpr(h2), treeExpr(h3));
-    } else throw PartialEvalError(R"(symbol must be "Sort", "Var", "App", "Lam" or "Pi")", h);
+    } else
+      throw PartialEvalError(R"(symbol must be "Sort", "Var", "App", "Lam" or "Pi")", h);
 #undef expr
   }
 

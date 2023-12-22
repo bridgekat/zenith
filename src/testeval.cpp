@@ -24,7 +24,8 @@ auto main(int argc, char* argv[]) -> int {
   auto const args = std::span(argv, static_cast<size_t>(argc));
   auto evaluator = eval::ExtendedEvaluator();
   auto in = string();
-  for (auto i = 1_z; i < args.size(); i++) in += readFile(std::ifstream(args[i])) + "\n";
+  for (auto i = 1uz; i < args.size(); i++)
+    in += readFile(std::ifstream(args[i])) + "\n";
 
   while (true) {
     if (in.empty()) {
@@ -47,7 +48,8 @@ auto main(int argc, char* argv[]) -> int {
         }
       } else if (in.starts_with("load")) { // Load file
         in = in.substr(4);
-        while (in.starts_with(' ')) in = in.substr(1);
+        while (in.starts_with(' '))
+          in = in.substr(1);
         in = readFile(std::ifstream(in));
       } else if (in.starts_with("quit")) {
         break;

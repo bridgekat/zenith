@@ -45,19 +45,25 @@ namespace apimu::server {
       }
 
       // B is not suspended upon creation/completion
-      auto initial_suspend() noexcept -> std::suspend_never { return {}; }
-      auto final_suspend() noexcept -> std::suspend_never { return {}; }
+      auto initial_suspend() noexcept -> std::suspend_never {
+        return {};
+      }
+      auto final_suspend() noexcept -> std::suspend_never {
+        return {};
+      }
 
       // B returns value (B.result := result, resume B.then (= continuation of A) if present)
       auto return_value(T const& result) -> void {
         *(this->result) = result;
-        if (then) then.resume();
+        if (then)
+          then.resume();
       }
 
       // B throws unhandled exception (B.exptr := exception, resume B.then (= continuation of A) if present)
       auto unhandled_exception() -> void {
         *exptr = std::current_exception();
-        if (then) then.resume();
+        if (then)
+          then.resume();
       }
     };
 
@@ -70,18 +76,22 @@ namespace apimu::server {
 
     // A is suspended if B didn't complete
     auto await_ready() const -> bool {
-      if (*exptr) std::rethrow_exception(*exptr);
+      if (*exptr)
+        std::rethrow_exception(*exptr);
       return (*result).has_value();
     }
 
     // B didn't complete, store the continuation of A (B.then := continuation of A)
-    auto await_suspend(std::coroutine_handle<> ka) -> void { handle.promise().then = ka; }
+    auto await_suspend(std::coroutine_handle<> ka) -> void {
+      handle.promise().then = ka;
+    }
 
     // B completed or A was resumed, retrieve result (gives B.result to the continuation of A).
     // Either *(B.result) or *(B.exptr) must be available at this time, as A must be resumed from either
     // `B.return_value()` or `B.unhandled_exception()`.
     auto await_resume() -> T {
-      if (*exptr) std::rethrow_exception(*exptr);
+      if (*exptr)
+        std::rethrow_exception(*exptr);
       return std::move(result->value());
     }
 
@@ -97,9 +107,9 @@ namespace apimu::server {
       std::shared_ptr<std::exception_ptr> exptr,
       std::coroutine_handle<promise_type> handle
     ):
-      result(std::move(result)),
-      exptr(std::move(exptr)),
-      handle(handle) {}
+        result(std::move(result)),
+        exptr(std::move(exptr)),
+        handle(handle) {}
   };
 
   // We have to write these all over again, as using templates to select between
@@ -118,17 +128,23 @@ namespace apimu::server {
         return {completed, exptr, std::coroutine_handle<promise_type>::from_promise(*this)};
       }
 
-      auto initial_suspend() noexcept -> std::suspend_never { return {}; }
-      auto final_suspend() noexcept -> std::suspend_never { return {}; }
+      auto initial_suspend() noexcept -> std::suspend_never {
+        return {};
+      }
+      auto final_suspend() noexcept -> std::suspend_never {
+        return {};
+      }
 
       auto return_void() -> void {
         *completed = true;
-        if (then) then.resume();
+        if (then)
+          then.resume();
       }
 
       auto unhandled_exception() -> void {
         *exptr = std::current_exception();
-        if (then) then.resume();
+        if (then)
+          then.resume();
       }
     };
 
@@ -139,12 +155,16 @@ namespace apimu::server {
     ~Coroutine() = default;
 
     auto await_ready() const -> bool {
-      if (*exptr) std::rethrow_exception(*exptr);
+      if (*exptr)
+        std::rethrow_exception(*exptr);
       return *completed;
     }
-    auto await_suspend(std::coroutine_handle<> ka) -> void { handle.promise().then = ka; }
+    auto await_suspend(std::coroutine_handle<> ka) -> void {
+      handle.promise().then = ka;
+    }
     auto await_resume() const -> void {
-      if (*exptr) std::rethrow_exception(*exptr);
+      if (*exptr)
+        std::rethrow_exception(*exptr);
     }
 
   private:
@@ -157,9 +177,9 @@ namespace apimu::server {
       std::shared_ptr<std::exception_ptr> exptr,
       std::coroutine_handle<promise_type>&& handle
     ):
-      completed(std::move(completed)),
-      exptr(std::move(exptr)),
-      handle(handle) {}
+        completed(std::move(completed)),
+        exptr(std::move(exptr)),
+        handle(handle) {}
   };
 
 }

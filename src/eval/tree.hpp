@@ -42,9 +42,9 @@ namespace apimu::eval {
     using variant::variant;
 
     Tree():
-      variant(Nil{}) {}
+        variant(Nil{}) {}
     Tree(Tree* l, Tree* r):
-      variant(Cons{l, r}) {}
+        variant(Cons{l, r}) {}
 
     auto clone(Allocator<Tree>& pool, Tree* nil, Tree* unit) const -> Tree*;
 
@@ -55,7 +55,9 @@ namespace apimu::eval {
     static auto unescapeString(std::string const& s) -> std::string;
   };
 
-  inline auto Cons::operator==(Cons const& r) const -> bool { return *head == *r.head && *tail == *r.tail; };
+  inline auto Cons::operator==(Cons const& r) const -> bool {
+    return *head == *r.head && *tail == *r.tail;
+  };
 
 #include "macros_close.hpp"
 }

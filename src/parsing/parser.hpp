@@ -33,7 +33,7 @@ namespace apimu::parsing {
     struct InputPair {
       std::pair<Symbol, Precedence> value;
       constexpr InputPair(Symbol symbol, Precedence precedence = PrecedenceMax):
-        value(symbol, precedence) {}
+          value(symbol, precedence) {}
     };
 
     auto start(Symbol value) -> GrammarBuilder&;
@@ -58,7 +58,9 @@ namespace apimu::parsing {
       size_t progress; // Matching position in production rule.
       friend auto operator==(State const&, State const&) -> bool = default;
       struct Hasher {
-        auto operator()(State const& s) const -> size_t { return hashAll(s.begin, s.end, s.rule, s.progress); }
+        auto operator()(State const& s) const -> size_t {
+          return hashAll(s.begin, s.end, s.rule, s.progress);
+        }
       };
     };
     struct Link {
@@ -111,20 +113,28 @@ namespace apimu::parsing {
 
     // Given references must be valid over the `Parser`'s lifetime.
     EarleyParser(Grammar const& grammar, IStream<Token>& stream, ErrorRecoveryParams params, IErrorHandler& handler):
-      _grammar(grammar),
-      _marked(stream),
-      _params(std::move(params)),
-      _handler(handler) {}
+        _grammar(grammar),
+        _marked(stream),
+        _params(std::move(params)),
+        _handler(handler) {}
 
     // Parse with error recovery.
     // Returns true if no error is detected (and the parse forest is complete).
     auto parse() -> bool;
 
     // Retrieves results.
-    auto grammar() const -> Grammar const& { return _grammar; }
-    auto tokens() const -> std::vector<Token> const& { return _tokens; }
-    auto nodes() const -> std::vector<Node> const& { return _nodes; }
-    auto ranges() const -> std::vector<IndexRange> const& { return _ranges; }
+    auto grammar() const -> Grammar const& {
+      return _grammar;
+    }
+    auto tokens() const -> std::vector<Token> const& {
+      return _tokens;
+    }
+    auto nodes() const -> std::vector<Node> const& {
+      return _nodes;
+    }
+    auto ranges() const -> std::vector<IndexRange> const& {
+      return _ranges;
+    }
     auto finalStates(std::optional<size_t> optPosition = {}) const -> std::vector<size_t>;
 
     // Temporarily constructs forward links for unvisited nodes. Useful in disambiguation stage.

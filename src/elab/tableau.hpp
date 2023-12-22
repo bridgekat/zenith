@@ -21,14 +21,20 @@ namespace apimu::elab {
 
     // `*e` should not be changed after this construction
     explicit ExprHash(Expr const* e) noexcept:
-      e(e),
-      hash(e->hash()) {}
+        e(e),
+        hash(e->hash()) {}
 
-    auto operator==(ExprHash const& r) const noexcept -> bool { return hash == r.hash && *e == *(r.e); }
-    auto operator!=(ExprHash const& r) const noexcept -> bool { return hash != r.hash || *e != *(r.e); }
+    auto operator==(ExprHash const& r) const noexcept -> bool {
+      return hash == r.hash && *e == *(r.e);
+    }
+    auto operator!=(ExprHash const& r) const noexcept -> bool {
+      return hash != r.hash || *e != *(r.e);
+    }
 
     struct GetHash {
-      auto operator()(ExprHash const& eh) const noexcept -> size_t { return eh.hash; }
+      auto operator()(ExprHash const& eh) const noexcept -> size_t {
+        return eh.hash;
+      }
     };
   };
 
@@ -77,7 +83,7 @@ namespace apimu::elab {
     };
 
     explicit Tableau(Context const& ctx) noexcept:
-      ctx(ctx) {}
+        ctx(ctx) {}
 
     auto addAntecedent(Expr const* e) -> void {
       auto const it = branch.hashset[L].insert(ExprHash(e));
@@ -86,7 +92,8 @@ namespace apimu::elab {
         branch.cedents[i][L].push_back(e);
         branch.timestamps[i][L].push_back(branch.numCedents++);
         branch.numUniversals[i][L].push_back(0);
-        if (i == Beta) branch.betaUsed[L].push_back(false);
+        if (i == Beta)
+          branch.betaUsed[L].push_back(false);
       }
     }
 
@@ -97,7 +104,8 @@ namespace apimu::elab {
         branch.cedents[i][R].push_back(e);
         branch.timestamps[i][R].push_back(branch.numCedents++);
         branch.numUniversals[i][R].push_back(0);
-        if (i == Beta) branch.betaUsed[R].push_back(false);
+        if (i == Beta)
+          branch.betaUsed[R].push_back(false);
       }
     }
 
@@ -151,7 +159,9 @@ namespace apimu::elab {
 
     friend class WithCedent;
 
-    static auto invert(Position pos) noexcept -> Position { return (pos == L) ? R : L; };
+    static auto invert(Position pos) noexcept -> Position {
+      return (pos == L) ? R : L;
+    };
     static auto classify(Position antesucc, Expr const* e) noexcept -> Type;
     auto applySubs(procs::Subs const& subs, bool assertNoChange) -> void;
     auto dfs(size_t depth) -> bool;

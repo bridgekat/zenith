@@ -33,8 +33,8 @@ namespace apimu::server {
   struct JsonRpcException: std::runtime_error {
     ErrorCode code;
     explicit JsonRpcException(ErrorCode code, std::string const& s = ""):
-      std::runtime_error(s),
-      code(code) {}
+        std::runtime_error(s),
+        code(code) {}
   };
 
   class JsonRpcServer {
@@ -43,8 +43,8 @@ namespace apimu::server {
 
     // While `inThread` is running, other threads should not read/write the `in`/`out`/`log` streams...
     JsonRpcServer(std::basic_istream<char>& in, std::basic_ostream<char>& out /*, std::basic_ostream<char>& log */):
-      in(in),
-      out(out)
+        in(in),
+        out(out)
     /* log(log), */
     {}
 
@@ -71,10 +71,12 @@ namespace apimu::server {
       std::exception_ptr exptr = nullptr;
       nlohmann::json result = {};
       explicit RequestEntry(std::coroutine_handle<void> k = std::coroutine_handle<void>()):
-        k(k) {}
+          k(k) {}
     };
 
-    auto numActiveRequests() const -> size_t { return requests.size(); }
+    auto numActiveRequests() const -> size_t {
+      return requests.size();
+    }
 
     // Use `json j = co_await srv->callMethod(...)` in a coroutine to send request and suspend
     // until a corresponding response is received (should only be used from `inThread`).
@@ -82,21 +84,30 @@ namespace apimu::server {
       JsonRpcServer* srv;
       std::int64_t id;
       // Always suspend
-      auto await_ready() const noexcept -> bool { return false; }
+      auto await_ready() const noexcept -> bool {
+        return false;
+      }
       // Store continuation at suspension
-      auto await_suspend(std::coroutine_handle<> k) const -> void { srv->requests.emplace(id, k); }
+      auto await_suspend(std::coroutine_handle<> k) const -> void {
+        srv->requests.emplace(id, k);
+      }
       // Retrieve result when resumed
       // Pre: requests[id] must be present
       auto await_resume() const -> nlohmann::json {
         auto& req = srv->requests[id];
-        if (req.exptr) std::rethrow_exception(req.exptr);
+        if (req.exptr)
+          std::rethrow_exception(req.exptr);
         return std::move(req.result);
       }
     };
 
     auto startListen() -> void;
-    auto requestStop() -> void { inThread.request_stop(); }
-    auto waitForComplete() -> void { inThread.join(); }
+    auto requestStop() -> void {
+      inThread.request_stop();
+    }
+    auto waitForComplete() -> void {
+      inThread.join();
+    }
 
   private:
     std::basic_istream<char>& in;

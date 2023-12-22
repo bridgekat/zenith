@@ -18,19 +18,31 @@ namespace apimu::elab::procs {
     auto const fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
       case Other:
-        if (e->tag != Expr::Var || e->var.tag != Expr::VFree) unreachable;
+        if (e->tag != Expr::Var || e->var.tag != Expr::VFree)
+          unreachable;
         return (e->var.id < fvmap.size()) ? fvmap[e->var.id] : false;
-      case Equals: unreachable;
-      case True: return true;
-      case False: return false;
-      case Not: return !propValue(fof.unary.e, fvmap);
-      case And: return propValue(fof.binary.l, fvmap) && propValue(fof.binary.r, fvmap);
-      case Or: return propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
-      case Implies: return !propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
-      case Iff: return propValue(fof.binary.l, fvmap) == propValue(fof.binary.r, fvmap);
-      case Forall: unreachable;
-      case Exists: unreachable;
-      case Unique: unreachable;
+      case Equals:
+        unreachable;
+      case True:
+        return true;
+      case False:
+        return false;
+      case Not:
+        return !propValue(fof.unary.e, fvmap);
+      case And:
+        return propValue(fof.binary.l, fvmap) && propValue(fof.binary.r, fvmap);
+      case Or:
+        return propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
+      case Implies:
+        return !propValue(fof.binary.l, fvmap) || propValue(fof.binary.r, fvmap);
+      case Iff:
+        return propValue(fof.binary.l, fvmap) == propValue(fof.binary.r, fvmap);
+      case Forall:
+        unreachable;
+      case Exists:
+        unreachable;
+      case Unique:
+        unreachable;
     }
     unreachable;
   }
@@ -38,20 +50,30 @@ namespace apimu::elab::procs {
   auto nnf(Expr const* e, Allocator<Expr>& pool, bool f) -> Expr const* {
     auto const fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
-      case Other: return f ? FOLForm(Not, e).toExpr(pool) : e;
-      case Equals: return f ? FOLForm(Not, e).toExpr(pool) : e;
-      case True: return f ? FOLForm(False).toExpr(pool) : e;
-      case False: return f ? FOLForm(True).toExpr(pool) : e;
-      case Not: return nnf(fof.unary.e, pool, !f);
-      case And: return FOLForm(f ? Or : And, nnf(fof.binary.l, pool, f), nnf(fof.binary.r, pool, f)).toExpr(pool);
-      case Or: return FOLForm(f ? And : Or, nnf(fof.binary.l, pool, f), nnf(fof.binary.r, pool, f)).toExpr(pool);
-      case Implies: return FOLForm(f ? And : Or, nnf(fof.binary.l, pool, !f), nnf(fof.binary.r, pool, f)).toExpr(pool);
+      case Other:
+        return f ? FOLForm(Not, e).toExpr(pool) : e;
+      case Equals:
+        return f ? FOLForm(Not, e).toExpr(pool) : e;
+      case True:
+        return f ? FOLForm(False).toExpr(pool) : e;
+      case False:
+        return f ? FOLForm(True).toExpr(pool) : e;
+      case Not:
+        return nnf(fof.unary.e, pool, !f);
+      case And:
+        return FOLForm(f ? Or : And, nnf(fof.binary.l, pool, f), nnf(fof.binary.r, pool, f)).toExpr(pool);
+      case Or:
+        return FOLForm(f ? And : Or, nnf(fof.binary.l, pool, f), nnf(fof.binary.r, pool, f)).toExpr(pool);
+      case Implies:
+        return FOLForm(f ? And : Or, nnf(fof.binary.l, pool, !f), nnf(fof.binary.r, pool, f)).toExpr(pool);
       case Iff: {
         auto const [mp, mpr] = fof.splitIff(pool);
         return FOLForm(f ? Or : And, nnf(mp, pool, f), nnf(mpr, pool, f)).toExpr(pool);
       }
-      case Forall: return FOLForm(f ? Exists : Forall, fof.s, nnf(fof.binder.r, pool, f)).toExpr(pool);
-      case Exists: return FOLForm(f ? Forall : Exists, fof.s, nnf(fof.binder.r, pool, f)).toExpr(pool);
+      case Forall:
+        return FOLForm(f ? Exists : Forall, fof.s, nnf(fof.binder.r, pool, f)).toExpr(pool);
+      case Exists:
+        return FOLForm(f ? Forall : Exists, fof.s, nnf(fof.binder.r, pool, f)).toExpr(pool);
       case Unique: {
         auto const [exi, no2] = fof.splitUnique(pool);
         return FOLForm(f ? Or : And, nnf(exi, pool, f), nnf(no2, pool, f)).toExpr(pool);
@@ -64,13 +86,18 @@ namespace apimu::elab::procs {
     -> Expr const* {
     auto const fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
-      case Other: return e;
-      case Equals: return e;
-      case True: return e;
-      case False: return e;
+      case Other:
+        return e;
+      case Equals:
+        return e;
+      case True:
+        return e;
+      case False:
+        return e;
       case Not: {
         auto const tag = FOLForm::fromExpr(fof.unary.e).tag;
-        if (tag == Other || tag == Equals) return e; // Irreducible literal
+        if (tag == Other || tag == Equals)
+          return e; // Irreducible literal
         return skolemize(nnf(e, pool), meta, skolem, metas, pool);
       }
       case And: {
@@ -83,8 +110,10 @@ namespace apimu::elab::procs {
         auto const r = skolemize(fof.binary.r, meta, skolem, metas, pool);
         return (l == fof.binary.l && r == fof.binary.r) ? e : FOLForm(Or, l, r).toExpr(pool);
       }
-      case Implies: return skolemize(nnf(e, pool), meta, skolem, metas, pool);
-      case Iff: return skolemize(nnf(e, pool), meta, skolem, metas, pool);
+      case Implies:
+        return skolemize(nnf(e, pool), meta, skolem, metas, pool);
+      case Iff:
+        return skolemize(nnf(e, pool), meta, skolem, metas, pool);
       case Forall: {
         metas.push_back(meta);
         auto const ee = fof.binder.r->makeReplace(pool.make(VMeta, meta++), pool);
@@ -96,14 +125,16 @@ namespace apimu::elab::procs {
         auto const ee = fof.binder.r->makeReplace(makeSkolem(skolem++, metas, pool), pool);
         return skolemize(ee, meta, skolem, metas, pool);
       }
-      case Unique: return skolemize(nnf(e, pool), meta, skolem, metas, pool);
+      case Unique:
+        return skolemize(nnf(e, pool), meta, skolem, metas, pool);
     }
     unreachable;
   }
 
   template <typename T>
   auto concat(vector<T> a, vector<T> const& b) -> vector<T> {
-    for (auto const& x: b) a.push_back(x);
+    for (auto const& x: b)
+      a.push_back(x);
     return a;
   }
 
@@ -111,7 +142,8 @@ namespace apimu::elab::procs {
   auto distrib(vector<vector<T>> const& a, vector<vector<T>> const& b) -> vector<vector<T>> {
     auto res = vector<vector<T>>();
     for (auto const& x: a)
-      for (auto const& y: b) res.push_back(concat(x, y));
+      for (auto const& y: b)
+        res.push_back(concat(x, y));
     return res;
   }
 
@@ -119,18 +151,30 @@ namespace apimu::elab::procs {
   auto cnf(Expr const* e, Allocator<Expr>& pool) -> vector<vector<Expr const*>> {
     auto const fof = FOLForm::fromExpr(e);
     switch (fof.tag) {
-      case Other: return {{e}};
-      case Equals: return {{e}};
-      case True: return {};
-      case False: return {{}};
-      case Not: return {{e}}; // Not splitted
-      case And: return concat(cnf(fof.binary.l, pool), cnf(fof.binary.r, pool));
-      case Or: return distrib(cnf(fof.binary.l, pool), cnf(fof.binary.r, pool));
-      case Implies: return {{e}}; // Not splitted
-      case Iff: return {{e}};     // Not splitted
-      case Forall: return {{e}};  // Not splitted
-      case Exists: return {{e}};  // Not splitted
-      case Unique: return {{e}};  // Not splitted
+      case Other:
+        return {{e}};
+      case Equals:
+        return {{e}};
+      case True:
+        return {};
+      case False:
+        return {{}};
+      case Not:
+        return {{e}}; // Not splitted
+      case And:
+        return concat(cnf(fof.binary.l, pool), cnf(fof.binary.r, pool));
+      case Or:
+        return distrib(cnf(fof.binary.l, pool), cnf(fof.binary.r, pool));
+      case Implies:
+        return {{e}}; // Not splitted
+      case Iff:
+        return {{e}}; // Not splitted
+      case Forall:
+        return {{e}}; // Not splitted
+      case Exists:
+        return {{e}}; // Not splitted
+      case Unique:
+        return {{e}}; // Not splitted
     }
     unreachable;
   }
@@ -179,8 +223,10 @@ namespace apimu::elab::procs {
 
   auto showSubs(Subs const& subs, Context const& ctx) -> string {
     auto res = string();
-    for (auto i = 0_z; i < subs.size(); i++)
-      if (subs[i]) { res += Expr(VMeta, i).toString(ctx) + " => " + subs[i]->toString(ctx) + "\n"; }
+    for (auto i = 0uz; i < subs.size(); i++)
+      if (subs[i]) {
+        res += Expr(VMeta, i).toString(ctx) + " => " + subs[i]->toString(ctx) + "\n";
+      }
     return res;
   }
 
@@ -191,13 +237,19 @@ namespace apimu::elab::procs {
     if (rhs->tag == Var && rhs->var.tag == VMeta && rhs->var.id < subs.size() && subs[rhs->var.id])
       return equalAfterSubs(lhs, subs[rhs->var.id], subs);
     // Normal comparison (refer to the implementation of `Expr::operator==`)
-    if (lhs->tag != rhs->tag) return false;
+    if (lhs->tag != rhs->tag)
+      return false;
     switch (lhs->tag) {
-      case Sort: return lhs->sort.tag == rhs->sort.tag;
-      case Var: return lhs->var.tag == rhs->var.tag && lhs->var.id == rhs->var.id;
-      case App: return equalAfterSubs(lhs->app.l, rhs->app.l, subs) && equalAfterSubs(lhs->app.r, rhs->app.r, subs);
-      case Lam: return equalAfterSubs(lhs->lam.t, rhs->lam.t, subs) && equalAfterSubs(lhs->lam.r, rhs->lam.r, subs);
-      case Pi: return equalAfterSubs(lhs->pi.t, rhs->pi.t, subs) && equalAfterSubs(lhs->pi.r, rhs->pi.r, subs);
+      case Sort:
+        return lhs->sort.tag == rhs->sort.tag;
+      case Var:
+        return lhs->var.tag == rhs->var.tag && lhs->var.id == rhs->var.id;
+      case App:
+        return equalAfterSubs(lhs->app.l, rhs->app.l, subs) && equalAfterSubs(lhs->app.r, rhs->app.r, subs);
+      case Lam:
+        return equalAfterSubs(lhs->lam.t, rhs->lam.t, subs) && equalAfterSubs(lhs->lam.r, rhs->lam.r, subs);
+      case Pi:
+        return equalAfterSubs(lhs->pi.t, rhs->pi.t, subs) && equalAfterSubs(lhs->pi.r, rhs->pi.r, subs);
     }
     unreachable;
   }
@@ -210,9 +262,9 @@ namespace apimu::elab::procs {
     Subs ls, rs;
 
     Antiunifier(Allocator<Expr>& pool):
-      pool(pool),
-      ls(),
-      rs() {}
+        pool(pool),
+        ls(),
+        rs() {}
 
     auto dfs(Expr const* lhs, Expr const* rhs) -> Expr const* {
       // If roots are different, return this
@@ -222,11 +274,14 @@ namespace apimu::elab::procs {
         rs.push_back(rhs);
         return pool.make(Expr::VMeta, id);
       };
-      if (lhs->tag != rhs->tag) return different();
+      if (lhs->tag != rhs->tag)
+        return different();
       // lhs->tag == rhs->tag
       switch (lhs->tag) {
-        case Sort: return (lhs->sort.tag == rhs->sort.tag) ? lhs : different();
-        case Var: return (lhs->var.tag == rhs->var.tag && lhs->var.id == rhs->var.id) ? lhs : different();
+        case Sort:
+          return (lhs->sort.tag == rhs->sort.tag) ? lhs : different();
+        case Var:
+          return (lhs->var.tag == rhs->var.tag && lhs->var.id == rhs->var.id) ? lhs : different();
         case App: {
           auto const l = dfs(lhs->app.l, rhs->app.l);
           auto const r = dfs(lhs->app.r, rhs->app.r);
@@ -268,11 +323,14 @@ namespace apimu::elab::procs {
     // Add a new substitution to `res`, then update the rest of `a` to eliminate the variable with id `id`.
     auto putsubs = [&res, &pool, &a](uint64_t id, Expr const* e, size_t i0) -> void {
       // Make enough space
-      while (id >= res.size()) res.push_back(nullptr);
+      while (id >= res.size())
+        res.push_back(nullptr);
       // id < res.size()
       res[id] = e;
       // Update the rest of `a`
-      auto f = [id, e](uint64_t, Expr const* x) { return (x->var.tag == VMeta && x->var.id == id) ? e : x; };
+      auto f = [id, e](uint64_t, Expr const* x) {
+        return (x->var.tag == VMeta && x->var.id == id) ? e : x;
+      };
       for (auto i = i0; i < a.size(); i++) {
         a[i].first = a[i].first->updateVars(f, pool);
         a[i].second = a[i].second->updateVars(f, pool);
@@ -281,30 +339,37 @@ namespace apimu::elab::procs {
 
     // Each step transforms `a` into an equivalent set of equations
     // (in `a` and `res`; the latter contains equations in triangular/solved form.)
-    for (auto i = 0_z; i < a.size(); i++) {
+    for (auto i = 0uz; i < a.size(); i++) {
       auto const lhs = a[i].first, rhs = a[i].second;
       if (lhs->tag == Var && lhs->var.tag == VMeta) {
         if (*lhs != *rhs) {
           // Variable elimination on the left.
-          if (rhs->occurs(VMeta, lhs->var.id)) return {};
-          else putsubs(lhs->var.id, rhs, i + 1);
+          if (rhs->occurs(VMeta, lhs->var.id))
+            return {};
+          else
+            putsubs(lhs->var.id, rhs, i + 1);
         }
       } else if (rhs->tag == Var && rhs->var.tag == VMeta) {
         if (*lhs != *rhs) {
           // Variable elimination on the right.
-          if (lhs->occurs(VMeta, rhs->var.id)) return {};
-          else putsubs(rhs->var.id, lhs, i + 1);
+          if (lhs->occurs(VMeta, rhs->var.id))
+            return {};
+          else
+            putsubs(rhs->var.id, lhs, i + 1);
         }
       } else {
         // Try term reduction.
-        if (lhs->tag != rhs->tag) return {};
+        if (lhs->tag != rhs->tag)
+          return {};
         // lhs->tag == rhs->tag
         switch (lhs->tag) {
           case Sort:
-            if (lhs->sort.tag != rhs->sort.tag) return {};
+            if (lhs->sort.tag != rhs->sort.tag)
+              return {};
             break;
           case Var:
-            if (lhs->var.tag != rhs->var.tag || lhs->var.id != rhs->var.id) return {};
+            if (lhs->var.tag != rhs->var.tag || lhs->var.id != rhs->var.id)
+              return {};
             break;
           case App:
             a.emplace_back(lhs->app.l, rhs->app.l);

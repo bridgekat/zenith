@@ -23,17 +23,20 @@ namespace apimu::eval {
     } else {
       auto tnames = std::vector<std::string>();
       for (auto const sym: expected)
-        if (evaluator.symbolIsTerminal[sym]) tnames.push_back(evaluator.symbolNames[sym]);
+        if (evaluator.symbolIsTerminal[sym])
+          tnames.push_back(evaluator.symbolNames[sym]);
       if (tnames.empty()) {
         ss << "nothing";
       } else if (tnames.size() == 1) {
         ss << tnames[0];
       } else {
         ss << "one of ";
-        for (auto i = 0_z; i < tnames.size(); i++) {
+        for (auto i = 0uz; i < tnames.size(); i++) {
           ss << tnames[i];
-          if (i + 2 < tnames.size()) ss << ", ";
-          else if (i + 1 < tnames.size()) ss << " or ";
+          if (i + 2 < tnames.size())
+            ss << ", ";
+          else if (i + 1 < tnames.size())
+            ss << " or ";
         }
       }
     }
@@ -54,7 +57,8 @@ namespace apimu::eval {
 
   auto Evaluator::evalNextStatement() -> std::optional<std::tuple<Tree*, size_t, size_t>> {
     assert(parser);
-    if (!parser->parser.parse()) return {};
+    if (!parser->parser.parse())
+      return {};
     auto const& tokens = parser->parser.tokens();
     assert(!tokens.empty());
     auto const& info = std::pair(tokens.front().begin, tokens.back().end);
@@ -66,7 +70,8 @@ namespace apimu::eval {
         try {
           auto const evaluated = eval(globalEnv, expanded); // std::cout << (*evaluated)->toString() << std::endl;
           auto const outs = out->str();
-          if (!outs.empty()) _messages.emplace_back(Message{false, outs, info.first, info.second});
+          if (!outs.empty())
+            _messages.emplace_back(Message{false, outs, info.first, info.second});
           return std::tuple(evaluated, info.first, info.second);
 
         } catch (EvalError& ex) {
@@ -106,16 +111,19 @@ namespace apimu::eval {
   // (Continuation, `__k`, `and`, `or`, `not` and `pred?` patterns are not implemented)
   auto Evaluator::treeMatch(Tree* e, Tree* pat, Tree*& env, bool quoteMode) -> bool {
     if (auto const& sym = get_if<Symbol>(pat); sym && !quoteMode) {
-      if (sym->val != "_") env = extend(env, sym->val, e);
+      if (sym->val != "_")
+        env = extend(env, sym->val, e);
       return true;
     }
     if (auto const& cons = get_if<Cons>(pat)) {
       auto const& [h, t] = *cons;
       if (auto const& sym = get_if<Symbol>(h)) {
-        if (sym->val == "quote" && !quoteMode) return treeMatch(e, expect<Cons>(t).head, env, true); // Enter quote mode
+        if (sym->val == "quote" && !quoteMode)
+          return treeMatch(e, expect<Cons>(t).head, env, true); // Enter quote mode
         if (sym->val == "unquote" && quoteMode)
           return treeMatch(e, expect<Cons>(t).head, env, false); // Leave quote mode
-        if (sym->val == "...") return get_if<Nil>(e) || get_if<Cons>(e);
+        if (sym->val == "...")
+          return get_if<Nil>(e) || get_if<Cons>(e);
       }
       auto const& econs = get_if<Cons>(e);
       return econs && treeMatch(econs->head, h, env, quoteMode) && treeMatch(econs->tail, t, env, quoteMode);
@@ -125,18 +133,24 @@ namespace apimu::eval {
 
   auto stringToCharVec(string const& s) -> vector<parsing::Char> {
     auto res = vector<parsing::Char>();
-    for (auto const c: s) res.push_back(static_cast<parsing::Char>(c));
+    for (auto const c: s)
+      res.push_back(static_cast<parsing::Char>(c));
     return res;
   }
 
   auto Evaluator::treePattern(AutomatonBuilder& builder, Tree* e) -> AutomatonBuilder::Subgraph {
     auto const& [tag, t] = expect<Cons>(e);
     auto const& stag = expect<Symbol>(tag).val;
-    if (stag == "empty") return builder.empty();
-    if (stag == "any") return builder.any();
-    if (stag == "utf8seg") return builder.utf8segment();
-    if (stag == "char") return builder.chars(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
-    if (stag == "except") return builder.except(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    if (stag == "empty")
+      return builder.empty();
+    if (stag == "any")
+      return builder.any();
+    if (stag == "utf8seg")
+      return builder.utf8segment();
+    if (stag == "char")
+      return builder.chars(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    if (stag == "except")
+      return builder.except(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
     if (stag == "range") {
       auto const& [lbound, u] = expect<Cons>(t);
       auto const& [ubound, _] = expect<Cons>(u);
@@ -145,18 +159,26 @@ namespace apimu::eval {
         static_cast<parsing::Char>(expect<Nat64>(ubound).val)
       );
     }
-    if (stag == "word") return builder.word(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
-    if (stag == "alt") return builder.alt(listPatterns(builder, t));
-    if (stag == "concat") return builder.concat(listPatterns(builder, t));
-    if (stag == "opt") return builder.opt(treePattern(builder, expect<Cons>(t).head));
-    if (stag == "star") return builder.star(treePattern(builder, expect<Cons>(t).head));
-    if (stag == "plus") return builder.plus(treePattern(builder, expect<Cons>(t).head));
+    if (stag == "word")
+      return builder.word(stringToCharVec(expect<String>(expect<Cons>(t).head).val));
+    if (stag == "alt")
+      return builder.alt(listPatterns(builder, t));
+    if (stag == "concat")
+      return builder.concat(listPatterns(builder, t));
+    if (stag == "opt")
+      return builder.opt(treePattern(builder, expect<Cons>(t).head));
+    if (stag == "star")
+      return builder.star(treePattern(builder, expect<Cons>(t).head));
+    if (stag == "plus")
+      return builder.plus(treePattern(builder, expect<Cons>(t).head));
     unimplemented;
   }
 
   auto Evaluator::listPatterns(AutomatonBuilder& builder, Tree* e) -> vector<AutomatonBuilder::Subgraph> {
     auto res = vector<AutomatonBuilder::Subgraph>();
-    for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) { res.push_back(treePattern(builder, it->head)); }
+    for (auto it = get_if<Cons>(e); it; it = get_if<Cons>(it->tail)) {
+      res.push_back(treePattern(builder, it->head));
+    }
     return res;
   }
 
@@ -220,10 +242,12 @@ namespace apimu::eval {
     }
 
     // Finalise.
-    if (parser) parser->buffer.invalidate();
+    if (parser)
+      parser->buffer.invalidate();
     automaton = automatonBuilder.makeNFA();
     grammar = grammarBuilder.makeGrammar();
-    if (parser) parser.emplace(*this, *automaton, *grammar, *stream);
+    if (parser)
+      parser.emplace(*this, *automaton, *grammar, *stream);
   }
 
 #define cons       pool().make
@@ -327,7 +351,8 @@ namespace apimu::eval {
         list(list(
           sym("string_unescape"),
           list(sym("string_substr"), sym("s"), nat(1), list(sym("sub"), list(sym("string_length"), sym("s")), nat(2)))
-        ))}
+        ))
+      }
     );
     addMacro("nil'", Closure{globalEnv, list(), list(list(sym("nil")))});
     addMacro("cons'", Closure{globalEnv, list(sym("l"), sym("r")), list(list(sym("cons"), sym("l"), sym("r")))});
@@ -341,14 +366,16 @@ namespace apimu::eval {
       Closure{
         globalEnv,
         list(sym("_"), sym("l")),
-        list(list(sym("list"), list(sym("string_symbol"), str("quote")), sym("l")))}
+        list(list(sym("list"), list(sym("string_symbol"), str("quote")), sym("l")))
+      }
     );
     addMacro(
       "unquote'",
       Closure{
         globalEnv,
         list(sym("_"), sym("l")),
-        list(list(sym("list"), list(sym("string_symbol"), str("unquote")), sym("l")))}
+        list(list(sym("list"), list(sym("string_symbol"), str("unquote")), sym("l")))
+      }
     );
     addMacro("tree'", Closure{globalEnv, list(sym("_"), sym("l"), sym("_")), list(sym("l"))});
 
@@ -412,7 +439,8 @@ namespace apimu::eval {
       auto first = true;
       for (auto it = get_if<Cons>(clauses); it; it = get_if<Cons>(it->tail)) {
         auto const& [pat, _2] = expect<Cons>(it->head);
-        if (!first) msg += ", ";
+        if (!first)
+          msg += ", ";
         first = false;
         msg += pat->toString();
       }
@@ -443,7 +471,7 @@ namespace apimu::eval {
         refs.push_back(&get_if<Cons>(get_if<Cons>(get_if<Cons>(env)->head)->tail)->head);
       }
       // Sequentially evaluate and assign.
-      auto i = 0_z;
+      auto i = 0uz;
       for (auto it = get_if<Cons>(defs); it; it = get_if<Cons>(it->tail)) {
         auto const& [lhs, t] = expect<Cons>(it->head);
         auto const& [rhs, _] = expect<Cons>(t);
@@ -497,7 +525,8 @@ namespace apimu::eval {
     // [√]
     addPrimitive("eval", true, [](Tree* env, Tree* e) -> Result {
       auto const& [h, t] = expect<Cons>(e);
-      if (auto const& tcons = get_if<Cons>(t)) env = tcons->head;
+      if (auto const& tcons = get_if<Cons>(t))
+        env = tcons->head;
       return {h, env}; // Let it restart and evaluate
     });
     addPrimitive("env", true, [](Tree* env, Tree*) -> Result { return {env}; });
@@ -546,7 +575,8 @@ namespace apimu::eval {
       auto const& [rhs, _] = expect<Cons>(t);
       auto const& sv = expect<String>(lhs).val;
       auto const iv = expect<Nat64>(rhs).val;
-      if (iv >= sv.size()) throw PartialEvalError("Index " + std::to_string(iv) + " out of range", rhs);
+      if (iv >= sv.size())
+        throw PartialEvalError("Index " + std::to_string(iv) + " out of range", rhs);
       return {nat(static_cast<unsigned char>(sv[iv]))};
     });
     addPrimitive("char_string", true, [this](Tree*, Tree* e) -> Result {
@@ -567,7 +597,8 @@ namespace apimu::eval {
       auto const& [len, _] = expect<Cons>(u);
       auto const& sv = expect<String>(s).val;
       auto posv = expect<Nat64>(pos).val;
-      if (posv > sv.size()) posv = sv.size();
+      if (posv > sv.size())
+        posv = sv.size();
       return {str(sv.substr(posv, expect<Nat64>(len).val))};
     });
     addPrimitive("string_eq", true, [this](Tree*, Tree* e) -> Result {
@@ -625,14 +656,16 @@ namespace apimu::eval {
     // [√]
     addPrimitive("display", true, [this](Tree*, Tree* e) -> Result {
       auto const& [head, tail] = expect<Cons>(e);
-      if (out) *out << expect<String>(head).val << "\n";
+      if (out)
+        *out << expect<String>(head).val << "\n";
       return {unit};
     });
     addPrimitive("debug_save_file", true, [this](Tree*, Tree* e) -> Result {
       auto const& [lhs, t] = expect<Cons>(e);
       auto const& [rhs, _] = expect<Cons>(t);
       auto out = std::ofstream(expect<String>(lhs).val);
-      if (!out.is_open()) throw PartialEvalError("Could not open file", lhs);
+      if (!out.is_open())
+        throw PartialEvalError("Could not open file", lhs);
       out << expect<String>(rhs).val << std::endl;
       return {unit};
     });
@@ -649,7 +682,8 @@ namespace apimu::eval {
         auto const& lhs = curr->head;
         if (auto const& t = get_if<Cons>(curr->tail)) {
           auto const& rhs = t->head;
-          if (auto const& sym = get_if<Symbol>(lhs); sym && sym->val == s) return get_if<Unit>(rhs) ? nullptr : rhs;
+          if (auto const& sym = get_if<Symbol>(lhs); sym && sym->val == s)
+            return get_if<Unit>(rhs) ? nullptr : rhs;
         }
       }
     }
@@ -657,14 +691,16 @@ namespace apimu::eval {
   }
 
   auto Evaluator::resolve(parsing::Node const& node, vector<Tree*> const& tails, size_t maxDepth) -> vector<Tree*> {
-    if (maxDepth == 0) return {};
+    if (maxDepth == 0)
+      return {};
     auto const& nodes = parser->parser.nodes();
     auto const& tokens = parser->parser.tokens();
     auto const& [state, _, links] = node;
     auto res = vector<Tree*>();
     if (state.progress == 0) {
       // Whole rule completed.
-      for (auto const r: tails) res.push_back(cons(sym(ruleNames[state.rule]), r));
+      for (auto const r: tails)
+        res.push_back(cons(sym(ruleNames[state.rule]), r));
     } else {
       // One step to left.
       for (auto const& [prev, leaf, child]: links) {
@@ -672,9 +708,11 @@ namespace apimu::eval {
           leaf ? vector<Tree*>(1, str(std::string(tokens[child].lexeme))) : resolve(nodes[child], {nil}, maxDepth - 1);
         auto prod = vector<Tree*>();
         for (auto const c: childTrees)
-          for (auto const r: tails) prod.push_back(cons(c, r));
+          for (auto const r: tails)
+            prod.push_back(cons(c, r));
         auto const& final = resolve(nodes[prev], prod, maxDepth);
-        for (auto const f: final) res.push_back(f);
+        for (auto const f: final)
+          res.push_back(f);
       }
     }
     return res;
@@ -702,7 +740,8 @@ namespace apimu::eval {
       auto const& [lhs, rhs] = grammar->rules[state.rule];
       if (state.begin == 0 && lhs.first == startSymbol && state.progress == rhs.size()) {
         auto const& final = resolve(nodes[ni], {nil()}, maxDepth);
-        for (auto const f: final) all.push_back(f);
+        for (auto const f: final)
+          all.push_back(f);
       }
     }
     if (all.empty()) {
@@ -714,7 +753,8 @@ namespace apimu::eval {
       // Ambiguous.
       auto ss = std::ostringstream();
       ss << "Ambiguous parses:\n";
-      for (auto const& parse: all) ss << parse->toString() << "\n";
+      for (auto const& parse: all)
+        ss << parse->toString() << "\n";
       _messages.emplace_back(Message{true, ss.str(), info.first, info.second});
       return {};
     }
@@ -754,7 +794,8 @@ namespace apimu::eval {
 
   // Expands elements in a list
   auto Evaluator::expandList(Tree* e) -> Tree* {
-    if (get_if<Nil>(e)) return e;
+    if (get_if<Nil>(e))
+      return e;
     else if (auto const& econs = get_if<Cons>(e)) {
       auto const& [head, tail] = *econs;
       auto const& ehead = expand(head);
@@ -770,8 +811,10 @@ namespace apimu::eval {
 
       if (auto const& sym = get_if<Symbol>(expr)) {
         // Symbols: evaluate to their bound values
-        if (auto const& val = lookup(env, sym->val)) return val;
-        if (auto const& it = namePrims.find(sym->val); it != namePrims.end()) return pool().make(Prim{it->second});
+        if (auto const& val = lookup(env, sym->val))
+          return val;
+        if (auto const& it = namePrims.find(sym->val); it != namePrims.end())
+          return pool().make(Prim{it->second});
         throw PartialEvalError("unbound symbol \"" + sym->val + "\"", expr);
 
       } else if (auto const& econs = get_if<Cons>(expr)) {
@@ -785,7 +828,8 @@ namespace apimu::eval {
             auto const& [evalParams, f] = prims[prim->id];
             auto const& res = f(env, evalParams ? evalList(env, tail) : tail);
             // No tail call, return
-            if (!res.env) return res.expr;
+            if (!res.env)
+              return res.expr;
             // Tail call
             env = res.env;
             expr = res.expr;
@@ -823,7 +867,8 @@ namespace apimu::eval {
 
   // Evaluates elements in a list (often used as parameters)
   auto Evaluator::evalList(Tree* env, Tree* e) -> Tree* {
-    if (get_if<Nil>(e)) return e;
+    if (get_if<Nil>(e))
+      return e;
     else if (auto const& econs = get_if<Cons>(e)) {
       auto const& [head, tail] = *econs;
       auto const& ehead = eval(env, head);
@@ -852,7 +897,8 @@ namespace apimu::eval {
   auto Evaluator::quasiquote(Tree* env, Tree* e) -> Tree* {
     if (auto const& econs = get_if<Cons>(e)) {
       auto const& [head, tail] = *econs;
-      if (*head == Tree(Symbol{"unquote"})) return eval(env, expect<Cons>(tail).head);
+      if (*head == Tree(Symbol{"unquote"}))
+        return eval(env, expect<Cons>(tail).head);
       auto const& ehead = quasiquote(env, head);
       auto const& etail = quasiquote(env, tail);
       return (ehead == head && etail == tail) ? e : pool().make(ehead, etail);

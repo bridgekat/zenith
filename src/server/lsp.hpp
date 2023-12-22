@@ -46,10 +46,12 @@ namespace apimu::server::lsp {
     std::optional<std::string> text;
   };
 
-  STRUCT_CONV(TextDocumentIdentifier) { DocumentUri uri; };
+  STRUCT_CONV(TextDocumentIdentifier) {
+    DocumentUri uri;
+  };
 
   STRUCT_CONV(VersionedTextDocumentIdentifier):
-    TextDocumentIdentifier {
+      TextDocumentIdentifier {
     std::int32_t version = 0;
   };
 
@@ -58,7 +60,9 @@ namespace apimu::server::lsp {
     std::string text;
   };
 
-  STRUCT_CONV(CodeDescription) { Uri href; };
+  STRUCT_CONV(CodeDescription) {
+    Uri href;
+  };
 
   STRUCT_CONV(Location) {
     DocumentUri uri;

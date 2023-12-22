@@ -15,7 +15,8 @@ namespace apimu::parsing {
   auto GrammarBuilder::rule(InputPair lhs, std::vector<InputPair> const& rhs) -> GrammarBuilder& {
     auto& rule = _rules.emplace_back();
     rule.lhs = lhs.value;
-    for (auto& r: rhs) rule.rhs.push_back(r.value);
+    for (auto& r: rhs)
+      rule.rhs.push_back(r.value);
     return *this;
   }
 
@@ -35,22 +36,26 @@ namespace apimu::parsing {
     numSymbols = std::max(startSymbol, ignoredSymbol);
     for (auto const& [lhs, rhs]: rules) {
       numSymbols = std::max(numSymbols, lhs.first);
-      for (auto const& r: rhs) numSymbols = std::max(numSymbols, r.first);
+      for (auto const& r: rhs)
+        numSymbols = std::max(numSymbols, r.first);
     }
     numSymbols++;
 
     // Sort all rules by LHS symbol ID and precedence (for faster access).
     sorted.clear();
-    for (auto i = 0_z; i < n; i++) sorted.push_back(i);
+    for (auto i = 0uz; i < n; i++)
+      sorted.push_back(i);
     std::sort(sorted.begin(), sorted.end(), [&rules](size_t i, size_t j) { return rules[i].lhs < rules[j].lhs; });
 
     // For each symbol ID find the index range of its production rules in `sorted` (for faster access).
     // If none then all set to n.
     ranges = std::vector<Grammar::IndexRange>(numSymbols, {n, n});
-    for (auto i = 0_z; i < n; i++) {
+    for (auto i = 0uz; i < n; i++) {
       auto const& curr = rules[sorted[i]].lhs.first;
-      if (i == 0 || rules[sorted[i - 1]].lhs.first != curr) ranges[curr].begin = i;
-      if (i == n - 1 || rules[sorted[i + 1]].lhs.first != curr) ranges[curr].end = i + 1;
+      if (i == 0 || rules[sorted[i - 1]].lhs.first != curr)
+        ranges[curr].begin = i;
+      if (i == n - 1 || rules[sorted[i + 1]].lhs.first != curr)
+        ranges[curr].end = i + 1;
     }
     return res;
   }
@@ -58,13 +63,15 @@ namespace apimu::parsing {
   // Returns next non-ignored token, or `std::nullopt` if reaches EOF.
   auto EarleyParser::_nextToken() -> std::optional<Token> {
     while (auto const token = _marked.next())
-      if (token->id != _grammar.ignoredSymbol) return token;
+      if (token->id != _grammar.ignoredSymbol)
+        return token;
     return {};
   }
 
   // Skip `count` tokens.
   auto EarleyParser::_skipTokens(size_t count) -> void {
-    for (auto i = 0_z; i < count; i++) _nextToken();
+    for (auto i = 0uz; i < count; i++)
+      _nextToken();
   }
 
   // Adds a node with state `state` to `_nodes` while registering it in `_map`.
@@ -72,7 +79,8 @@ namespace apimu::parsing {
   auto EarleyParser::_node(size_t begin, size_t end, size_t rule, size_t progress) -> size_t {
     assert(_ranges.size() == end + 1);
     auto const state = Node::State{begin, end, rule, progress};
-    if (auto const it = _map.find(state); it != _map.end()) return it->second;
+    if (auto const it = _map.find(state); it != _map.end())
+      return it->second;
     _nodes.push_back(Node{state, {}, {}});
     _ranges[end].end = _nodes.size();
     return _map[state] = _nodes.size() - 1;
@@ -110,7 +118,8 @@ namespace apimu::parsing {
           // Perform prediction.
           auto const& [sym, prec] = sr[s.progress];
           for (auto k = _grammar.ranges[sym].begin; k < _grammar.ranges[sym].end; k++)
-            if (prec <= rules[sorted[k]].lhs.second) _node(i, i, sorted[k], 0);
+            if (prec <= rules[sorted[k]].lhs.second)
+              _node(i, i, sorted[k], 0);
           // Add to completion candidates.
           _completions.emplace(std::pair(i, sym), si);
           // Special null-completion (if `sym` is already null-completed, we are late, so we have to complete here.)
@@ -120,10 +129,12 @@ namespace apimu::parsing {
             auto const t = _nodes[ti].state;
             auto const& [tl, tr] = rules[t.rule];
             assert(t.progress == tr.size() && tl.first == sym);
-            if (prec <= tl.second) _transition(si, false, ti, _node(s.begin, i, s.rule, s.progress + 1));
+            if (prec <= tl.second)
+              _transition(si, false, ti, _node(s.begin, i, s.rule, s.progress + 1));
           }
           // Unconditional null-completion.
-          if (unconditional) _node(s.begin, i, s.rule, s.progress + 1);
+          if (unconditional)
+            _node(s.begin, i, s.rule, s.progress + 1);
         } else {
           // Perform completion.
           auto const& [sym, prec] = sl;
@@ -133,16 +144,19 @@ namespace apimu::parsing {
             auto const t = _nodes[ti].state;
             auto const& [tl, tr] = rules[t.rule];
             assert(t.progress < tr.size() && tr[t.progress].first == sym);
-            if (tr[t.progress].second <= prec) _transition(ti, false, si, _node(t.begin, i, t.rule, t.progress + 1));
+            if (tr[t.progress].second <= prec)
+              _transition(ti, false, si, _node(t.begin, i, t.rule, t.progress + 1));
           }
           // If null, add to known null-completions (so that late predictions have a chance to catch up.)
-          if (s.begin == i) _completed.emplace(std::pair(i, sym), si);
+          if (s.begin == i)
+            _completed.emplace(std::pair(i, sym), si);
         }
       }
 
       // Advance to next position.
       auto const& opt = _nextToken();
-      if (!opt) return finalStates().empty() ? Result::eofFailure : Result::eofSuccess;
+      if (!opt)
+        return finalStates().empty() ? Result::eofFailure : Result::eofSuccess;
       _marked.mark();
       _tokens.push_back(*opt);
       _ranges.push_back(IndexRange{_nodes.size(), _nodes.size()});
@@ -159,7 +173,8 @@ namespace apimu::parsing {
       }
 
       // Check if any new state is created.
-      if (_ranges[i + 1].begin == _ranges[i + 1].end) return Result::emptyFailure;
+      if (_ranges[i + 1].begin == _ranges[i + 1].end)
+        return Result::emptyFailure;
     }
 
     // Reached designated length.
@@ -223,17 +238,20 @@ namespace apimu::parsing {
 
     auto map = decltype(_map)();
     for (auto const& item: _map)
-      if (item.second < _nodes.size()) map.insert(item);
+      if (item.second < _nodes.size())
+        map.insert(item);
     _map = std::move(map);
 
     auto completions = decltype(_completions)();
     for (auto const& item: _completions)
-      if (item.second < _nodes.size()) completions.insert(item);
+      if (item.second < _nodes.size())
+        completions.insert(item);
     _completions = std::move(completions);
 
     auto completed = decltype(_completed)();
     for (auto const& item: _completed)
-      if (item.second < _nodes.size()) completed.insert(item);
+      if (item.second < _nodes.size())
+        completed.insert(item);
     _completed = std::move(completed);
   }
 
@@ -250,7 +268,8 @@ namespace apimu::parsing {
     for (auto si = _ranges[i].begin; si < _ranges[i].end; si++) {
       auto const& s = _nodes[si].state;
       auto const& [sl, sr] = rules[s.rule];
-      if (sl.first == startSymbol && s.begin == 0 && s.progress == sr.size()) res.push_back(si);
+      if (sl.first == startSymbol && s.begin == 0 && s.progress == sr.size())
+        res.push_back(si);
     }
     return res;
   }
@@ -277,10 +296,12 @@ namespace apimu::parsing {
       auto result = _run(recoveryMode);
 
       // If success, return.
-      if (result == Result::eofSuccess) return !errors;
+      if (result == Result::eofSuccess)
+        return !errors;
       // Try rolling back.
       if (_params.rollback) {
-        if (_tokens.empty()) return false; // Reached EOF with no tokens consumed.
+        if (_tokens.empty())
+          return false; // Reached EOF with no tokens consumed.
         for (auto i = _tokens.size(); i-- > 1;)
           if (!finalStates(i).empty()) { // Rollback successful.
             _restore(i);
@@ -300,22 +321,26 @@ namespace apimu::parsing {
       for (auto si = begin; si < end; si++) {
         auto const& s = _nodes[si].state;
         auto const& [sl, sr] = _grammar.rules[s.rule];
-        if (s.progress < sr.size()) expected.push_back(sr[s.progress].first);
+        if (s.progress < sr.size())
+          expected.push_back(sr[s.progress].first);
       }
       std::sort(expected.begin(), expected.end());
       expected.resize(static_cast<size_t>(std::unique(expected.begin(), expected.end()) - expected.begin()));
-      if (result == Result::emptyFailure) got = _tokens.back();
+      if (result == Result::emptyFailure)
+        got = _tokens.back();
       _handler.parsingError(std::move(expected), std::move(got));
 
       // If reached EOF, return.
-      if (result == Result::eofFailure) return false;
+      if (result == Result::eofFailure)
+        return false;
 
       // Perform error recovery (try advancing rules & skipping tokens...)
       auto success = false;
       auto position = _tokens.size();
-      for (auto skipped = 0_z; skipped <= _params.maxSkipped; skipped++) {
-        for (auto left = 0_z; left <= skipped; left++) {
-          if (position < left) continue;
+      for (auto skipped = 0uz; skipped <= _params.maxSkipped; skipped++) {
+        for (auto left = 0uz; left <= skipped; left++) {
+          if (position < left)
+            continue;
           // Multiple `MarkedStream`s will modify the same underlying token stream here...
           // But it should still be safe (net effect = advances the underlying token stream, by "TRUST ME").
           auto copy = *this;
@@ -328,13 +353,16 @@ namespace apimu::parsing {
             _skipTokens(skipped);
             success = true;
           }
-          if (success) break;
+          if (success)
+            break;
         }
-        if (success) break;
+        if (success)
+          break;
       }
 
       // If recovery failed, return.
-      if (!success) return false;
+      if (!success)
+        return false;
     }
   }
 
@@ -352,19 +380,22 @@ namespace apimu::parsing {
 
     // Find source node.
     auto res = stk.back();
-    while (!_nodes[res].prev.empty()) res = _nodes[res].prev[0].sibling;
+    while (!_nodes[res].prev.empty())
+      res = _nodes[res].prev[0].sibling;
     assert(_nodes[res].state.progress == 0);
 
     // Mark reachability from sink nodes, depth-first.
     while (!stk.empty()) {
       auto const curr = stk.back();
       stk.pop_back();
-      if (_nodes[curr].prev.empty()) assert(curr == res);
+      if (_nodes[curr].prev.empty())
+        assert(curr == res);
       auto const& s = _nodes[curr].state;
       for (auto const& [prev, leaf, child]: _nodes[curr].prev) {
         auto const& t = _nodes[prev].state;
         assert(t.begin == s.begin && t.end <= s.end && t.rule == s.rule && t.progress + 1 == s.progress);
-        if (_nodes[prev].next.empty()) stk.push_back(prev); // First time becoming reachable, propagate on.
+        if (_nodes[prev].next.empty())
+          stk.push_back(prev); // First time becoming reachable, propagate on.
         _nodes[prev].next.push_back(Node::Link{curr, leaf, child});
       }
     }

@@ -29,16 +29,17 @@ namespace apimu::server {
     aindex.clear();
 
     auto lineBreak = std::vector<bool>(n + 1, false);
-    for (auto i = 0_z; i <= n; i++) {
+    for (auto i = 0uz; i <= n; i++) {
       if (content.substr(i, eol.size()) == eol) {
-        if (i + eol.size() > n) unreachable;
+        if (i + eol.size() > n)
+          unreachable;
         lineBreak[i + eol.size()] = true;
       }
     }
 
-    auto lastLineIndex = 0_z;
+    auto lastLineIndex = 0uz;
     aindex.emplace_back();
-    for (auto i = 0_z; i <= n; i++) {
+    for (auto i = 0uz; i <= n; i++) {
       if (lineBreak[i]) {
         aindex.back().push_back(i); // Probably not needed
         aindex.emplace_back();

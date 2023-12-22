@@ -21,12 +21,18 @@ namespace apimu::elab {
   auto typeToString(unsigned int t) noexcept -> string {
     using enum Tableau::Type;
     switch (t) {
-      case Iota: return "ι";
-      case Alpha: return "α";
-      case Beta: return "β";
-      case Gamma: return "γ";
-      case Delta: return "δ";
-      case GammaRetry: return "γre";
+      case Iota:
+        return "ι";
+      case Alpha:
+        return "α";
+      case Beta:
+        return "β";
+      case Gamma:
+        return "γ";
+      case Delta:
+        return "δ";
+      case GammaRetry:
+        return "γre";
     }
     return "?";
   }
@@ -37,34 +43,58 @@ namespace apimu::elab {
     switch (antesucc) {
       case L:
         switch (fof.tag) {
-          case Other: return Iota;
-          case Equals: return Iota;
-          case True: return Alpha;
-          case False: return Alpha;
-          case Not: return Alpha;
-          case And: return Alpha;
-          case Or: return Beta;
-          case Implies: return Beta;
-          case Iff: return Alpha;
-          case Forall: return Gamma;
-          case Exists: return Delta;
-          case Unique: return Alpha;
+          case Other:
+            return Iota;
+          case Equals:
+            return Iota;
+          case True:
+            return Alpha;
+          case False:
+            return Alpha;
+          case Not:
+            return Alpha;
+          case And:
+            return Alpha;
+          case Or:
+            return Beta;
+          case Implies:
+            return Beta;
+          case Iff:
+            return Alpha;
+          case Forall:
+            return Gamma;
+          case Exists:
+            return Delta;
+          case Unique:
+            return Alpha;
         }
         break;
       case R:
         switch (fof.tag) {
-          case Other: return Iota;
-          case Equals: return Iota;
-          case True: return Alpha;
-          case False: return Alpha;
-          case Not: return Alpha;
-          case And: return Beta;
-          case Or: return Alpha;
-          case Implies: return Alpha;
-          case Iff: return Beta;
-          case Forall: return Delta;
-          case Exists: return Gamma;
-          case Unique: return Beta;
+          case Other:
+            return Iota;
+          case Equals:
+            return Iota;
+          case True:
+            return Alpha;
+          case False:
+            return Alpha;
+          case Not:
+            return Alpha;
+          case And:
+            return Beta;
+          case Or:
+            return Alpha;
+          case Implies:
+            return Alpha;
+          case Iff:
+            return Beta;
+          case Forall:
+            return Delta;
+          case Exists:
+            return Gamma;
+          case Unique:
+            return Beta;
         }
         break;
     }
@@ -73,7 +103,7 @@ namespace apimu::elab {
 
   // Apply `subs` to all of `cont`
   auto Tableau::applySubs(Subs const& subs, [[maybe_unused]] bool assertNoChange) -> void {
-    for (auto ind = 0_z; ind < cont.size(); ind++) {
+    for (auto ind = 0uz; ind < cont.size(); ind++) {
       auto& br = cont[ind];
       br.hashset[L].clear();
       br.hashset[R].clear();
@@ -118,8 +148,9 @@ namespace apimu::elab {
 
   // Check if `subs` does not contain variables with ID less than `offset`
   auto subsStartsFrom(Subs const& subs, size_t offset) -> bool {
-    for (auto i = 0_z; i < subs.size() && i < offset; i++)
-      if (subs[i]) return false;
+    for (auto i = 0uz; i < subs.size() && i < offset; i++)
+      if (subs[i])
+        return false;
     return true;
   }
 
@@ -131,11 +162,13 @@ namespace apimu::elab {
     T const prev;
 
     WithValue(T* p, T const& value):
-      p(p),
-      prev(*p) {
+        p(p),
+        prev(*p) {
       *p = value;
     }
-    ~WithValue() { *p = prev; }
+    ~WithValue() {
+      *p = prev;
+    }
 
     WithValue(WithValue const&) = delete;
     WithValue(WithValue&&) = delete;
@@ -154,20 +187,23 @@ namespace apimu::elab {
     bool reAdd = false;
 
     WithCedent(Tableau* p, Expr const* e, Tableau::Position pos, bool* closed, bool reAdd = false):
-      p(p),
-      i(Tableau::classify(pos, e)),
-      pos(pos),
-      ehash(ExprHash(e)),
-      reAdd(reAdd) {
-      if (reAdd) i = Tableau::Type::GammaRetry;
+        p(p),
+        i(Tableau::classify(pos, e)),
+        pos(pos),
+        ehash(ExprHash(e)),
+        reAdd(reAdd) {
+      if (reAdd)
+        i = Tableau::Type::GammaRetry;
       inserted = p->branch.hashset[pos].insert(ehash).second;
-      if (p->branch.hashset[Tableau::invert(pos)].contains(ehash)) *closed = true;
+      if (p->branch.hashset[Tableau::invert(pos)].contains(ehash))
+        *closed = true;
       if (inserted || reAdd) {
         p->branch.cedents[i][pos].push_back(e);
         p->branch.timestamps[i][pos].push_back(p->branch.numCedents);
         p->branch.numCedents++;
         p->branch.numUniversals[i][pos].push_back(p->branch.numUniversal);
-        if (i == Tableau::Type::Beta) p->branch.betaUsed[pos].push_back(false);
+        if (i == Tableau::Type::Beta)
+          p->branch.betaUsed[pos].push_back(false);
       }
     }
     ~WithCedent() {
@@ -176,9 +212,11 @@ namespace apimu::elab {
         p->branch.timestamps[i][pos].pop_back();
         p->branch.numCedents--;
         p->branch.numUniversals[i][pos].pop_back();
-        if (i == Tableau::Type::Beta) p->branch.betaUsed[pos].pop_back();
+        if (i == Tableau::Type::Beta)
+          p->branch.betaUsed[pos].pop_back();
       }
-      if (inserted) p->branch.hashset[pos].erase(ehash);
+      if (inserted)
+        p->branch.hashset[pos].erase(ehash);
     }
 
     WithCedent(WithCedent const&) = delete;
@@ -192,7 +230,9 @@ namespace apimu::elab {
     check();
 
     // TODO: make early test in branching situations
-    if (branch.depth >= maxTabDepth) { return false; }
+    if (branch.depth >= maxTabDepth) {
+      return false;
+    }
     if (depth >= maxDepth) {
       maxDepthReached = maxDepth;
       return false;
@@ -201,11 +241,14 @@ namespace apimu::elab {
     invocations++;
 
 #ifdef DEBUG_TRACE
-    if (invocations % 1000 == 0) { debughtml("log_" + std::to_string(invocations)); }
+    if (invocations % 1000 == 0) {
+      debughtml("log_" + std::to_string(invocations));
+    }
 #endif
 
     auto closing = [this](size_t depth) {
-      if (cont.empty()) return true;
+      if (cont.empty())
+        return true;
       auto backup = branch;
       branch = cont.back();
       cont.pop_back();
@@ -214,7 +257,8 @@ namespace apimu::elab {
 #endif
       auto res = dfs(depth);
 #ifdef CHECK_INVARIANTS
-      if (branch != t) unreachable;
+      if (branch != t)
+        unreachable;
 #endif
       cont.push_back(branch);
       branch = backup;
@@ -231,7 +275,8 @@ namespace apimu::elab {
       for (auto& [q, _]: branch.hashset[invert(pos)]) {
         auto unifier = procs::unify({std::make_pair(e, q)}, pool);
         if (unifier.has_value()) {
-          if (!procs::equalAfterSubs(e, q, unifier.value())) unreachable;
+          if (!procs::equalAfterSubs(e, q, unifier.value()))
+            unreachable;
           // If there's a unifier that doesn't affect other branches, we use that one and discard the rest.
           if (cont.empty() || subsStartsFrom(unifier.value(), cont.back().numUniversal)) {
             auto backup = cont;
@@ -242,7 +287,8 @@ namespace apimu::elab {
 #endif
             auto res = closing(depth);
 #ifdef CHECK_INVARIANTS
-            if (cont != t) unreachable;
+            if (cont != t)
+              unreachable;
 #endif
             cont = backup;
             pools.pop_back();
@@ -262,11 +308,13 @@ namespace apimu::elab {
 #endif
           auto res = closing(depth);
 #ifdef CHECK_INVARIANTS
-          if (cont != t) unreachable;
+          if (cont != t)
+            unreachable;
 #endif
           cont = backup;
           pools.pop_back();
-          if (res) return true;
+          if (res)
+            return true;
         }
       }
       return dfs(depth);
@@ -314,9 +362,11 @@ namespace apimu::elab {
       auto g = WithCedent(this, e1, pos1, &closed);
       auto gd = WithValue(&branch.depth, closed ? branch.depth : (branch.depth + 1));
       auto res = closed ? closing(depth) : dfs(depth + 1);
-      if (inserted) cont.pop_back();
+      if (inserted)
+        cont.pop_back();
 #ifdef CHECK_INVARIANTS
-      if (cont != t) unreachable;
+      if (cont != t)
+        unreachable;
 #endif
       return res;
     };
@@ -341,7 +391,8 @@ namespace apimu::elab {
         auto gd = WithValue(&branch.depth, closed ? branch.depth : reentrant ? (branch.depth + 1) : branch.depth);
         return closed ? closing(depth) : dfs(reentrant ? (depth + 1) : depth);
       } else {
-        if (reentrant) unreachable;
+        if (reentrant)
+          unreachable;
         return closed ? closing(depth) : dfs(depth);
       }
     };
@@ -351,7 +402,8 @@ namespace apimu::elab {
       auto closed = false;
       auto id = numSkolem + ctx.size();
       auto metas = vector<uint64_t>();
-      for (auto i = uint64_t{0}; i < branch.numUniversal; i++) metas.push_back(i);
+      for (auto i = uint64_t{0}; i < branch.numUniversal; i++)
+        metas.push_back(i);
       auto body = e->app.r->lam.r->makeReplace(procs::makeSkolem(id, metas, pool), pool);
       auto gn = WithValue(&numSkolem, numSkolem + 1);
       auto g = WithCedent(this, body, pos, &closed);
@@ -366,23 +418,34 @@ namespace apimu::elab {
       if (antei < ante.size()) {
         auto e = ante[antei];
         auto gi = WithValue(&antei, antei + 1);
-        if (!(classify(L, e) == i || (classify(L, e) == Gamma && i == GammaRetry))) unreachable;
+        if (!(classify(L, e) == i || (classify(L, e) == Gamma && i == GammaRetry)))
+          unreachable;
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
-          case Other: return iota(L, e);
-          case Equals: return iota(L, e);
-          case True: return dfs(depth);
-          case False: return closing(depth);
-          case Not: return unary(R, fof.unary.e);
-          case And: return alpha(L, fof.binary.l, L, fof.binary.r);
-          case Or: unreachable;
-          case Implies: unreachable;
+          case Other:
+            return iota(L, e);
+          case Equals:
+            return iota(L, e);
+          case True:
+            return dfs(depth);
+          case False:
+            return closing(depth);
+          case Not:
+            return unary(R, fof.unary.e);
+          case And:
+            return alpha(L, fof.binary.l, L, fof.binary.r);
+          case Or:
+            unreachable;
+          case Implies:
+            unreachable;
           case Iff: {
             auto const [mp, mpr] = fof.splitIff(pool);
             return alpha(L, mp, L, mpr);
           }
-          case Forall: return gamma(L, e, false);
-          case Exists: return delta(L, e);
+          case Forall:
+            return gamma(L, e, false);
+          case Exists:
+            return delta(L, e);
           case Unique: {
             auto const [exi, no2] = fof.splitUnique(pool);
             return alpha(L, exi, L, no2);
@@ -395,21 +458,34 @@ namespace apimu::elab {
       if (succi < succ.size()) {
         auto e = succ[succi];
         auto gi = WithValue(&succi, succi + 1);
-        if (!(classify(R, e) == i || (classify(R, e) == Gamma && i == GammaRetry))) unreachable;
+        if (!(classify(R, e) == i || (classify(R, e) == Gamma && i == GammaRetry)))
+          unreachable;
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
-          case Other: return iota(R, e);
-          case Equals: return iota(R, e);
-          case True: return closing(depth);
-          case False: return dfs(depth);
-          case Not: return unary(L, fof.unary.e);
-          case And: unreachable;
-          case Or: return alpha(R, fof.binary.l, R, fof.binary.r);
-          case Implies: return alpha(L, fof.binary.l, R, fof.binary.r);
-          case Iff: unreachable;
-          case Forall: return delta(R, e);
-          case Exists: return gamma(R, e, false);
-          case Unique: unreachable;
+          case Other:
+            return iota(R, e);
+          case Equals:
+            return iota(R, e);
+          case True:
+            return closing(depth);
+          case False:
+            return dfs(depth);
+          case Not:
+            return unary(L, fof.unary.e);
+          case And:
+            unreachable;
+          case Or:
+            return alpha(R, fof.binary.l, R, fof.binary.r);
+          case Implies:
+            return alpha(L, fof.binary.l, R, fof.binary.r);
+          case Iff:
+            unreachable;
+          case Forall:
+            return delta(R, e);
+          case Exists:
+            return gamma(R, e, false);
+          case Unique:
+            unreachable;
         }
         unreachable;
       }
@@ -426,21 +502,27 @@ namespace apimu::elab {
       // size_t& antei = branch.indices[i][L], & succi = branch.indices[i][R];
       auto &anteu = branch.betaUsed[L], &succu = branch.betaUsed[R];
 
-      for (auto ii = 0_z; ii < ante.size(); ii++)
+      for (auto ii = 0uz; ii < ante.size(); ii++)
         if (!anteu[ii]) {
           auto e = ante[ii];
           anteu[ii] = true;
           auto res = false;
           auto fof = FOLForm::fromExpr(e);
           switch (fof.tag) {
-            case Or: res = beta(L, fof.binary.l, L, fof.binary.r); break;
-            case Implies: res = beta(R, fof.binary.l, L, fof.binary.r); break;
-            default: unreachable;
+            case Or:
+              res = beta(L, fof.binary.l, L, fof.binary.r);
+              break;
+            case Implies:
+              res = beta(R, fof.binary.l, L, fof.binary.r);
+              break;
+            default:
+              unreachable;
           }
           anteu[ii] = false;
-          if (res) return true;
+          if (res)
+            return true;
         }
-      for (auto ii = 0_z; ii < succ.size(); ii++)
+      for (auto ii = 0uz; ii < succ.size(); ii++)
         if (!succu[ii]) {
           auto e = succ[ii];
           // Ahhhhhhh this is too messy
@@ -448,7 +530,9 @@ namespace apimu::elab {
           auto res = false;
           auto fof = FOLForm::fromExpr(e);
           switch (fof.tag) {
-            case And: res = beta(R, fof.binary.l, R, fof.binary.r); break;
+            case And:
+              res = beta(R, fof.binary.l, R, fof.binary.r);
+              break;
             case Iff: {
               auto const [mp, mpr] = fof.splitIff(pool);
               res = beta(R, mp, R, mpr);
@@ -457,10 +541,12 @@ namespace apimu::elab {
               auto const [exi, no2] = fof.splitUnique(pool);
               res = beta(R, exi, R, no2);
             } break;
-            default: unreachable;
+            default:
+              unreachable;
           }
           succu[ii] = false;
-          if (res) return true;
+          if (res)
+            return true;
         }
     }
 
@@ -475,9 +561,11 @@ namespace apimu::elab {
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Forall:
-            if (gamma(L, e, true)) return true;
+            if (gamma(L, e, true))
+              return true;
             break;
-          default: unreachable;
+          default:
+            unreachable;
         }
       }
       for (auto ii = succi; ii < succ.size(); ii++) {
@@ -486,9 +574,11 @@ namespace apimu::elab {
         auto fof = FOLForm::fromExpr(e);
         switch (fof.tag) {
           case Exists:
-            if (gamma(R, e, true)) return true;
+            if (gamma(R, e, true))
+              return true;
             break;
-          default: unreachable;
+          default:
+            unreachable;
         }
       }
     }
@@ -521,12 +611,13 @@ namespace apimu::elab {
 
   auto Tableau::iterativeDeepening(size_t setMaxTabDepth, size_t step) -> bool {
     // Try with smaller depths
-    auto currMaxDepth = 2_z;
-    for (auto i = 1_z; i < setMaxTabDepth; i += step, currMaxDepth += step * 4) {
+    auto currMaxDepth = 2uz;
+    for (auto i = 1uz; i < setMaxTabDepth; i += step, currMaxDepth += step * 4) {
       std::cout << "** Current tableau depth: " << i << ", search depth: " << currMaxDepth << ", ";
       auto res = search(currMaxDepth, i);
       std::cout << "DFS invocations: " << invocations << std::endl;
-      if (res) return true;
+      if (res)
+        return true;
     }
     // Try with maximum depth
     std::cout << "** Current tableau depth: " << setMaxTabDepth << ", search depth: " << currMaxDepth << ", ";
@@ -539,9 +630,11 @@ namespace apimu::elab {
     auto res = string();
     res += "+------------------------------------\n";
     for (unsigned int i = 0; i < N; i++)
-      for (Expr const* e: branch.cedents[i][L]) res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
+      for (Expr const* e: branch.cedents[i][L])
+        res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     for (unsigned int i = 0; i < N; i++)
-      for (Expr const* e: branch.cedents[i][R]) res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
+      for (Expr const* e: branch.cedents[i][R])
+        res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     res += "+------------------------------------\n";
     return res;
   }
@@ -551,11 +644,13 @@ namespace apimu::elab {
     res += "+------------------------------------\n";
     for (unsigned int i = 0; i < N; i++) {
       res += "| (" + typeToString(i) + ") " + std::to_string(branch.indices[i][L]) + "\n";
-      for (Expr const* e: branch.cedents[i][L]) res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
+      for (Expr const* e: branch.cedents[i][L])
+        res += "| " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     }
     for (unsigned int i = 0; i < N; i++) {
       res += "| (" + typeToString(i) + ") " + std::to_string(branch.indices[i][R]) + "\n";
-      for (Expr const* e: branch.cedents[i][R]) res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
+      for (Expr const* e: branch.cedents[i][R])
+        res += "| ⊢ " + FOLForm::fromExpr(e).toString(ctx) + "\n";
     }
     res += "+------------------------------------\n";
     return res;
@@ -587,7 +682,9 @@ namespace apimu::elab {
     }
     for (auto i = uint32_t{0}; i < N; i++) {
       for (auto pos = uint32_t{0}; pos < 2; pos++) {
-        for (auto e: b.cedents[i][pos]) { ths[pos].erase(ExprHash(e)); }
+        for (auto e: b.cedents[i][pos]) {
+          ths[pos].erase(ExprHash(e));
+        }
       }
     }
     for (auto& eh: ths[0]) {
@@ -607,14 +704,18 @@ namespace apimu::elab {
   auto Tableau::check() -> void {
 #ifdef CHECK_INVARIANTS
     checkBranch(branch);
-    for (auto ind = 0_z; ind < cont.size(); ind++) {
+    for (auto ind = 0uz; ind < cont.size(); ind++) {
       auto const& branch = cont[ind];
       checkBranch(branch);
-      if (branch.cedents[Beta][L].size() != branch.betaUsed[L].size()) unreachable;
-      if (branch.cedents[Beta][R].size() != branch.betaUsed[R].size()) unreachable;
+      if (branch.cedents[Beta][L].size() != branch.betaUsed[L].size())
+        unreachable;
+      if (branch.cedents[Beta][R].size() != branch.betaUsed[R].size())
+        unreachable;
       for (auto i = uint32_t{0}; i < N; i++) {
-        if (branch.cedents[i][L].size() != branch.timestamps[i][L].size()) unreachable;
-        if (branch.cedents[i][L].size() != branch.numUniversals[i][L].size()) unreachable;
+        if (branch.cedents[i][L].size() != branch.timestamps[i][L].size())
+          unreachable;
+        if (branch.cedents[i][L].size() != branch.numUniversals[i][L].size())
+          unreachable;
         for (auto e: branch.cedents[i][L]) {
           if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
@@ -625,8 +726,10 @@ namespace apimu::elab {
             unreachable;
           }
         }
-        if (branch.cedents[i][R].size() != branch.timestamps[i][R].size()) unreachable;
-        if (branch.cedents[i][R].size() != branch.numUniversals[i][R].size()) unreachable;
+        if (branch.cedents[i][R].size() != branch.timestamps[i][R].size())
+          unreachable;
+        if (branch.cedents[i][R].size() != branch.numUniversals[i][R].size())
+          unreachable;
         for (auto e: branch.cedents[i][R]) {
           if (e->numMeta() > branch.numUniversal) {
             std::cout << "Assertion failed at alt branch " << std::to_string(ind) << ":" << std::endl;
@@ -697,7 +800,9 @@ namespace apimu::elab {
       out << "</td>";
     };
     printBranch(branch, "main");
-    for (size_t i = 0; i < cont.size(); i++) { printBranch(cont[cont.size() - 1 - i], std::to_string(i)); }
+    for (size_t i = 0; i < cont.size(); i++) {
+      printBranch(cont[cont.size() - 1 - i], std::to_string(i));
+    }
     out << "</tr></tbody></table></body>" << endl;
   }
 

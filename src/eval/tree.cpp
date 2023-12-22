@@ -23,10 +23,13 @@ namespace apimu::eval {
     );
   }
 
-  auto Tree::toString() const -> string { return toStringUntil(nullptr).second; }
+  auto Tree::toString() const -> string {
+    return toStringUntil(nullptr).second;
+  }
 
   auto Tree::toStringUntil(Tree const* p) const -> pair<bool, string> {
-    if (this == p) return {true, ""};
+    if (this == p)
+      return {true, ""};
     return match(
       *this,
       [](Nil const&) { return pair(false, string("()")); },
@@ -34,25 +37,31 @@ namespace apimu::eval {
         auto res = string("(");
         auto const& [f0, s0] = x.head->toStringUntil(p);
         res += s0;
-        if (f0) return pair(true, res);
+        if (f0)
+          return pair(true, res);
         auto q = x.tail;
         while (auto cons = get_if<Cons>(q)) {
           auto const& [hd, tl] = *cons;
           res += " ";
-          if (q == p) return pair(true, res);
+          if (q == p)
+            return pair(true, res);
           auto const& [f1, s1] = hd->toStringUntil(p);
           res += s1;
-          if (f1) return pair(true, res);
+          if (f1)
+            return pair(true, res);
           q = tl;
         }
         if (!get_if<Nil>(q)) {
           res += " . ";
-          if (q == p) return pair(true, res);
+          if (q == p)
+            return pair(true, res);
           auto const& [f2, s2] = q->toStringUntil(p);
           res += s2;
-          if (f2) return pair(true, res);
+          if (f2)
+            return pair(true, res);
         }
-        if (q == p) return pair(true, res);
+        if (q == p)
+          return pair(true, res);
         return pair(false, res + ")");
       },
       [](Symbol const& x) { return pair(false, x.val); },
@@ -76,16 +85,36 @@ namespace apimu::eval {
     auto res = string();
     for (char c: s) {
       switch (c) {
-        case '"': res += "\\\""; break;
-        case '\\': res += "\\\\"; break;
-        case '\a': res += "\\a"; break;
-        case '\b': res += "\\b"; break;
-        case '\f': res += "\\f"; break;
-        case '\n': res += "\\n"; break;
-        case '\r': res += "\\r"; break;
-        case '\t': res += "\\t"; break;
-        case '\v': res += "\\v"; break;
-        default: res += c; break;
+        case '"':
+          res += "\\\"";
+          break;
+        case '\\':
+          res += "\\\\";
+          break;
+        case '\a':
+          res += "\\a";
+          break;
+        case '\b':
+          res += "\\b";
+          break;
+        case '\f':
+          res += "\\f";
+          break;
+        case '\n':
+          res += "\\n";
+          break;
+        case '\r':
+          res += "\\r";
+          break;
+        case '\t':
+          res += "\\t";
+          break;
+        case '\v':
+          res += "\\v";
+          break;
+        default:
+          res += c;
+          break;
       }
     }
     return res;
@@ -93,21 +122,43 @@ namespace apimu::eval {
 
   auto Tree::unescapeString(string const& s) -> string {
     auto res = string();
-    for (auto i = 0_z; i < s.size(); i++) {
+    for (auto i = 0uz; i < s.size(); i++) {
       if (s[i] == '\\' && i + 1 < s.size()) {
         char c = s[i + 1];
         switch (c) {
-          case '\'': res += '\''; break;
-          case '"': res += '"'; break;
-          case '?': res += '?'; break;
-          case '\\': res += '\\'; break;
-          case 'a': res += '\a'; break;
-          case 'b': res += '\b'; break;
-          case 'f': res += '\f'; break;
-          case 'n': res += '\n'; break;
-          case 'r': res += '\r'; break;
-          case 't': res += '\t'; break;
-          case 'v': res += '\v'; break;
+          case '\'':
+            res += '\'';
+            break;
+          case '"':
+            res += '"';
+            break;
+          case '?':
+            res += '?';
+            break;
+          case '\\':
+            res += '\\';
+            break;
+          case 'a':
+            res += '\a';
+            break;
+          case 'b':
+            res += '\b';
+            break;
+          case 'f':
+            res += '\f';
+            break;
+          case 'n':
+            res += '\n';
+            break;
+          case 'r':
+            res += '\r';
+            break;
+          case 't':
+            res += '\t';
+            break;
+          case 'v':
+            res += '\v';
+            break;
           default:
             res += '\\';
             res += c;

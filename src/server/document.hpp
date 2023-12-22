@@ -11,15 +11,25 @@ namespace apimu::server {
   public:
     using Position = std::pair<size_t, size_t>;
 
-    Document() { process(); }
+    Document() {
+      process();
+    }
 
-    auto toIndex(Position pos) const -> size_t { return aindex.at(pos.first).at(pos.second); }
-    auto toPosition(size_t index) const -> Position { return apos.at(index); }
+    auto toIndex(Position pos) const -> size_t {
+      return aindex.at(pos.first).at(pos.second);
+    }
+    auto toPosition(size_t index) const -> Position {
+      return apos.at(index);
+    }
     auto toUtf8(Position utf16) const -> Position;
     auto toUtf16(Position utf8) const -> Position;
 
-    auto eolIndicator() const -> std::string { return eol == "\r\n" ? "\\r\\n" : eol == "\r" ? "\\r" : "\\n"; }
-    auto getContent() const -> std::string const& { return content; }
+    auto eolIndicator() const -> std::string {
+      return eol == "\r\n" ? "\\r\\n" : eol == "\r" ? "\\r" : "\\n";
+    }
+    auto getContent() const -> std::string const& {
+      return content;
+    }
     auto setContent(std::string const& s) -> void {
       content = s;
       process();

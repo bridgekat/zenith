@@ -38,17 +38,19 @@ namespace apimu::server {
     auto getline = [this]() {
       auto res = std::string();
       std::getline(in, res);
-      if (!res.empty() && res.back() == '\r') res.pop_back();
+      if (!res.empty() && res.back() == '\r')
+        res.pop_back();
       return res;
     };
 
     // Read header part
-    auto n = 0_z;
+    auto n = 0uz;
     auto s = getline();
 
     while (s != "") {
       auto const p = s.find(": ");
-      if (p == std::string::npos) unimplemented;
+      if (p == std::string::npos)
+        unimplemented;
       auto const key = s.substr(0, p), value = s.substr(p + 2);
       // log << "<< \"" << key << "\" = \"" << value << "\"" << std::endl;
 
@@ -56,7 +58,8 @@ namespace apimu::server {
         auto ss = std::stringstream(value);
         ss >> n;
       } else if (key == "Content-Type") {
-        if (value != contentType) unimplemented;
+        if (value != contentType)
+          unimplemented;
       } else {
         unimplemented;
       }
@@ -70,7 +73,8 @@ namespace apimu::server {
     in.read(s.data(), static_cast<std::streamsize>(n));
     // log << "<< " << s << std::endl << std::endl;
 
-    if (in.eof()) return {};
+    if (in.eof())
+      return {};
     return s;
   }
 
@@ -86,7 +90,8 @@ namespace apimu::server {
         // VSCode simply closes the input stream without giving an Exit Notification.
         // This line is used to stop the input listener thread in that case.
         //   [1]: https://microsoft.github.io/language-server-protocol/specifications/specification-3-16/#shutdown
-        if (!o.has_value()) break;
+        if (!o.has_value())
+          break;
 
         // Parse JSON-RPC 2.0 requests/notifications
         auto j = nlohmann::json();
@@ -98,8 +103,10 @@ namespace apimu::server {
         }
 
         // Handle JSON request
-        if (j.is_object()) handleRequest(j);
-        else if (j.is_array()) unimplemented;
+        if (j.is_object())
+          handleRequest(j);
+        else if (j.is_array())
+          unimplemented;
         else {
           sendError(ErrorCode::invalidRequest, "ill-formed JSON request, expected array or object");
           continue;
@@ -110,13 +117,15 @@ namespace apimu::server {
 
   auto JsonRpcServer::handleRequest(nlohmann::json const& j) -> void {
     // Check if the the version number is present and correct
-    if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0") unimplemented;
+    if (!j.contains("jsonrpc") || j["jsonrpc"] != "2.0")
+      unimplemented;
 
     // Determine the type of the message
     auto hasid = false;
     auto id = int64_t{};
     if (j.contains("id") && !j["id"].is_null()) {
-      if (j["id"].is_string()) unimplemented;
+      if (j["id"].is_string())
+        unimplemented;
       if (j["id"].is_number_integer()) {
         hasid = true;
         id = j["id"].get<int64_t>();

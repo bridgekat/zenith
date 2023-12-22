@@ -1,10 +1,9 @@
 #ifndef APIMU_COMMON_HPP
 #define APIMU_COMMON_HPP
 
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <initializer_list>
+#include <exception>
 #include <iostream>
 #include <memory>
 #include <utility>
@@ -46,10 +45,6 @@ namespace apimu {
     }
   }
 
-  // Compiler & tools support for literal suffix `uz` (C++23) is still incomplete...
-  // See: https://en.cppreference.com/w/cpp/language/user_literal
-  constexpr auto operator"" _z(unsigned long long n) -> size_t { return n; }
-
   // A binary hash function.
   // See: https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
   template <typename T>
@@ -60,7 +55,9 @@ namespace apimu {
 
   // Recursively combines hashes.
   // All values must have types that are hashable by `std::hash`.
-  inline auto combineHashes(size_t acc) -> size_t { return acc; }
+  inline auto combineHashes(size_t acc) -> size_t {
+    return acc;
+  }
   template <typename T, typename... Ts>
   inline auto combineHashes(size_t acc, T const& v, Ts... args) -> size_t {
     return combineHashes(combineHash(acc, v), args...);
@@ -96,30 +93,11 @@ namespace apimu {
     using Ts::operator()...;
   };
 
-  // Workaround necessary only for outdated `libstdc++` existing on LabTS.
-  // See [P2162R2] and https://en.cppreference.com/w/cpp/compiler_support/23
-  template <typename... Ts>
-  inline auto asVariant(std::variant<Ts...>& v) -> auto&& {
-    return v;
-  }
-  template <typename... Ts>
-  inline auto asVariant(std::variant<Ts...> const& v) -> auto&& {
-    return v;
-  }
-  template <typename... Ts>
-  inline auto asVariant(std::variant<Ts...>&& v) -> auto&& {
-    return std::move(v);
-  }
-  template <typename... Ts>
-  inline auto asVariant(std::variant<Ts...> const&& v) -> auto&& {
-    return std::move(v);
-  }
-
   // Usage: `match(variant, [&](CaseType1 v) { return ...; }, [&](CaseType2 v) { return ...; }, ...)`
   // Return values of each lambda must have the same type.
   template <typename T, typename... Ts>
   constexpr auto match(T&& variant, Ts&&... lambdas) {
-    return std::visit(Matcher<Ts...>{std::forward<Ts>(lambdas)...}, asVariant(std::forward<T>(variant)));
+    return std::visit(Matcher<Ts...>{std::forward<Ts>(lambdas)...}, std::forward<T>(variant));
   }
 
   // A simple region-based memory allocator (uses larger blocks than `std::deque`).
@@ -127,19 +105,21 @@ namespace apimu {
   template <typename T>
   class Allocator {
   public:
-    static constexpr size_t defaultBlockSize = 1024_z;
+    static constexpr size_t defaultBlockSize = 1024uz;
 
     Allocator(size_t blockSize = defaultBlockSize):
-      _blockSize(blockSize) {}
+        _blockSize(blockSize) {}
 
-    ~Allocator() noexcept { _deallocateBlocks(); }
+    ~Allocator() noexcept {
+      _deallocateBlocks();
+    }
 
     Allocator(Allocator const&) = delete;
     Allocator(Allocator&& r) noexcept:
-      _blockSize(r._blockSize),
-      _alloc(r._alloc),
-      _blocks(std::move(r._blocks)),
-      _next(r._next) {}
+        _blockSize(r._blockSize),
+        _alloc(r._alloc),
+        _blocks(std::move(r._blocks)),
+        _next(r._next) {}
 
     auto operator=(Allocator const&) -> Allocator& = delete;
     auto operator=(Allocator&& r) noexcept -> Allocator& {
@@ -163,16 +143,19 @@ namespace apimu {
 
     template <typename... Ts>
     auto make(Ts&&... args) -> T* {
-      if (_next == 0) _blocks.push_back(_alloc.allocate(_blockSize));
+      if (_next == 0)
+        _blocks.push_back(_alloc.allocate(_blockSize));
       auto const res = _blocks.back() + _next;
       std::construct_at(res, std::forward<Ts>(args)...);
       _next++;
-      if (_next >= _blockSize) _next = 0;
+      if (_next >= _blockSize)
+        _next = 0;
       return res;
     }
 
     auto size() const -> size_t {
-      if (_next == 0) return _blockSize * _blocks.size();
+      if (_next == 0)
+        return _blockSize * _blocks.size();
       return _blockSize * (_blocks.size() - 1) + _next;
     }
 
@@ -183,7 +166,7 @@ namespace apimu {
     size_t _next = 0;
 
     auto _deallocateBlocks() -> void {
-      for (auto i = 0_z; i < _blocks.size(); i++) {
+      for (auto i = 0uz; i < _blocks.size(); i++) {
         std::destroy_n(_blocks[i], (i + 1 == _blocks.size() && _next > 0) ? _next : _blockSize);
         _alloc.deallocate(_blocks[i], _blockSize);
       }

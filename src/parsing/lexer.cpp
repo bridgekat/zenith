@@ -34,7 +34,8 @@ namespace apimu::parsing {
     while (auto const opt = stream.advance()) {
       auto const c = *opt;
       // Reset all bits of `v[]`.
-      for (auto const x: s) v[x] = false;
+      for (auto const x: s)
+        v[x] = false;
       // Move one step.
       auto t = std::vector<size_t>();
       for (auto const x: s)
@@ -48,7 +49,8 @@ namespace apimu::parsing {
       // Update result if reaches accepting state.
       // Patterns with larger IDs have higher priority.
       auto curr = std::optional<Symbol>();
-      for (auto const x: s) curr = std::max(curr, table[x].mark);
+      for (auto const x: s)
+        curr = std::max(curr, table[x].mark);
       if (curr) {
         last = stream.position();
         res = *curr;
@@ -66,7 +68,8 @@ namespace apimu::parsing {
     // Match greedily, until there are no further possibilities.
     while (auto const opt = stream.advance()) {
       auto const c = *opt;
-      if (!table[s].outs[c]) break;
+      if (!table[s].outs[c])
+        break;
       s = *table[s].outs[c];
       // Update longest match, if applicable.
       if (auto const curr = table[s].mark) {
@@ -87,32 +90,42 @@ namespace apimu::parsing {
     _transition(s, 0, t);
     return {s, t};
   }
-  auto AutomatonBuilder::any() -> Subgraph { return range(1, CharMax); }
-  auto AutomatonBuilder::utf8segment() -> Subgraph { return range(CharMultiMin, CharMax); }
+  auto AutomatonBuilder::any() -> Subgraph {
+    return range(1, CharMax);
+  }
+  auto AutomatonBuilder::utf8segment() -> Subgraph {
+    return range(CharMultiMin, CharMax);
+  }
   auto AutomatonBuilder::chars(std::vector<Char> const& ls) -> Subgraph {
     auto const s = _node(), t = _node();
-    for (auto const c: ls) _transition(s, c, t);
+    for (auto const c: ls)
+      _transition(s, c, t);
     return {s, t};
   }
   auto AutomatonBuilder::except(std::vector<Char> const& ls) -> Subgraph {
     auto f = std::array<bool, CharMax + 1>{};
-    for (auto const c: ls) f[c] = true;
+    for (auto const c: ls)
+      f[c] = true;
     auto const s = _node(), t = _node();
-    for (auto i = 1_z; i <= CharMax; i++)
-      if (!f[i]) _transition(s, static_cast<Char>(i), t);
+    for (auto i = 1uz; i <= CharMax; i++)
+      if (!f[i])
+        _transition(s, static_cast<Char>(i), t);
     return {s, t};
   }
   auto AutomatonBuilder::range(Char a, Char b) -> Subgraph {
     auto const s = _node(), t = _node();
-    for (auto i = size_t{a}; i <= b; i++) _transition(s, static_cast<Char>(i), t);
+    for (auto i = size_t{a}; i <= b; i++)
+      _transition(s, static_cast<Char>(i), t);
     return {s, t};
   }
   auto AutomatonBuilder::rangeExcept(Char a, Char b, std::vector<Char> const& ls) -> Subgraph {
     auto f = std::array<bool, CharMax + 1>{};
-    for (auto const c: ls) f[c] = true;
+    for (auto const c: ls)
+      f[c] = true;
     auto const s = _node(), t = _node();
     for (auto i = size_t{a}; i <= b; i++)
-      if (!f[i]) _transition(s, static_cast<Char>(i), t);
+      if (!f[i])
+        _transition(s, static_cast<Char>(i), t);
     return {s, t};
   }
   auto AutomatonBuilder::word(std::vector<Char> const& word) -> Subgraph {
@@ -135,9 +148,10 @@ namespace apimu::parsing {
   }
   auto AutomatonBuilder::concat(std::vector<Subgraph> const& ls) -> Subgraph {
     assert(!ls.empty());
-    for (auto i = 0_z; i + 1 < ls.size(); i++) {
+    for (auto i = 0uz; i + 1 < ls.size(); i++) {
       auto const a = ls[i], b = ls[i + 1];
-      for (auto const& [c, t]: _table[b.first].outs) _transition(a.second, c, t);
+      for (auto const& [c, t]: _table[b.first].outs)
+        _transition(a.second, c, t);
     }
     return {ls.front().first, ls.back().second};
   }
@@ -153,7 +167,9 @@ namespace apimu::parsing {
     _transition(s, 0, t);
     return {s, t};
   }
-  auto AutomatonBuilder::plus(Subgraph a) -> Subgraph { return concat({a, star(a)}); }
+  auto AutomatonBuilder::plus(Subgraph a) -> Subgraph {
+    return concat({a, star(a)});
+  }
   auto AutomatonBuilder::pattern(Symbol sym, Subgraph a) -> AutomatonBuilder& {
     _transition(_initial, 0, a.first);
     _table[a.second].mark = sym;
@@ -168,7 +184,9 @@ namespace apimu::parsing {
   }
 
   // Adds a transition from node `s` to node `t` with character `c`.
-  auto AutomatonBuilder::_transition(size_t s, Char c, size_t t) -> void { _table[s].outs.emplace_back(c, t); }
+  auto AutomatonBuilder::_transition(size_t s, Char c, size_t t) -> void {
+    _table[s].outs.emplace_back(c, t);
+  }
 
   // The powerset construction algorithm.
   // See: https://en.wikipedia.org/wiki/Powerset_construction
@@ -180,8 +198,8 @@ namespace apimu::parsing {
     std::unordered_map<std::vector<bool>, size_t> map;
 
     PowersetConstruction(NFA const& nfa, DFA& dfa):
-      nfa(nfa),
-      dfa(dfa) {}
+        nfa(nfa),
+        dfa(dfa) {}
 
     // Allocates a node on DFA and returns its ID. Also updates `map`.
     auto node(std::vector<bool> const& key) -> size_t {
@@ -191,18 +209,21 @@ namespace apimu::parsing {
     }
 
     // Adds a transition from node `s` to node `t` with character `c` on DFA.
-    auto transition(size_t s, Char c, size_t t) -> void { dfa.table[s].outs[c] = t; }
+    auto transition(size_t s, Char c, size_t t) -> void {
+      dfa.table[s].outs[c] = t;
+    }
 
     // Pre: all bits of `v[]` are cleared.
     auto dfs(size_t dx, std::vector<size_t> const& s) -> void {
       // Check if `s` contains accepting states.
       // Patterns with larger IDs have higher priority.
       auto curr = std::optional<Symbol>();
-      for (auto const x: s) curr = std::max(curr, nfa.table[x].mark);
+      for (auto const x: s)
+        curr = std::max(curr, nfa.table[x].mark);
       dfa.table[dx].mark = curr;
       // Compute transitions.
       // Invariant: all elements of `v` are false at the end of the loop.
-      for (auto i = 1_z; i <= CharMax; i++) {
+      for (auto i = 1uz; i <= CharMax; i++) {
         auto const c = static_cast<Char>(i);
         // Compute new state.
         auto t = std::vector<size_t>();
@@ -212,19 +233,22 @@ namespace apimu::parsing {
               t.push_back(u);
               v[u] = true;
             }
-        if (t.empty()) continue; // No need to clear `v`: `t` is empty.
+        if (t.empty())
+          continue; // No need to clear `v`: `t` is empty.
         closure(nfa, v, t);
         // Look at the new state:
         auto const it = map.find(v);
         if (it != map.end()) {
           // Already seen.
           transition(dx, c, it->second);
-          for (auto const x: t) v[x] = false; // Clears all bits of `v`.
+          for (auto const x: t)
+            v[x] = false; // Clears all bits of `v`.
         } else {
           // Have not seen before, create new DFA node and recurse.
           auto const du = node(v);
           transition(dx, c, du);
-          for (auto const x: t) v[x] = false; // Clears all bits of `v`.
+          for (auto const x: t)
+            v[x] = false; // Clears all bits of `v`.
           dfs(du, t);
         }
       }
@@ -241,7 +265,8 @@ namespace apimu::parsing {
       v[nfa.initial] = true;
       closure(nfa, v, s);
       dfa.initial = node(v);
-      for (auto const x: s) v[x] = false; // Clears all bits of v.
+      for (auto const x: s)
+        v[x] = false; // Clears all bits of v.
       dfs(dfa.initial, s);
     }
   };
@@ -278,7 +303,7 @@ namespace apimu::parsing {
     std::vector<std::vector<size_t>> intersection;           // Class index -> list of intersecting states.
 
     explicit PartitionRefinement(DFA& dfa):
-      dfa(dfa) {}
+        dfa(dfa) {}
 
     // Adds DFA node `x` to class `i`, overwriting `info[x]`.
     auto add(size_t x, size_t i) -> void {
@@ -300,10 +325,10 @@ namespace apimu::parsing {
 
     // Allocates new class and returns its ID (always equal to `partition.size() - 1`, just for convenience).
     auto newClass() -> size_t {
-      auto const head = pool.make(List{nullptr, nullptr, 0_z});
+      auto const head = pool.make(List{nullptr, nullptr, 0uz});
       head->l = head->r = head;
       auto const index = cls.size();
-      cls.push_back(Class{0_z, head, false});
+      cls.push_back(Class{0uz, head, false});
       return index;
     }
 
@@ -311,9 +336,10 @@ namespace apimu::parsing {
     // One class for each mark, plus one class (Class 0) for nodes that are not marked as accepting states.
     auto initialPartition() -> std::pair<std::unordered_map<Symbol, size_t>, size_t> {
       auto res = std::unordered_map<Symbol, size_t>();
-      auto cnt = 1_z; // 0 is reserved for nodes that are not marked as accepting states.
+      auto cnt = 1uz; // 0 is reserved for nodes that are not marked as accepting states.
       for (auto const& entry: dfa.table)
-        if (entry.mark && !res.contains(*entry.mark)) res[*entry.mark] = cnt++;
+        if (entry.mark && !res.contains(*entry.mark))
+          res[*entry.mark] = cnt++;
       return {res, cnt};
     }
 
@@ -327,31 +353,36 @@ namespace apimu::parsing {
       table.emplace_back();
       auto const n = table.size();
       // Add transitions to dead state. The dead state will have all its out edges pointing to itself.
-      for (auto i = 0_z; i < n; i++)
-        for (auto c = 1_z; c <= CharMax; c++)
-          if (!table[i].outs[c]) table[i].outs[c] = dead;
+      for (auto i = 0uz; i < n; i++)
+        for (auto c = 1uz; c <= CharMax; c++)
+          if (!table[i].outs[c])
+            table[i].outs[c] = dead;
       // Mid: all elements of `table[i].outs[c]` (for c >= 1) are nonempty.
 
       // Reverse edges.
       rev.clear();
       rev.resize(n);
-      for (auto i = 0_z; i < n; i++)
-        for (auto c = 1_z; c <= CharMax; c++) rev[*table[i].outs[c]].emplace_back(c, i);
+      for (auto i = 0uz; i < n; i++)
+        for (auto c = 1uz; c <= CharMax; c++)
+          rev[*table[i].outs[c]].emplace_back(c, i);
 
       // Initial partition.
       auto const& [map, k] = initialPartition();
       cls.clear();
-      for (auto i = 0_z; i < k; i++) newClass();
+      for (auto i = 0uz; i < k; i++)
+        newClass();
       info.clear();
       info.resize(n);
-      for (auto i = 0_z; i < n; i++) {
-        if (table[i].mark) add(i, map.at(*table[i].mark));
-        else add(i, 0_z);
+      for (auto i = 0uz; i < n; i++) {
+        if (table[i].mark)
+          add(i, map.at(*table[i].mark));
+        else
+          add(i, 0uz);
       }
 
       // All initial classes except Class 0 (just not needed) are used as candidate distinguisher sets.
       dists.clear();
-      for (auto i = 1_z; i < k; i++) {
+      for (auto i = 1uz; i < k; i++) {
         dists.push_back(i);
         cls[i].inDists = true;
       }
@@ -364,25 +395,29 @@ namespace apimu::parsing {
         cls[curr].inDists = false;
 
         // Calculate the source sets for all `c`s.
-        for (auto c = 1_z; c <= CharMax; c++) srcs[c].clear();
+        for (auto c = 1uz; c <= CharMax; c++)
+          srcs[c].clear();
 
         // "Examine transitions" - this occurs a limited number of times, see the long comment.
         // Note that the total size of `srcs[]` equals to this number.
         for (auto p = cls[curr].head->r; p != cls[curr].head; p = p->r)
-          for (auto const& [c, src]: rev[p->x]) srcs[c].push_back(src);
+          for (auto const& [c, src]: rev[p->x])
+            srcs[c].push_back(src);
 
-        for (auto c = 1_z; c <= CharMax; c++) {
+        for (auto c = 1uz; c <= CharMax; c++) {
           // Inner loop time complexity should be O(size of `srcs[c]`).
           // Mid: all elements of `intersection[]` are empty.
           intersection.resize(cls.size());
-          for (auto const x: srcs[c]) intersection[info[x].cid].push_back(x);
+          for (auto const x: srcs[c])
+            intersection[info[x].cid].push_back(x);
 
           // Now the total size of elements of `intersection[]` equals to the size of `srcs[c]`.
           for (auto const x: srcs[c]) {
             auto const i = info[x].cid;
 
             // If intersection is empty or has been processed before...
-            if (i >= intersection.size() || intersection[i].empty()) continue;
+            if (i >= intersection.size() || intersection[i].empty())
+              continue;
             // If difference is empty...
             if (intersection[i].size() == cls[i].size) {
               // Avoid processing multiple times, also does the clearing.
@@ -417,14 +452,18 @@ namespace apimu::parsing {
       // Rebuild `table` and `initial`, removing the dead state.
       auto newTable = std::vector<DFA::Entry>(cls.size() - 1);
       auto const newDead = info[dead].cid;
-      for (auto i = 0_z; i < table.size(); i++) {
+      for (auto i = 0uz; i < table.size(); i++) {
         auto src = info[i].cid;
-        if (src == newDead) continue;
-        if (src > newDead) src--;
-        for (auto c = 1_z; c <= CharMax; c++) {
+        if (src == newDead)
+          continue;
+        if (src > newDead)
+          src--;
+        for (auto c = 1uz; c <= CharMax; c++) {
           auto dst = info[*table[i].outs[c]].cid;
-          if (dst == newDead) continue;
-          if (dst > newDead) dst--;
+          if (dst == newDead)
+            continue;
+          if (dst > newDead)
+            dst--;
           // Build transition.
           newTable[src].outs[c] = dst;
         }
@@ -437,7 +476,8 @@ namespace apimu::parsing {
       // DFA should be nonempty.
       initial = info[initial].cid;
       assert(initial != newDead);
-      if (initial > newDead) initial--;
+      if (initial > newDead)
+        initial--;
 
       /*
        * ===== A hand-wavey argument for correctness =====
@@ -512,11 +552,13 @@ namespace apimu::parsing {
   // Skips the next UTF-8 code point. Returns false if no more available characters.
   // See: https://en.wikipedia.org/wiki/UTF-8#Encoding
   auto skipCodePoint(IStream<Char>& stream) -> bool {
-    if (!stream.advance()) return false;
+    if (!stream.advance())
+      return false;
     auto last = stream.position();
     while (auto const opt = stream.advance()) {
       auto const c = *opt;
-      if ((c & 0b11000000) != 0b10000000) break; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+      if ((c & 0b11000000) != 0b10000000)
+        break; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
       last = stream.position();
     }
     stream.revert(last);
@@ -530,7 +572,8 @@ namespace apimu::parsing {
       return Token{opt, _stream.slice(orig, curr), orig, curr};
     } else if (skipCodePoint(_stream)) { // Failure.
       auto last = _stream.position();
-      while (!_automaton.match(_stream) && skipCodePoint(_stream)) last = _stream.position();
+      while (!_automaton.match(_stream) && skipCodePoint(_stream))
+        last = _stream.position();
       _stream.revert(last);
       return Token{{}, _stream.slice(orig, last), orig, last};
     } else { // Reached EOF.

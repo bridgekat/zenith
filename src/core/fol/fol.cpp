@@ -9,7 +9,7 @@ namespace apimu::core {
 #include "macros_open.hpp"
 
   FOLContext::FOLContext():
-    Context() {
+      Context() {
 #define prop        pool().make(Expr::SProp)
 #define type        pool().make(Expr::SType)
 #define setvar      pool().make(Expr::VFree, SetVar)
@@ -41,29 +41,40 @@ namespace apimu::core {
     using enum Expr::VarTag;
     if (e->tag == Var) {
       if (e->var.tag == VFree) {
-        if (e->var.id == Constant::True) return {True};
-        if (e->var.id == Constant::False) return {False};
+        if (e->var.id == Constant::True)
+          return {True};
+        if (e->var.id == Constant::False)
+          return {False};
       }
     } else if (e->tag == App) {
       auto const [l, r] = e->app;
       if (l->tag == Var) {
         if (l->var.tag == VFree) {
-          if (l->var.id == Constant::Not) return {Not, r};
+          if (l->var.id == Constant::Not)
+            return {Not, r};
           if (r->tag == Lam && *r->lam.t == Expr(VFree, Constant::SetVar)) {
-            if (l->var.id == Constant::Forall) return {Forall, r->lam.s, r->lam.r};
-            if (l->var.id == Constant::Exists) return {Exists, r->lam.s, r->lam.r};
-            if (l->var.id == Constant::Unique) return {Unique, r->lam.s, r->lam.r};
+            if (l->var.id == Constant::Forall)
+              return {Forall, r->lam.s, r->lam.r};
+            if (l->var.id == Constant::Exists)
+              return {Exists, r->lam.s, r->lam.r};
+            if (l->var.id == Constant::Unique)
+              return {Unique, r->lam.s, r->lam.r};
           }
         }
       } else if (l->tag == App) {
         auto const [ll, lr] = l->app;
         if (ll->tag == Var) {
           if (ll->var.tag == VFree) {
-            if (ll->var.id == Constant::Equals) return {Equals, lr, r};
-            if (ll->var.id == Constant::And) return {And, lr, r};
-            if (ll->var.id == Constant::Or) return {Or, lr, r};
-            if (ll->var.id == Constant::Implies) return {Implies, lr, r};
-            if (ll->var.id == Constant::Iff) return {Iff, lr, r};
+            if (ll->var.id == Constant::Equals)
+              return {Equals, lr, r};
+            if (ll->var.id == Constant::And)
+              return {And, lr, r};
+            if (ll->var.id == Constant::Or)
+              return {Or, lr, r};
+            if (ll->var.id == Constant::Implies)
+              return {Implies, lr, r};
+            if (ll->var.id == Constant::Iff)
+              return {Iff, lr, r};
           }
         }
       }
@@ -78,18 +89,30 @@ namespace apimu::core {
     using enum Expr::VarTag;
     using enum Expr::LamTag;
     switch (tag) {
-      case Other: return unary.e;
-      case Equals: return expr(expr(expr(VFree, Constant::Equals), binary.l), binary.r);
-      case True: return expr(VFree, Constant::True);
-      case False: return expr(VFree, Constant::False);
-      case Not: return expr(expr(VFree, Constant::Not), unary.e);
-      case And: return expr(expr(expr(VFree, Constant::And), binary.l), binary.r);
-      case Or: return expr(expr(expr(VFree, Constant::Or), binary.l), binary.r);
-      case Implies: return expr(expr(expr(VFree, Constant::Implies), binary.l), binary.r);
-      case Iff: return expr(expr(expr(VFree, Constant::Iff), binary.l), binary.r);
-      case Forall: return expr(expr(VFree, Constant::Forall), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
-      case Exists: return expr(expr(VFree, Constant::Exists), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
-      case Unique: return expr(expr(VFree, Constant::Unique), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
+      case Other:
+        return unary.e;
+      case Equals:
+        return expr(expr(expr(VFree, Constant::Equals), binary.l), binary.r);
+      case True:
+        return expr(VFree, Constant::True);
+      case False:
+        return expr(VFree, Constant::False);
+      case Not:
+        return expr(expr(VFree, Constant::Not), unary.e);
+      case And:
+        return expr(expr(expr(VFree, Constant::And), binary.l), binary.r);
+      case Or:
+        return expr(expr(expr(VFree, Constant::Or), binary.l), binary.r);
+      case Implies:
+        return expr(expr(expr(VFree, Constant::Implies), binary.l), binary.r);
+      case Iff:
+        return expr(expr(expr(VFree, Constant::Iff), binary.l), binary.r);
+      case Forall:
+        return expr(expr(VFree, Constant::Forall), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
+      case Exists:
+        return expr(expr(VFree, Constant::Exists), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
+      case Unique:
+        return expr(expr(VFree, Constant::Unique), expr(LLam, s, expr(VFree, Constant::SetVar), binder.r));
     }
     unreachable;
   }
@@ -97,7 +120,8 @@ namespace apimu::core {
   auto FOLForm::splitIff(Allocator<Expr>& pool) const -> pair<Expr const*, Expr const*> {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
-    if (tag != Iff) unreachable;
+    if (tag != Iff)
+      unreachable;
     return {
       expr(expr(expr(VFree, Constant::Implies), binary.l), binary.r),
       expr(expr(expr(VFree, Constant::Implies), binary.r), binary.l),
@@ -110,7 +134,8 @@ namespace apimu::core {
     using Constant = FOLContext::Constant;
     using enum Expr::VarTag;
     using enum Expr::LamTag;
-    if (tag != Unique) unreachable;
+    if (tag != Unique)
+      unreachable;
     auto const setvar = expr(VFree, Constant::SetVar);
     auto const implies = expr(VFree, Constant::Implies);
     auto const forall = expr(VFree, Constant::Forall);
@@ -135,9 +160,12 @@ namespace apimu::core {
         auto fe = (unary.e->tag != Expr::Sort && unary.e->tag != Expr::Var && unary.e->tag != Expr::App);
         return (fe ? "(" : "") + unary.e->toString(ctx, stk) + (fe ? ")" : "");
       }
-      case Equals: return binary.l->toString(ctx, stk) + " = " + binary.r->toString(ctx, stk);
-      case True: return "true";
-      case False: return "false";
+      case Equals:
+        return binary.l->toString(ctx, stk) + " = " + binary.r->toString(ctx, stk);
+      case True:
+        return "true";
+      case False:
+        return "false";
       case Not: {
         auto ee = FOLForm::fromExpr(unary.e);
         bool fe = (invprec(ee.tag) > invprec(tag));

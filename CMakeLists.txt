@@ -1,4 +1,5 @@
-cmake_minimum_required (VERSION 3.15)
+cmake_minimum_required (VERSION 3.28)
+cmake_policy (SET CMP0135 NEW)
 
 project (
   ApiMu
@@ -8,8 +9,11 @@ project (
   LANGUAGES     CXX
 )
 
-list (PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/extern/prelude/cmake")
-include (Prelude NO_POLICY_SCOPE)
+# ===== Scripts =====
+list (PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+include (FetchContent)
+include (TargetDefaultCompileOptions)
+include (CppcheckCodeAnalysis)
 
 # ===== Dependencies =====
 # See: https://stackoverflow.com/questions/49768454/whats-the-differences-between-pthread-and-pthread-options-in-cmake
@@ -47,23 +51,23 @@ add_executable (testeval
 target_default_compile_options  (testeval)
 target_include_directories      (testeval PRIVATE src)
 
-add_executable (testserver
-  src/core/context.cpp
-  src/core/expr.cpp
-  src/core/fol/fol.cpp
-  src/elab/procs.cpp
-  src/parsing/lexer.cpp
-  src/parsing/parser.cpp
-  src/eval/tree.cpp
-  src/eval/evaluator.cpp
-  src/eval/extended_evaluator.cpp
-  src/server/json_rpc_server.cpp
-  src/server/document.cpp
-  src/server/lsp.cpp
-  src/testserver.cpp)
-target_default_compile_options  (testserver)
-target_include_directories      (testserver PRIVATE src)
-target_link_libraries           (testserver PRIVATE Threads::Threads nlohmann_json::nlohmann_json)
+# add_executable (testserver
+#   src/core/context.cpp
+#   src/core/expr.cpp
+#   src/core/fol/fol.cpp
+#   src/elab/procs.cpp
+#   src/parsing/lexer.cpp
+#   src/parsing/parser.cpp
+#   src/eval/tree.cpp
+#   src/eval/evaluator.cpp
+#   src/eval/extended_evaluator.cpp
+#   src/server/json_rpc_server.cpp
+#   src/server/document.cpp
+#   src/server/lsp.cpp
+#   src/testserver.cpp)
+# target_default_compile_options  (testserver)
+# target_include_directories      (testserver PRIVATE src)
+# target_link_libraries           (testserver PRIVATE Threads::Threads nlohmann_json::nlohmann_json)
 
 # ===== Tests =====
 enable_testing ()

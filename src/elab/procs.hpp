@@ -23,12 +23,13 @@ namespace apimu::elab::procs {
   inline auto foreachValuation(std::vector<uint64_t> const& fvs, F f) -> void {
     auto const n = fvs.size();
     auto const m = *std::max_element(fvs.cbegin(), fvs.cend()) + 1;
-    auto const final = 1_z << n;
-    auto mask = 0_z;
+    auto const final = 1uz << n;
+    auto mask = 0uz;
     do {
       auto fvmap = std::vector<bool>(m);
-      for (auto i = 0_z; i < n; i++)
-        if ((mask >> i) & 1u) fvmap[fvs[i]] = true;
+      for (auto i = 0uz; i < n; i++)
+        if ((mask >> i) & 1u)
+          fvmap[fvs[i]] = true;
       f(fvmap);
       mask++;
     } while (mask != final);
@@ -37,7 +38,8 @@ namespace apimu::elab::procs {
   // Returns { VFree, skolem } applied to a number of meta-variables ("implicitly universally quantified" variables)
   inline auto makeSkolem(uint64_t skolem, std::vector<uint64_t> const& metas, Allocator<Expr>& pool) -> Expr const* {
     auto res = pool.make(Expr::VFree, skolem);
-    for (auto const i: metas) res = pool.make(res, pool.make(Expr::VMeta, i));
+    for (auto const i: metas)
+      res = pool.make(res, pool.make(Expr::VMeta, i));
     return res;
   }
 

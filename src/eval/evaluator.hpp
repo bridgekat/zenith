@@ -38,9 +38,13 @@ namespace apimu::eval {
       _messages.clear();
     }
 
-    auto eof() -> bool { return stream->position() == stream->string().size(); }
+    auto eof() -> bool {
+      return stream->position() == stream->string().size();
+    }
     auto evalNextStatement() -> std::optional<std::tuple<Tree*, size_t, size_t>>;
-    auto messages() -> std::vector<Message> const& { return _messages; }
+    auto messages() -> std::vector<Message> const& {
+      return _messages;
+    }
 
   protected:
     struct EvalError: std::runtime_error {
@@ -48,15 +52,15 @@ namespace apimu::eval {
       Tree const* e;
 
       EvalError(std::string const& s, Tree const* at, Tree const* e):
-        std::runtime_error(s),
-        at(at),
-        e(e) {}
+          std::runtime_error(s),
+          at(at),
+          e(e) {}
     };
 
     // Throw this to let the most recent call of `Evaluator::eval()` to provide context.
     struct PartialEvalError: EvalError {
       PartialEvalError(std::string const& s, Tree const* at):
-        EvalError(s, at, at) {}
+          EvalError(s, at, at) {}
     };
 
     // `env != nullptr` means that `e` still needs to be evaluated under `env` (for proper tail recursion).
@@ -77,13 +81,20 @@ namespace apimu::eval {
     static constexpr parsing::Symbol startSymbol = 1;
     static constexpr size_t defaultMaxDepth = 4096;
 
-    auto pool() -> Allocator<Tree>& { return _pool; }
-    auto nil() -> eval::Tree* { return _nil; }
-    auto unit() -> eval::Tree* { return _unit; }
+    auto pool() -> Allocator<Tree>& {
+      return _pool;
+    }
+    auto nil() -> eval::Tree* {
+      return _nil;
+    }
+    auto unit() -> eval::Tree* {
+      return _unit;
+    }
 
     auto makeList(std::initializer_list<Tree*> const& es) -> Tree* {
       auto res = nil();
-      for (auto it = std::rbegin(es); it != std::rend(es); it++) res = pool().make(*it, res);
+      for (auto it = std::rbegin(es); it != std::rend(es); it++)
+        res = pool().make(*it, res);
       return res;
     }
 
@@ -143,7 +154,7 @@ namespace apimu::eval {
       Evaluator& evaluator;
 
       ErrorHandler(Evaluator& evaluator):
-        evaluator(evaluator) {}
+          evaluator(evaluator) {}
 
       auto parsingError(std::vector<parsing::Symbol> expected, std::optional<parsing::Token> got) -> void override;
     };
@@ -160,11 +171,11 @@ namespace apimu::eval {
         parsing::Grammar const& grammar,
         parsing::CharStream& stream
       ):
-        handler(evaluator),
-        lexer(automaton, stream),
-        buffer(lexer),
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
-        parser(grammar, buffer, {.rollback = true, .maxSkipped = 5, .threshold = 5}, handler) {}
+          handler(evaluator),
+          lexer(automaton, stream),
+          buffer(lexer),
+          // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
+          parser(grammar, buffer, {.rollback = true, .maxSkipped = 5, .threshold = 5}, handler) {}
     };
 
     Allocator<Tree> _pool;
@@ -199,28 +210,28 @@ namespace apimu::eval {
     unreachable;
   }
 
-#define defineExpect(T, msg)                                                                          \
-  template <>                                                                                         \
-  inline auto Evaluator::expect<T>(Tree * e)->T& {                                                    \
-    try {                                                                                             \
-      return std::get<T>(*e);                                                                         \
-    } catch (std::bad_variant_access&) { throw PartialEvalError((msg ", got ") + e->toString(), e); } \
+#define defineExpect(T, msg)                                     \
+  template <>                                                    \
+  inline auto Evaluator::expect<T>(Tree * e) -> T& {             \
+    try {                                                        \
+      return std::get<T>(*e);                                    \
+    } catch (std::bad_variant_access&) {                         \
+      throw PartialEvalError((msg ", got ") + e->toString(), e); \
+    }                                                            \
   }
-  defineExpect(Nil, "expected end-of-list")
-  defineExpect(Cons, "expected non-empty list")
-  defineExpect(Symbol, "expected symbol")
-  defineExpect(Nat64, "expected number")
-  defineExpect(String, "expected string")
-  defineExpect(Bool, "expected boolean")
-  defineExpect(Closure, "expected function")
-  defineExpect(Native, "expected native type")
+  defineExpect(Nil, "expected end-of-list") defineExpect(Cons, "expected non-empty list")
+    defineExpect(Symbol, "expected symbol") defineExpect(Nat64, "expected number")
+      defineExpect(String, "expected string") defineExpect(Bool, "expected boolean")
+        defineExpect(Closure, "expected function") defineExpect(Native, "expected native type")
 #undef defineExpect
 
-  template <typename T>
-  inline auto Evaluator::expectNative(Tree* e) -> T {
+          template <typename T>
+          inline auto Evaluator::expectNative(Tree* e) -> T {
     try {
       return std::any_cast<T>(expect<Native>(e).val);
-    } catch (std::bad_any_cast& ex) { throw PartialEvalError(std::string("native type mismatch: ") + ex.what(), e); }
+    } catch (std::bad_any_cast& ex) {
+      throw PartialEvalError(std::string("native type mismatch: ") + ex.what(), e);
+    }
   }
 
 #include "macros_close.hpp"

@@ -9,25 +9,37 @@ namespace apimu::core {
 
   auto Expr::clone(Allocator<Expr>& pool) const -> Expr const* {
     switch (tag) {
-      case Sort: return pool.make(sort.tag);
-      case Var: return pool.make(var.tag, var.id);
-      case App: return pool.make(app.l->clone(pool), app.r->clone(pool));
-      case Lam: return pool.make(LLam, lam.s, lam.t->clone(pool), lam.r->clone(pool));
-      case Pi: return pool.make(PPi, pi.s, pi.t->clone(pool), pi.r->clone(pool));
+      case Sort:
+        return pool.make(sort.tag);
+      case Var:
+        return pool.make(var.tag, var.id);
+      case App:
+        return pool.make(app.l->clone(pool), app.r->clone(pool));
+      case Lam:
+        return pool.make(LLam, lam.s, lam.t->clone(pool), lam.r->clone(pool));
+      case Pi:
+        return pool.make(PPi, pi.s, pi.t->clone(pool), pi.r->clone(pool));
     }
     unreachable;
   }
 
   auto Expr::operator==(Expr const& rhs) const noexcept -> bool {
-    if (this == &rhs) return true;
-    if (tag != rhs.tag) return false;
+    if (this == &rhs)
+      return true;
+    if (tag != rhs.tag)
+      return false;
     // Mid: tag == rhs.tag
     switch (tag) {
-      case Sort: return sort.tag == rhs.sort.tag;
-      case Var: return var.tag == rhs.var.tag && var.id == rhs.var.id;
-      case App: return *app.l == *rhs.app.l && *app.r == *rhs.app.r;
-      case Lam: return *lam.t == *rhs.lam.t && *lam.r == *rhs.lam.r; // Ignore bound variable names
-      case Pi: return *pi.t == *rhs.pi.t && *pi.r == *rhs.pi.r;      // Ignore bound variable names
+      case Sort:
+        return sort.tag == rhs.sort.tag;
+      case Var:
+        return var.tag == rhs.var.tag && var.id == rhs.var.id;
+      case App:
+        return *app.l == *rhs.app.l && *app.r == *rhs.app.r;
+      case Lam:
+        return *lam.t == *rhs.lam.t && *lam.r == *rhs.lam.r; // Ignore bound variable names
+      case Pi:
+        return *pi.t == *rhs.pi.t && *pi.r == *rhs.pi.r; // Ignore bound variable names
     }
     unreachable;
   }
@@ -35,7 +47,9 @@ namespace apimu::core {
   auto Expr::hash() const noexcept -> size_t {
     auto res = static_cast<size_t>(tag);
     switch (tag) {
-      case Sort: res = combineHash(res, static_cast<std::underlying_type_t<SortTag>>(sort.tag)); return res;
+      case Sort:
+        res = combineHash(res, static_cast<std::underlying_type_t<SortTag>>(sort.tag));
+        return res;
       case Var:
         res = combineHash(res, static_cast<std::underlying_type_t<VarTag>>(var.tag));
         res = combineHash(res, var.id);
@@ -74,20 +88,26 @@ namespace apimu::core {
     switch (tag) {
       case Sort:
         switch (sort.tag) {
-          case SProp: return "Prop";
-          case SType: return "Type";
-          case SKind: return "Kind";
+          case SProp:
+            return "Prop";
+          case SType:
+            return "Type";
+          case SKind:
+            return "Kind";
         }
         unreachable;
       case Var:
         switch (var.tag) {
           case VBound:
-            if (var.id < stk.size()) return stk[stk.size() - 1 - var.id];
+            if (var.id < stk.size())
+              return stk[stk.size() - 1 - var.id];
             return "?b" + std::to_string(var.id - stk.size());
           case VFree:
-            if (var.id < ctx.size()) return ctx.identifier(var.id);
+            if (var.id < ctx.size())
+              return ctx.identifier(var.id);
             return "?f" + std::to_string(var.id - ctx.size());
-          case VMeta: return "?m" + std::to_string(var.id);
+          case VMeta:
+            return "?m" + std::to_string(var.id);
         }
         unreachable;
       case App: {
@@ -126,20 +146,28 @@ namespace apimu::core {
     switch (tag) {
       case Sort:
         switch (sort.tag) {
-          case SProp: return pool.make(SType);
-          case SType: return pool.make(SKind);
-          case SKind: throw InvalidExpr("\"Kind\" does not have a type", ctx, this);
+          case SProp:
+            return pool.make(SType);
+          case SType:
+            return pool.make(SKind);
+          case SKind:
+            throw InvalidExpr("\"Kind\" does not have a type", ctx, this);
         }
         unreachable;
       case Var:
         switch (var.tag) {
           case VBound:
-            if (var.id < stk.size()) return stk[stk.size() - 1 - var.id]->lift(var.id + 1, pool)->reduce(pool);
-            else throw InvalidExpr("de Bruijn index overflow", ctx, this);
+            if (var.id < stk.size())
+              return stk[stk.size() - 1 - var.id]->lift(var.id + 1, pool)->reduce(pool);
+            else
+              throw InvalidExpr("de Bruijn index overflow", ctx, this);
           case VFree:
-            if (var.id < ctx.size()) return ctx[var.id]->reduce(pool);
-            else throw InvalidExpr("free variable not in context", ctx, this);
-          case VMeta: throw InvalidExpr("unexpected metavariable", ctx, this);
+            if (var.id < ctx.size())
+              return ctx[var.id]->reduce(pool);
+            else
+              throw InvalidExpr("free variable not in context", ctx, this);
+          case VMeta:
+            throw InvalidExpr("unexpected metavariable", ctx, this);
         }
         unreachable;
       case App: { // Π-elimination
@@ -185,13 +213,16 @@ namespace apimu::core {
 
   auto Expr::reduce(Allocator<Expr>& pool) const -> Expr const* {
     switch (tag) {
-      case Sort: return this;
-      case Var: return this;
+      case Sort:
+        return this;
+      case Var:
+        return this;
       case App: {
         // Applicative order: reduce subexpressions first
         auto const l = app.l->reduce(pool);
         auto const r = app.r->reduce(pool);
-        if (l->tag == Lam) return l->lam.r->makeReplace(r, pool)->reduce(pool);
+        if (l->tag == Lam)
+          return l->lam.r->makeReplace(r, pool)->reduce(pool);
         return (l == app.l && r == app.r) ? this : pool.make(l, r);
       }
       case Lam: {
@@ -210,33 +241,48 @@ namespace apimu::core {
 
   auto Expr::size() const noexcept -> size_t {
     switch (tag) {
-      case Sort: return 1;
-      case Var: return 1;
-      case App: return 1 + app.l->size() + app.r->size();
-      case Lam: return 1 + lam.t->size() + lam.r->size();
-      case Pi: return 1 + pi.t->size() + pi.r->size();
+      case Sort:
+        return 1;
+      case Var:
+        return 1;
+      case App:
+        return 1 + app.l->size() + app.r->size();
+      case Lam:
+        return 1 + lam.t->size() + lam.r->size();
+      case Pi:
+        return 1 + pi.t->size() + pi.r->size();
     }
     unreachable;
   }
 
   auto Expr::occurs(VarTag vartag, uint64_t id) const noexcept -> bool {
     switch (tag) {
-      case Sort: return false;
-      case Var: return var.tag == vartag && var.id == id;
-      case App: return app.l->occurs(vartag, id) || app.r->occurs(vartag, id);
-      case Lam: return lam.t->occurs(vartag, id) || lam.r->occurs(vartag, id);
-      case Pi: return pi.t->occurs(vartag, id) || pi.r->occurs(vartag, id);
+      case Sort:
+        return false;
+      case Var:
+        return var.tag == vartag && var.id == id;
+      case App:
+        return app.l->occurs(vartag, id) || app.r->occurs(vartag, id);
+      case Lam:
+        return lam.t->occurs(vartag, id) || lam.r->occurs(vartag, id);
+      case Pi:
+        return pi.t->occurs(vartag, id) || pi.r->occurs(vartag, id);
     }
     unreachable;
   }
 
   auto Expr::numMeta() const noexcept -> size_t {
     switch (tag) {
-      case Sort: return 0;
-      case Var: return (var.tag == VMeta) ? (var.id + 1) : 0;
-      case App: return std::max(app.l->numMeta(), app.r->numMeta());
-      case Lam: return std::max(lam.t->numMeta(), lam.r->numMeta());
-      case Pi: return std::max(pi.t->numMeta(), pi.r->numMeta());
+      case Sort:
+        return 0;
+      case Var:
+        return (var.tag == VMeta) ? (var.id + 1) : 0;
+      case App:
+        return std::max(app.l->numMeta(), app.r->numMeta());
+      case Lam:
+        return std::max(lam.t->numMeta(), lam.r->numMeta());
+      case Pi:
+        return std::max(pi.t->numMeta(), pi.r->numMeta());
     }
     unreachable;
   }

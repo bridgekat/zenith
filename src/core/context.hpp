@@ -29,21 +29,30 @@ namespace apimu::core {
     // Returns false if there is no assumptions left.
     auto pop() -> bool;
 
-    auto size() const -> size_t { return entries.size(); }
-    auto operator[](size_t index) const -> Expr const* { return entries.at(index).second; }
-    auto identifier(size_t index) const -> std::string { return entries.at(index).first; }
+    auto size() const -> size_t {
+      return entries.size();
+    }
+    auto operator[](size_t index) const -> Expr const* {
+      return entries.at(index).second;
+    }
+    auto identifier(size_t index) const -> std::string {
+      return entries.at(index).first;
+    }
 
     // Look up by literal name (slow, not commonly used)
     auto lookup(std::string const& s) const -> std::optional<size_t> {
       // Unsigned count down: https://nachtimwald.com/2019/06/02/unsigned-count-down/
       for (size_t i = entries.size(); i-- > 0;)
-        if (entries[i].first == s) return i;
+        if (entries[i].first == s)
+          return i;
       return {};
     }
 
   protected:
     // Returns the top layer pool.
-    auto pool() -> Allocator<Expr>& { return pools.back(); }
+    auto pool() -> Allocator<Expr>& {
+      return pools.back();
+    }
 
   private:
     // Allocators

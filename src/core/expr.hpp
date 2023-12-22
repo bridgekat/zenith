@@ -36,24 +36,24 @@ namespace apimu::core {
 
     // The constructors below guarantee that all pointers in the "active variant" are valid, if parameters are valid
     Expr(SortTag sorttag):
-      tag(Sort),
-      sort{sorttag} {}
+        tag(Sort),
+        sort{sorttag} {}
 
     Expr(VarTag vartag, uint64_t id):
-      tag(Var),
-      var{vartag, id} {}
+        tag(Var),
+        var{vartag, id} {}
 
     Expr(Expr const* l, Expr const* r):
-      tag(App),
-      app{l, r} {}
+        tag(App),
+        app{l, r} {}
 
     Expr(LamTag, std::string s, Expr const* t, Expr const* r):
-      tag(Lam),
-      lam{std::move(s), t, r} {}
+        tag(Lam),
+        lam{std::move(s), t, r} {}
 
     Expr(PiTag, std::string s, Expr const* t, Expr const* r):
-      tag(Pi),
-      pi{std::move(s), t, r} {}
+        tag(Pi),
+        pi{std::move(s), t, r} {}
 
     // Immutability + non-trivial members in union = impossible to make a copy constructor...
     Expr(Expr const&) = delete;
@@ -64,11 +64,18 @@ namespace apimu::core {
     // Destructor needed for the `std::string` in union
     ~Expr() {
       switch (tag) {
-        case Sort: return;
-        case Var: return;
-        case App: return;
-        case Lam: lam.s.~basic_string(); return;
-        case Pi: pi.s.~basic_string(); return;
+        case Sort:
+          return;
+        case Var:
+          return;
+        case App:
+          return;
+        case Lam:
+          lam.s.~basic_string();
+          return;
+        case Pi:
+          pi.s.~basic_string();
+          return;
       }
       unreachable;
     }
@@ -80,7 +87,9 @@ namespace apimu::core {
     // Syntactical equality and hash code (up to alpha-renaming!)
     // O(size)
     auto operator==(Expr const& rhs) const noexcept -> bool;
-    auto operator!=(Expr const& rhs) const noexcept -> bool { return !(*this == rhs); }
+    auto operator!=(Expr const& rhs) const noexcept -> bool {
+      return !(*this == rhs);
+    }
     auto hash() const noexcept -> size_t;
 
     // Give unnamed bound variables a random name
@@ -97,7 +106,8 @@ namespace apimu::core {
 
     // Controls the Π-formation rule
     static constexpr auto imax(SortTag s, SortTag t) -> SortTag {
-      if (s == Expr::SProp || t == Expr::SProp) return Expr::SProp;
+      if (s == Expr::SProp || t == Expr::SProp)
+        return Expr::SProp;
       // Mid: `s` and `t` are `Expr::SType` or `Expr::SKind`
       return (s == Expr::SKind || t == Expr::SKind) ? Expr::SKind : Expr::SType;
     }
@@ -131,8 +141,10 @@ namespace apimu::core {
       using enum LamTag;
       using enum PiTag;
       switch (tag) {
-        case Sort: return this;
-        case Var: return f(n, this);
+        case Sort:
+          return this;
+        case Var:
+          return f(n, this);
         case App: {
           auto const l = app.l->updateVars(f, pool, n);
           auto const r = app.r->updateVars(f, pool, n);
@@ -157,7 +169,8 @@ namespace apimu::core {
     auto lift(uint64_t m, Allocator<Expr>& pool) const -> Expr const* {
       return updateVars(
         [m, &pool](uint64_t n, Expr const* x) -> Expr const* {
-          if (x->var.tag == VBound && x->var.id >= n) return pool.make(VBound, x->var.id + m);
+          if (x->var.tag == VBound && x->var.id >= n)
+            return pool.make(VBound, x->var.id + m);
           return x;
         },
         pool
@@ -169,8 +182,10 @@ namespace apimu::core {
     auto makeReplace(Expr const* t, Allocator<Expr>& pool) const -> Expr const* {
       return updateVars(
         [t, &pool](uint64_t n, Expr const* x) -> Expr const* {
-          if (x->var.tag == VBound && x->var.id == n) return t->lift(n, pool);
-          if (x->var.tag == VBound && x->var.id > n) return pool.make(VBound, x->var.id - 1);
+          if (x->var.tag == VBound && x->var.id == n)
+            return t->lift(n, pool);
+          if (x->var.tag == VBound && x->var.id > n)
+            return pool.make(VBound, x->var.id - 1);
           return x;
         },
         pool
@@ -195,7 +210,9 @@ namespace apimu::core {
     auto numMeta() const noexcept -> size_t;
 
     // Check if the expression does not contain undetermined variables.
-    auto isGround() const noexcept -> bool { return numMeta() == 0; }
+    auto isGround() const noexcept -> bool {
+      return numMeta() == 0;
+    }
   };
 
   // A thread-local temporary allocator instance for `Expr`
@@ -210,8 +227,8 @@ namespace apimu::core {
   public:
     Expr const* e;
     InvalidExpr(std::string const& s, Context const& ctx, Expr const* e):
-      std::runtime_error("Invalid expression, " + s + ": " + e->toString(ctx)),
-      e(e) {}
+        std::runtime_error("Invalid expression, " + s + ": " + e->toString(ctx)),
+        e(e) {}
   };
 
 #include "macros_close.hpp"

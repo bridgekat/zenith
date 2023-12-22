@@ -7,9 +7,9 @@ namespace apimu::core {
 #include "macros_open.hpp"
 
   Context::Context():
-    pools(),
-    entries(),
-    indices() {
+      pools(),
+      entries(),
+      indices() {
     pools.emplace_back();
   }
 
@@ -32,7 +32,8 @@ namespace apimu::core {
     using enum Expr::VarTag;
     using enum Expr::PiTag;
 
-    if (indices.empty() || pools.size() < 2) return false;
+    if (indices.empty() || pools.size() < 2)
+      return false;
     auto& pool1 = pools[pools.size() - 1]; // To be deallocated, can be used as a temporary pool
     auto& pool2 = pools[pools.size() - 2];
     auto const index = indices.back();
@@ -42,8 +43,10 @@ namespace apimu::core {
     // Add abstractions over the hypothesized variable, copying all expressions from `pool1` to `pool2`
     // Make bound + remap index
     auto modify = [&pool2, index](uint64_t n, Expr const* x) -> Expr const* {
-      if (x->var.tag == VFree && x->var.id == index) return expr(VBound, n);
-      if (x->var.tag == VFree && x->var.id > index) return expr(expr(VFree, x->var.id - 1), expr(VBound, n));
+      if (x->var.tag == VFree && x->var.id == index)
+        return expr(VBound, n);
+      if (x->var.tag == VFree && x->var.id > index)
+        return expr(expr(VFree, x->var.id - 1), expr(VBound, n));
       return x->clone(pool2);
     };
 
@@ -58,7 +61,9 @@ namespace apimu::core {
     for (size_t i = index; i < entries.size(); i++) {
       try {
         entries[i].second->checkType(*this, pool1);
-      } catch (InvalidExpr&) { unreachable; }
+      } catch (InvalidExpr&) {
+        unreachable;
+      }
     }
 #undef expr
 

@@ -21,12 +21,12 @@ namespace apimu::parsing {
     class Handle {
     public:
       Handle(EarleyParser& parser, bool leaf, size_t index, TypeErasedVisitor const& visitor, Context& context):
-        _parser(parser),
-        _leaf(leaf),
-        _index(index),
-        _visitor(visitor),
-        _context(context),
-        _payload() {}
+          _parser(parser),
+          _leaf(leaf),
+          _index(index),
+          _visitor(visitor),
+          _context(context),
+          _payload() {}
 
       // Converts token positions to character positions.
       auto convert(size_t begin, size_t end) const -> std::pair<size_t, size_t> {
@@ -56,7 +56,8 @@ namespace apimu::parsing {
             assert(!_visitor._unambiguous || nodes[curr].next.size() == 1);
             auto max = nodes[curr].next[0];
             for (auto const i: nodes[curr].next)
-              if (nodes[i.child].state.rule > nodes[max.child].state.rule) max = i;
+              if (nodes[i.child].state.rule > nodes[max.child].state.rule)
+                max = i;
             cs.emplace_back(max.leaf, max.child);
             curr = max.sibling;
           }
@@ -64,7 +65,8 @@ namespace apimu::parsing {
           assert(cs.size() == rules[nodes[_index].state.rule].rhs.size());
           _parser.unpropagate({_index});
           auto hs = std::vector<Handle>();
-          for (auto const& [cleaf, cindex]: cs) hs.emplace_back(_parser, cleaf, cindex, _visitor, _context);
+          for (auto const& [cleaf, cindex]: cs)
+            hs.emplace_back(_parser, cleaf, cindex, _visitor, _context);
           // Invoke handler function.
           _visitor._ruleHandlers[nodes[_index].state.rule](*this, hs);
         }
@@ -89,7 +91,7 @@ namespace apimu::parsing {
     class View {
     public:
       View(Handle& handle):
-        _handle(handle) {}
+          _handle(handle) {}
 
       // Visits node with a different visitor.
       template <typename U>
@@ -117,10 +119,14 @@ namespace apimu::parsing {
       }
 
       // Accesses the context.
-      auto operator!() const -> Context& { return _handle._context; }
+      auto operator!() const -> Context& {
+        return _handle._context;
+      }
 
       // Assigns value to node.
-      auto operator<<(T value) const -> void { _handle._payload = std::move(value); }
+      auto operator<<(T value) const -> void {
+        _handle._payload = std::move(value);
+      }
 
     private:
       Handle& _handle;
@@ -132,9 +138,9 @@ namespace apimu::parsing {
       std::vector<std::function<void(Handle&, std::string_view)>> patternHandlers,
       std::vector<std::function<void(Handle&, std::span<Handle>)>> ruleHandlers
     ):
-      _unambiguous(unambiguous),
-      _patternHandlers(std::move(patternHandlers)),
-      _ruleHandlers(std::move(ruleHandlers)) {}
+        _unambiguous(unambiguous),
+        _patternHandlers(std::move(patternHandlers)),
+        _ruleHandlers(std::move(ruleHandlers)) {}
 
     // Visits parse result.
     template <typename T>
@@ -147,7 +153,8 @@ namespace apimu::parsing {
       assert(!_unambiguous || result.size() == 1);
       auto max = result[0];
       for (auto const i: result)
-        if (nodes[i].state.rule > nodes[max].state.rule) max = i;
+        if (nodes[i].state.rule > nodes[max].state.rule)
+          max = i;
       // Given type `T` must match the root symbol.
       auto handle = Handle(parser, false, max, *this, context);
       return *View<T>(handle);

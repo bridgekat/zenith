@@ -81,7 +81,8 @@ auto startAnalysis(JsonRpcServer* srv, DocumentUri uri) -> void {
     evaluator.setString(s);
 
     while (!evaluator.eof()) {
-      if (stopToken.stop_requested()) return;
+      if (stopToken.stop_requested())
+        return;
       auto const& res = evaluator.evalNextStatement();
       if (res) {
         auto const& [expr, begin, end] = *res;
@@ -159,13 +160,18 @@ auto test2(JsonRpcServer* srv, json const&) -> Coroutine<void> {
   auto sel = MessageType::unknown;
   if (res.contains("title") && res["title"].is_string()) {
     auto s = res["title"];
-    if (s == "Log") sel = MessageType::log;
-    if (s == "Info") sel = MessageType::info;
-    if (s == "Warning") sel = MessageType::warning;
-    if (s == "Error") sel = MessageType::error;
+    if (s == "Log")
+      sel = MessageType::log;
+    if (s == "Info")
+      sel = MessageType::info;
+    if (s == "Warning")
+      sel = MessageType::warning;
+    if (s == "Error")
+      sel = MessageType::error;
   }
   // Invalid response, discard
-  if (sel == MessageType::unknown) co_return;
+  if (sel == MessageType::unknown)
+    co_return;
   // Valid response, put a message
   showMessage(srv, sel, "Hello, world!");
   logMessage(srv, sel, "Hello, world!");

@@ -15,7 +15,7 @@ Dependent type theory and [Lean](https://leanprover.github.io/) seem to be too d
 
 ## Building (experimental)
 
-Make sure a C++20 compiler (I'm using GCC 12.2) and CMake 3.15+ is available on your computer. In the root directory, run:
+Make sure a C++23 compiler (I'm using Clang 17) and CMake 3.28+ is available on your computer. In the root directory, run:
 
 ```sh
 git submodule update --init --recursive

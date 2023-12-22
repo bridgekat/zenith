@@ -96,19 +96,25 @@ namespace apimu::parsing {
   public:
     // Given references must be valid over the `Lexer`'s lifetime.
     AutomatonLexer(Automaton const& automaton, CharStream& stream):
-      _automaton(automaton),
-      _stream(stream),
-      _offset(stream.position()) {}
+        _automaton(automaton),
+        _stream(stream),
+        _offset(stream.position()) {}
 
-    auto position() const -> size_t override { return _offsets.size(); }
+    auto position() const -> size_t override {
+      return _offsets.size();
+    }
     auto revert(size_t i) -> void override {
       assert(i <= _offsets.size());
       _offsets.resize(i);
       _stream.revert(_offsets.empty() ? _offset : _offsets.back());
     }
-    auto mark() -> void override { _offsets.push_back(_stream.position()); }
+    auto mark() -> void override {
+      _offsets.push_back(_stream.position());
+    }
     auto next() -> std::optional<Token> override;
-    auto clear() -> void override { _offset = _stream.position(), _offsets.clear(); }
+    auto clear() -> void override {
+      _offset = _stream.position(), _offsets.clear();
+    }
 
   private:
     Automaton const& _automaton;  // Underlying automaton.
