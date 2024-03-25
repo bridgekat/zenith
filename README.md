@@ -21,4 +21,4 @@ Non-goals:
 - Focus on constructive mathematics;
 - Focus on the univalence axiom and the interpretation of propositional equalities as homotopies.
 
-For the sake of simplicity, **computation of (co)inductive types is excluded from the core language**. This should be recovered by assuming additional propositional equalities and writing scripts for term normalisation. *(I disliked having to distinguish "definitional equality" from "propositional equality" in modern theorem provers...)*
+For the sake of simplicity, **computation of (co)inductive types is excluded from the core language**. This should be recovered by assuming additional propositional equalities and writing scripts for term normalisation. In fact, I advise against relying on definitional equalities too much, as the little kernel uses a naive reduction strategy (all definitions are eagerly unfolded!)
