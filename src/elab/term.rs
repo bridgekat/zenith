@@ -1,69 +1,107 @@
-//! See also: https://github.com/bridgekat/calculus-of-constructions/blob/main/src/checker.lean
-
-use std::cmp::max;
 use typed_arena::Arena;
 
 use self::Term::*;
 use super::*;
-
-/// Universes.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct Sort(pub usize);
+use crate::core;
 
 /// Preterms.
 #[derive(Debug, Clone, Copy, Hash)]
 pub enum Term<'a> {
+  /// Universes.
   Univ(Sort),
+
+  /// Variables in de Bruijn indices.
   Var(usize),
+
+  /// Function applications.
   App(&'a Term<'a>, &'a Term<'a>),
-  Lam(&'a Term<'a>, &'a Term<'a>),
-  Pi(&'a Term<'a>, &'a Term<'a>),
-  Let(&'a Term<'a>, &'a Term<'a>),
+
+  /// Function descriptions.
+  Lam(&'a Term<'a>, &'a Term<'a>, BinderInfo),
+
+  /// Function types.
+  Pi(&'a Term<'a>, &'a Term<'a>, BinderInfo),
+
+  /// Metavariables.
+  Meta(usize),
+
+  /// Definitions.
+  Let(&'a Term<'a>, &'a Term<'a>, &'a Term<'a>, BinderInfo),
+
+  /// Type annotations.
+  Ty(&'a Term<'a>, &'a Term<'a>),
+
+  /// Source info.
+  Src(&'a Term<'a>, SourceInfo),
 }
 
-/// Typing contexts: lists of `(type, definition?)`.
-pub type Context<'a> = Vec<(&'a Term<'a>, Option<&'a Term<'a>>)>;
+/// Dictionary index and implicitness of the bound variable.
+#[derive(Debug, Clone, Copy, Hash)]
+pub struct BinderInfo {
+  pub name_id: usize,
+  pub is_implicit: bool,
+}
 
-impl Sort {
-  /// Universe formation rule.
-  pub fn univ_rule(u: Sort) -> Option<Sort> {
-    let Sort(u) = u;
-    match u < 2 {
-      true => Some(Sort(u + 1)),
-      _ => None,
-    }
-  }
-
-  /// Function type formation rule.
-  pub fn pi_rule(u: Sort, v: Sort) -> Option<Sort> {
-    let (Sort(u), Sort(v)) = (u, v);
-    match u == 0 || v == 0 {
-      true => Some(Sort(0)),
-      _ => Some(Sort(max(u, v))),
-    }
-  }
+/// Starting and ending positions in input source code.
+#[derive(Debug, Clone, Copy, Hash)]
+pub struct SourceInfo {
+  pub begin: usize,
+  pub end: usize,
 }
 
 impl<'a> Eq for Term<'a> {}
 impl<'a> PartialEq for Term<'a> {
-  /// Syntactical equality.
+  /// Syntactical equality modulo alpha conversion.
   fn eq(&self, other: &Self) -> bool {
     if std::ptr::eq(self, other) {
       return true;
     }
     match (self, other) {
-      (Univ(u), Univ(v)) => u == v,
-      (Var(i), Var(j)) => i == j,
-      (App(f, x), App(g, y)) => f == g && x == y,
-      (Lam(s, x), Lam(t, y)) => s == t && x == y,
-      (Pi(q, r), Pi(s, t)) => q == s && r == t,
-      (Let(v, x), Let(w, y)) => v == w && x == y,
+      (Self::Univ(u), Self::Univ(v)) => u == v,
+      (Self::Var(i), Self::Var(j)) => i == j,
+      (Self::App(f, x), Self::App(g, y)) => f == g && x == y,
+      (Self::Lam(s, x, _), Self::Lam(t, y, _)) => s == t && x == y,
+      (Self::Pi(q, r, _), Self::Pi(s, t, _)) => q == s && r == t,
+      (Self::Meta(i), Self::Meta(j)) => i == j,
+      (Self::Let(s, v, x, _), Self::Let(t, w, y, _)) => s == t && v == w && x == y,
+      (Self::Ty(x, s), Self::Ty(y, t)) => x == y && s == t,
+      (Self::Src(x, _), Self::Src(y, _)) => x == y,
       _ => false,
     }
   }
 }
 
 impl<'a> Term<'a> {
+  /// Moves the term to a given pool.
+  pub fn clone_to<'b>(&'a self, pool: &'b Arena<Term<'b>>) -> &'b Term<'b> {
+    match *self {
+      Univ(u) => pool.alloc(Univ(u)),
+      Var(i) => pool.alloc(Var(i)),
+      App(f, x) => pool.alloc(App(f.clone_to(pool), x.clone_to(pool))),
+      Lam(t, x, info) => pool.alloc(Lam(t.clone_to(pool), x.clone_to(pool), info)),
+      Pi(s, t, info) => pool.alloc(Pi(s.clone_to(pool), t.clone_to(pool), info)),
+      Meta(i) => pool.alloc(Meta(i)),
+      Let(t, v, x, info) => pool.alloc(Let(t.clone_to(pool), v.clone_to(pool), x.clone_to(pool), info)),
+      Ty(x, t) => pool.alloc(Ty(x.clone_to(pool), t.clone_to(pool))),
+      Src(x, info) => pool.alloc(Src(x.clone_to(pool), info)),
+    }
+  }
+
+  /// Converts the term to core term.
+  pub fn clone_to_core<'b>(&'a self, pool: &'b Arena<core::Term<'b>>) -> Result<&'b core::Term<'b>, Error> {
+    match *self {
+      Univ(Sort(u)) => Ok(pool.alloc(core::Term::Univ(core::Sort(u)))),
+      Var(i) => Ok(pool.alloc(core::Term::Var(i))),
+      App(f, x) => Ok(pool.alloc(core::Term::App(f.clone_to_core(pool)?, x.clone_to_core(pool)?))),
+      Lam(t, x, _) => Ok(pool.alloc(core::Term::Lam(t.clone_to_core(pool)?, x.clone_to_core(pool)?))),
+      Pi(s, t, _) => Ok(pool.alloc(core::Term::Pi(s.clone_to_core(pool)?, t.clone_to_core(pool)?))),
+      Meta(_) => Err(Error::UnresolvedMeta { term: self }),
+      Let(_, v, x, _) => Ok(pool.alloc(core::Term::Let(v.clone_to_core(pool)?, x.clone_to_core(pool)?))),
+      Ty(x, _) => Ok(x.clone_to_core(pool)?),
+      Src(x, _) => Ok(x.clone_to_core(pool)?),
+    }
+  }
+
   /// Replaces all variables `x` with `g(n, x)`, where `n` is binder depth.
   pub fn map_vars(&'a self, n: usize, g: &impl Fn(usize, &'a Self) -> &'a Self, pool: &'a Arena<Self>) -> &'a Self {
     match *self {
@@ -74,20 +112,31 @@ impl<'a> Term<'a> {
         let xx = x.map_vars(n, g, pool);
         return if std::ptr::eq(ff, f) && std::ptr::eq(xx, x) { self } else { pool.alloc(App(ff, xx)) };
       }
-      Lam(t, x) => {
+      Lam(t, x, info) => {
         let tt = t.map_vars(n, g, pool);
         let xx = x.map_vars(n + 1, g, pool);
-        return if std::ptr::eq(tt, t) && std::ptr::eq(xx, x) { self } else { pool.alloc(Lam(tt, xx)) };
+        return if std::ptr::eq(tt, t) && std::ptr::eq(xx, x) { self } else { pool.alloc(Lam(tt, xx, info)) };
       }
-      Pi(s, t) => {
+      Pi(s, t, info) => {
         let ss = s.map_vars(n, g, pool);
         let tt = t.map_vars(n + 1, g, pool);
-        return if std::ptr::eq(ss, s) && std::ptr::eq(tt, t) { self } else { pool.alloc(Pi(ss, tt)) };
+        return if std::ptr::eq(ss, s) && std::ptr::eq(tt, t) { self } else { pool.alloc(Pi(ss, tt, info)) };
       }
-      Let(v, x) => {
+      Meta(_) => self,
+      Let(t, v, x, info) => {
+        let tt = t.map_vars(n, g, pool);
         let vv = v.map_vars(n, g, pool);
         let xx = x.map_vars(n + 1, g, pool);
-        return if std::ptr::eq(vv, v) && std::ptr::eq(xx, x) { self } else { pool.alloc(Let(vv, xx)) };
+        return if std::ptr::eq(vv, v) && std::ptr::eq(xx, x) { self } else { pool.alloc(Let(tt, vv, xx, info)) };
+      }
+      Ty(x, t) => {
+        let xx = x.map_vars(n, g, pool);
+        let tt = t.map_vars(n, g, pool);
+        return if std::ptr::eq(xx, x) && std::ptr::eq(tt, t) { self } else { pool.alloc(Ty(xx, tt)) };
+      }
+      Src(x, info) => {
+        let xx = x.map_vars(n, g, pool);
+        return if std::ptr::eq(xx, x) { self } else { pool.alloc(Src(xx, info)) };
       }
     }
   }
@@ -117,20 +166,21 @@ impl<'a> Term<'a> {
     )
   }
 
-  /// Beta-reduces well-typed `self` to weak head normal form, unfolding definitions at head.
-  /// By metatheory of the calculus of constructions, beta-reductions do not change type.
-  pub fn whnf(mut self: &'a Self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> &'a Self {
+  /// Beta-reduces `self` to weak head normal form, optionally unfolding definitions at head.
+  pub fn whnf(mut self: &'a Self, unfold: bool, ctx: &Context<'a>, pool: &'a Arena<Self>) -> &'a Self {
     loop {
       match *self {
-        Var(i) => match ctx.get(ctx.len() - 1 - i) {
-          Some((_, Some(v))) => self = v.shift(0, i + 1, pool),
+        Var(i) => match ctx.var_def(i, pool) {
+          Some(v) if unfold => self = v,
           _ => return self,
         },
-        App(x, y) => match x.whnf(ctx, pool) {
-          Lam(_, z) => self = z.subst(0, y, pool),
+        App(x, y) => match x.whnf(unfold, ctx, pool) {
+          Lam(_, x, _) => self = x.subst(0, y, pool),
           xx => return if std::ptr::eq(xx, x) { self } else { pool.alloc(App(xx, y)) },
         },
-        Let(v, x) => self = x.subst(0, v, pool),
+        Let(_, v, x, _) => self = x.subst(0, v, pool),
+        Ty(x, _) => self = x,
+        Src(x, _) => self = x,
         _ => return self,
       }
     }
@@ -140,7 +190,7 @@ impl<'a> Term<'a> {
   pub fn as_univ(&'a self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> Option<Sort> {
     match *self {
       Univ(u) => Some(u),
-      _ => match *self.whnf(ctx, pool) {
+      _ => match *self.whnf(true, ctx, pool) {
         Univ(u) => Some(u),
         _ => None,
       },
@@ -150,20 +200,21 @@ impl<'a> Term<'a> {
   /// Given well-typed `self` and context `ctx`, tries conversion into [`Term::Pi`].
   pub fn as_pi(&'a self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> Option<(&'a Self, &'a Self)> {
     match *self {
-      Pi(s, t) => Some((s, t)),
-      _ => match *self.whnf(ctx, pool) {
-        Pi(s, t) => Some((s, t)),
+      Pi(s, t, _) => Some((s, t)),
+      _ => match *self.whnf(true, ctx, pool) {
+        Pi(s, t, _) => Some((s, t)),
         _ => None,
       },
     }
   }
 
+  /*
   /// Given well-typed `self`, `other` and context `ctx`, returns if they are beta-convertible.
   pub fn conv(mut self: &'a Self, mut other: &'a Self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> bool {
     if self.eq(other) {
       return true;
     }
-    (self, other) = (self.whnf(ctx, pool), other.whnf(ctx, pool));
+    (self, other) = (self.whnf(true, ctx, pool), other.whnf(true, ctx, pool));
     loop {
       match (*self, *other) {
         (Univ(u), Univ(v)) => return u == v,
@@ -236,4 +287,5 @@ impl<'a> Term<'a> {
     let t = self.assign_type(ctx, pool)?;
     t.conv(ty, ctx, pool).then_some(()).ok_or(Error::TypeMismatch { term: self, ty: t, expect: ty })
   }
+  */
 }
