@@ -1,4 +1,4 @@
-use typed_arena::Arena;
+use bumpalo::Bump;
 
 use self::Term::*;
 use super::*;
@@ -73,7 +73,7 @@ impl<'a> PartialEq for Term<'a> {
 
 impl<'a> Term<'a> {
   /// Moves the term to a given pool.
-  pub fn clone_to<'b>(&'a self, pool: &'b Arena<Term<'b>>) -> &'b Term<'b> {
+  pub fn clone_to<'b>(&'a self, pool: &'b Bump) -> &'b Term<'b> {
     match *self {
       Univ(u) => pool.alloc(Univ(u)),
       Var(i) => pool.alloc(Var(i)),
@@ -88,7 +88,7 @@ impl<'a> Term<'a> {
   }
 
   /// Converts the term to core term.
-  pub fn clone_to_core<'b>(&'a self, pool: &'b Arena<core::Term<'b>>) -> Result<&'b core::Term<'b>, Error> {
+  pub fn clone_to_core<'b>(&'a self, pool: &'b Bump) -> Result<&'b core::Term<'b>, Error> {
     match *self {
       Univ(Sort(u)) => Ok(pool.alloc(core::Term::Univ(core::Sort(u)))),
       Var(i) => Ok(pool.alloc(core::Term::Var(i))),
@@ -96,14 +96,14 @@ impl<'a> Term<'a> {
       Lam(t, x, _) => Ok(pool.alloc(core::Term::Lam(t.clone_to_core(pool)?, x.clone_to_core(pool)?))),
       Pi(s, t, _) => Ok(pool.alloc(core::Term::Pi(s.clone_to_core(pool)?, t.clone_to_core(pool)?))),
       Meta(_) => Err(Error::UnresolvedMeta { term: self }),
-      Let(_, v, x, _) => Ok(pool.alloc(core::Term::Let(v.clone_to_core(pool)?, x.clone_to_core(pool)?))),
+      Let(_, v, x, _) => todo!(), // Ok(pool.alloc(core::Term::Let(v.clone_to_core(pool)?, x.clone_to_core(pool)?))),
       Ty(x, _) => Ok(x.clone_to_core(pool)?),
       Src(x, _) => Ok(x.clone_to_core(pool)?),
     }
   }
 
   /// Replaces all variables `x` with `g(n, x)`, where `n` is binder depth.
-  pub fn map_vars(&'a self, n: usize, g: &impl Fn(usize, &'a Self) -> &'a Self, pool: &'a Arena<Self>) -> &'a Self {
+  pub fn map_vars(&'a self, n: usize, g: &impl Fn(usize, &'a Self) -> &'a Self, pool: &'a Bump) -> &'a Self {
     match *self {
       Univ(_) => self,
       Var(_) => g(n, self),
@@ -142,7 +142,7 @@ impl<'a> Term<'a> {
   }
 
   /// Shifts variables with level ≥ `n` by `m` levels.
-  pub fn shift(&'a self, n: usize, m: usize, pool: &'a Arena<Self>) -> &'a Self {
+  pub fn shift(&'a self, n: usize, m: usize, pool: &'a Bump) -> &'a Self {
     self.map_vars(
       n,
       &|n, x| match *x {
@@ -154,7 +154,7 @@ impl<'a> Term<'a> {
   }
 
   /// Replaces all variables at level = `n` by a term `other` (while dropping the outermost layer of binder).
-  pub fn subst(&'a self, n: usize, other: &'a Self, pool: &'a Arena<Self>) -> &'a Self {
+  pub fn subst(&'a self, n: usize, other: &'a Self, pool: &'a Bump) -> &'a Self {
     self.map_vars(
       n,
       &|n, x| match *x {
@@ -167,7 +167,7 @@ impl<'a> Term<'a> {
   }
 
   /// Beta-reduces `self` to weak head normal form, optionally unfolding definitions at head.
-  pub fn whnf(mut self: &'a Self, unfold: bool, ctx: &Context<'a>, pool: &'a Arena<Self>) -> &'a Self {
+  pub fn whnf(mut self: &'a Self, unfold: bool, ctx: &Context<'a>, pool: &'a Bump) -> &'a Self {
     loop {
       match *self {
         Var(i) => match ctx.var_def(i, pool) {
@@ -187,7 +187,7 @@ impl<'a> Term<'a> {
   }
 
   /// Given well-typed `self` and context `ctx`, tries conversion into [`Term::Univ`].
-  pub fn as_univ(&'a self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> Option<Sort> {
+  pub fn as_univ(&'a self, ctx: &Context<'a>, pool: &'a Bump) -> Option<Sort> {
     match *self {
       Univ(u) => Some(u),
       _ => match *self.whnf(true, ctx, pool) {
@@ -198,7 +198,7 @@ impl<'a> Term<'a> {
   }
 
   /// Given well-typed `self` and context `ctx`, tries conversion into [`Term::Pi`].
-  pub fn as_pi(&'a self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> Option<(&'a Self, &'a Self)> {
+  pub fn as_pi(&'a self, ctx: &Context<'a>, pool: &'a Bump) -> Option<(&'a Self, &'a Self)> {
     match *self {
       Pi(s, t, _) => Some((s, t)),
       _ => match *self.whnf(true, ctx, pool) {
@@ -210,7 +210,7 @@ impl<'a> Term<'a> {
 
   /*
   /// Given well-typed `self`, `other` and context `ctx`, returns if they are beta-convertible.
-  pub fn conv(mut self: &'a Self, mut other: &'a Self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> bool {
+  pub fn conv(mut self: &'a Self, mut other: &'a Self, ctx: &Context<'a>, pool: &'a Bump) -> bool {
     if self.eq(other) {
       return true;
     }
@@ -230,7 +230,7 @@ impl<'a> Term<'a> {
   }
 
   /// Given preterm `self` and context `ctx`, returns the type of `self`.
-  pub fn assign_type(&'a self, ctx: &mut Context<'a>, pool: &'a Arena<Self>) -> Result<&'a Self, Error> {
+  pub fn assign_type(&'a self, ctx: &mut Context<'a>, pool: &'a Bump) -> Result<&'a Self, Error> {
     match *self {
       Univ(u) => {
         let v = Sort::univ_rule(u).ok_or(Error::UniverseOverflow { univ: u })?;
@@ -276,13 +276,13 @@ impl<'a> Term<'a> {
   }
 
   /// Given preterm `self` and context `ctx`, checks if `self` is type.
-  pub fn is_type(&'a self, ctx: &mut Context<'a>, pool: &'a Arena<Self>) -> Result<(), Error<'a>> {
+  pub fn is_type(&'a self, ctx: &mut Context<'a>, pool: &'a Bump) -> Result<(), Error<'a>> {
     let t = self.assign_type(ctx, pool)?;
     t.as_univ(ctx, pool).map(|_| ()).ok_or(Error::TypeExpected { term: self, ty: t })
   }
 
   /// Given preterms `self`, `ty` and context `ctx`, checks if `self` has type `ty`.
-  pub fn check_type(&'a self, ty: &'a Self, ctx: &mut Context<'a>, pool: &'a Arena<Self>) -> Result<(), Error<'a>> {
+  pub fn check_type(&'a self, ty: &'a Self, ctx: &mut Context<'a>, pool: &'a Bump) -> Result<(), Error<'a>> {
     ty.is_type(ctx, pool)?;
     let t = self.assign_type(ctx, pool)?;
     t.conv(ty, ctx, pool).then_some(()).ok_or(Error::TypeMismatch { term: self, ty: t, expect: ty })

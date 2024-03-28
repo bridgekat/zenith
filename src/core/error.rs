@@ -4,25 +4,24 @@ use self::Error::*;
 use super::*;
 
 #[derive(Debug, Clone, Copy)]
-pub enum Error<'a> {
-  UniverseOverflow { univ: Sort },
-  FunctionOverflow { from: Sort, to: Sort },
-  VariableOverflow { var: usize, len: usize },
-  FunctionExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
-  TypeExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
-  TypeMismatch { term: &'a Term<'a>, ty: &'a Term<'a>, expect: &'a Term<'a> },
+pub enum Error {
+  UniverseOverflow,
+  FunctionOverflow,
+  VariableOverflow,
+  FunctionExpected,
+  TypeExpected,
+  TypeMismatch,
 }
 
-/// Simple pretty-printer for debugging purposes.
-impl<'a> Display for Error<'a> {
+impl Display for Error {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      UniverseOverflow { univ } => write!(f, "universe {univ} does not have a type"),
-      FunctionOverflow { from, to } => write!(f, "dependent functions from {from} to {to} are unspecified"),
-      VariableOverflow { var, len } => write!(f, "variable index {var} out of bound, context has size {len}"),
-      FunctionExpected { term, ty } => write!(f, "function expected, term {term} has type {ty}, which is not Pi type"),
-      TypeExpected { term, ty } => write!(f, "type expected, term {term} has type {ty}, which is not universe type"),
-      TypeMismatch { term, ty, expect } => write!(f, "term {term} has type {ty}, but the expected type is {expect}"),
+      UniverseOverflow => write!(f, "universe ? does not have a type"),
+      FunctionOverflow => write!(f, "function type ? does not belong to any universe"),
+      VariableOverflow => write!(f, "variable ? out of bound"),
+      FunctionExpected => write!(f, "function expected, but term ? does not have Pi type"),
+      TypeExpected => write!(f, "type expected, but term ? does not have universe type"),
+      TypeMismatch => write!(f, "term ? has unexpected type"),
     }
   }
 }
@@ -124,6 +123,7 @@ impl<'a> Term<'a> {
         }
         Ok(())
       }
+      /*
       Term::Let(v, x) => {
         if prec > 1 {
           write!(f, "(")?;
@@ -139,6 +139,10 @@ impl<'a> Term<'a> {
           write!(f, ")")?;
         }
         Ok(())
+      }
+      */
+      Term::ES(x, s) => {
+        todo!()
       }
     }
   }

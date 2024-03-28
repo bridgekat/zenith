@@ -8,8 +8,8 @@ If possible, this will be made compatible with other foundations as well.
 
 Goals:
 
-- Implement a core language based on the [calculus of constructions](https://en.wikipedia.org/wiki/Calculus_of_constructions);
-- Implement an elaborator with type inference and support for typeclasses;
+- Implement a [core language](src/core/term.rs) based on the [calculus of constructions](https://en.wikipedia.org/wiki/Calculus_of_constructions);
+- Implement an [elaborator](src/elab/term.rs) with type inference and support for typeclasses;
 - Inject primitive types to make a programming language;
 - Formalise and use categories as the organising principle of mathematics;
 - Keep compatibility with different axioms and foundations;

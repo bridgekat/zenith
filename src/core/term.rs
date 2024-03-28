@@ -1,8 +1,11 @@
-//! See also: https://github.com/bridgekat/calculus-of-constructions/blob/main/src/checker.lean
+//! See: https://math.andrej.com/2012/11/29/how-to-implement-dependent-type-theory-iii/ (explicit substitutions)
+//! See: https://github.com/bridgekat/leansubst/blob/main/Leansubst/Defs.lean (verified parallel substitutions)
+//! See: https://github.com/bridgekat/calculus-of-constructions/blob/main/src/checker.lean (verified type assignment)
 
+use bumpalo::Bump;
 use std::cmp::max;
-use typed_arena::Arena;
 
+use self::Subs::*;
 use self::Term::*;
 use super::*;
 
@@ -18,7 +21,15 @@ pub enum Term<'a> {
   App(&'a Term<'a>, &'a Term<'a>),
   Lam(&'a Term<'a>, &'a Term<'a>),
   Pi(&'a Term<'a>, &'a Term<'a>),
-  Let(&'a Term<'a>, &'a Term<'a>),
+  // Let(&'a Term<'a>, &'a Term<'a>),
+  ES(&'a Term<'a>, &'a Subs<'a>),
+}
+
+/// Explicit substitutions.
+#[derive(Debug, Clone, Copy, Hash)]
+pub enum Subs<'a> {
+  Shift(usize),
+  Cons(&'a Term<'a>, &'a Subs<'a>),
 }
 
 /// Typing contexts: lists of `(type, definition?)`.
@@ -57,90 +68,106 @@ impl<'a> PartialEq for Term<'a> {
       (App(f, x), App(g, y)) => f == g && x == y,
       (Lam(s, x), Lam(t, y)) => s == t && x == y,
       (Pi(q, r), Pi(s, t)) => q == s && r == t,
-      (Let(v, x), Let(w, y)) => v == w && x == y,
+      // (Let(v, x), Let(w, y)) => v == w && x == y,
+      (ES(x, s), ES(y, t)) => x == y && s == t,
       _ => false,
     }
   }
 }
 
-impl<'a> Term<'a> {
-  /// Replaces all variables `x` with `g(n, x)`, where `n` is binder depth.
-  pub fn map_vars(&'a self, n: usize, g: &impl Fn(usize, &'a Self) -> &'a Self, pool: &'a Arena<Self>) -> &'a Self {
-    match *self {
-      Univ(_) => self,
-      Var(_) => g(n, self),
-      App(f, x) => {
-        let ff = f.map_vars(n, g, pool);
-        let xx = x.map_vars(n, g, pool);
-        return if std::ptr::eq(ff, f) && std::ptr::eq(xx, x) { self } else { pool.alloc(App(ff, xx)) };
-      }
-      Lam(t, x) => {
-        let tt = t.map_vars(n, g, pool);
-        let xx = x.map_vars(n + 1, g, pool);
-        return if std::ptr::eq(tt, t) && std::ptr::eq(xx, x) { self } else { pool.alloc(Lam(tt, xx)) };
-      }
-      Pi(s, t) => {
-        let ss = s.map_vars(n, g, pool);
-        let tt = t.map_vars(n + 1, g, pool);
-        return if std::ptr::eq(ss, s) && std::ptr::eq(tt, t) { self } else { pool.alloc(Pi(ss, tt)) };
-      }
-      Let(v, x) => {
-        let vv = v.map_vars(n, g, pool);
-        let xx = x.map_vars(n + 1, g, pool);
-        return if std::ptr::eq(vv, v) && std::ptr::eq(xx, x) { self } else { pool.alloc(Let(vv, xx)) };
+impl<'a> Eq for Subs<'a> {}
+impl<'a> PartialEq for Subs<'a> {
+  /// Syntactical equality.
+  fn eq(&self, other: &Self) -> bool {
+    if std::ptr::eq(self, other) {
+      return true;
+    }
+    match (self, other) {
+      (Shift(n), Shift(m)) => n == m,
+      (Cons(x, s), Cons(y, t)) => x == y && s == t,
+      _ => false,
+    }
+  }
+}
+
+impl<'a> Subs<'a> {
+  /// Returns the `i`-th entry.
+  pub fn get(mut self: &'a Self, mut i: usize) -> Term<'a> {
+    loop {
+      match *self {
+        Shift(n) => return Var(i + n),
+        Cons(x, s) => match i {
+          0 => return *x,
+          _ => (self, i) = (s, i - 1),
+        },
       }
     }
   }
 
-  /// Shifts variables with level ≥ `n` by `m` levels.
-  pub fn shift(&'a self, n: usize, m: usize, pool: &'a Arena<Self>) -> &'a Self {
-    self.map_vars(
-      n,
-      &|n, x| match *x {
-        Var(i) if i >= n => pool.alloc(Var(i + m)),
-        _ => x,
-      },
-      pool,
-    )
+  /// Returns composition of `self` and `other`.
+  pub fn then(&'a self, other: &'a Self, pool: &'a Bump) -> &'a Self {
+    match (self, other) {
+      (_, Shift(0)) => self,
+      (Shift(0), _) => other,
+      (Shift(n), Shift(m)) => pool.alloc(Shift(n + m)),
+      (Shift(n), Cons(_, s)) => pool.alloc(Shift(n - 1)).then(s, pool),
+      (Cons(x, s), _) => pool.alloc(Cons(pool.alloc(ES(x, other)), s.then(other, pool))),
+    }
   }
 
-  /// Replaces all variables at level = `n` by a term `other` (while dropping the outermost layer of binder).
-  pub fn subst(&'a self, n: usize, other: &'a Self, pool: &'a Arena<Self>) -> &'a Self {
-    self.map_vars(
-      n,
-      &|n, x| match *x {
-        Var(i) if i > n => pool.alloc(Var(i - 1)),
-        Var(i) if i == n => other.shift(0, n, pool),
-        _ => x,
-      },
-      pool,
-    )
+  /// Transforms `self` for entering a binder.
+  pub fn up(&'a self, pool: &'a Bump) -> &'a Self {
+    pool.alloc(Cons(pool.alloc(Var(0)), self.then(&Shift(1), pool)))
+  }
+}
+
+impl<'a> Term<'a> {
+  /// Applies an explicit substitution (single step).
+  pub fn apply(self, subs: &'a Subs, pool: &'a Bump) -> Self {
+    match self {
+      Univ(_) => self,
+      Var(i) => subs.get(i),
+      App(f, z) => App(pool.alloc(ES(f, subs)), pool.alloc(ES(z, subs))),
+      Lam(t, z) => Lam(pool.alloc(ES(t, subs)), pool.alloc(ES(z, subs.up(pool)))),
+      Pi(s, t) => Lam(pool.alloc(ES(s, subs)), pool.alloc(ES(t, subs.up(pool)))),
+      ES(x, prev) => ES(x, prev.then(subs, pool)),
+    }
   }
 
-  /// Beta-reduces well-typed `self` to weak head normal form, unfolding definitions at head.
+  /// Shifts free variables by `n` levels.
+  pub fn shift(&'a self, n: usize, pool: &'a Bump) -> Self {
+    ES(self, pool.alloc(Shift(n)))
+  }
+
+  /// Replaces free variable 0 by term `other` (e.g. while dropping the outermost layer of binder).
+  pub fn subst(&'a self, other: &'a Self, pool: &'a Bump) -> Self {
+    ES(self, pool.alloc(Cons(other, pool.alloc(Shift(0)))))
+  }
+
+  /// Applies explicit substitutions in well-typed `self` to obtain weak head normal form, unfolding definitions.
   /// By metatheory of the calculus of constructions, beta-reductions do not change type.
-  pub fn whnf(mut self: &'a Self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> &'a Self {
+  pub fn whnf(mut self, ctx: &Context<'a>, pool: &'a Bump) -> Self {
     loop {
-      match *self {
+      match self {
         Var(i) => match ctx.get(ctx.len() - 1 - i) {
-          Some((_, Some(v))) => self = v.shift(0, i + 1, pool),
+          Some((_, Some(v))) => self = v.shift(i + 1, pool),
           _ => return self,
         },
         App(x, y) => match x.whnf(ctx, pool) {
-          Lam(_, z) => self = z.subst(0, y, pool),
-          xx => return if std::ptr::eq(xx, x) { self } else { pool.alloc(App(xx, y)) },
+          Lam(_, z) => self = z.subst(y, pool),
+          xx => return App(pool.alloc(xx), y),
         },
-        Let(v, x) => self = x.subst(0, v, pool),
+        ES(x, s) => self = x.apply(s, pool),
         _ => return self,
       }
     }
   }
 
   /// Given well-typed `self` and context `ctx`, tries conversion into [`Term::Univ`].
-  pub fn as_univ(&'a self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> Option<Sort> {
-    match *self {
+  pub fn as_univ(self, ctx: &Context<'a>, pool: &'a Bump) -> Option<Sort> {
+    match self {
       Univ(u) => Some(u),
-      _ => match *self.whnf(ctx, pool) {
+      _ => match self.whnf(ctx, pool) {
         Univ(u) => Some(u),
         _ => None,
       },
@@ -148,10 +175,10 @@ impl<'a> Term<'a> {
   }
 
   /// Given well-typed `self` and context `ctx`, tries conversion into [`Term::Pi`].
-  pub fn as_pi(&'a self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> Option<(&'a Self, &'a Self)> {
-    match *self {
+  pub fn as_pi(self, ctx: &Context<'a>, pool: &'a Bump) -> Option<(&'a Self, &'a Self)> {
+    match self {
       Pi(s, t) => Some((s, t)),
-      _ => match *self.whnf(ctx, pool) {
+      _ => match self.whnf(ctx, pool) {
         Pi(s, t) => Some((s, t)),
         _ => None,
       },
@@ -159,81 +186,74 @@ impl<'a> Term<'a> {
   }
 
   /// Given well-typed `self`, `other` and context `ctx`, returns if they are beta-convertible.
-  pub fn conv(mut self: &'a Self, mut other: &'a Self, ctx: &Context<'a>, pool: &'a Arena<Self>) -> bool {
-    if self.eq(other) {
+  pub fn conv(mut self, mut other: Self, ctx: &Context<'a>, pool: &'a Bump) -> bool {
+    if self == other {
       return true;
     }
     (self, other) = (self.whnf(ctx, pool), other.whnf(ctx, pool));
     loop {
-      match (*self, *other) {
+      match (self, other) {
         (Univ(u), Univ(v)) => return u == v,
         (Var(i), Var(j)) => return i == j,
-        (App(f, x), App(g, y)) if x.conv(y, ctx, pool) => (self, other) = (f, g),
+        (App(f, x), App(g, y)) if x.conv(*y, ctx, pool) => (self, other) = (*f, *g),
         (App(_, _), App(_, _)) => return false,
-        (Lam(s, x), Lam(t, y)) => return s.conv(t, ctx, pool) && x.conv(y, ctx, pool),
-        (Pi(q, r), Pi(s, t)) => return q.conv(s, ctx, pool) && r.conv(t, ctx, pool),
-        (Let(v, x), Let(w, y)) => return v.conv(w, ctx, pool) && x.conv(y, ctx, pool),
+        (Lam(s, x), Lam(t, y)) => return s.conv(*t, ctx, pool) && x.conv(*y, ctx, pool),
+        (Pi(q, r), Pi(s, t)) => return q.conv(*s, ctx, pool) && r.conv(*t, ctx, pool),
         _ => return false,
       };
     }
   }
 
   /// Given preterm `self` and context `ctx`, returns the type of `self`.
-  pub fn assign_type(&'a self, ctx: &mut Context<'a>, pool: &'a Arena<Self>) -> Result<&'a Self, Error> {
-    match *self {
+  pub fn assign_type(self, ctx: &mut Context<'a>, pool: &'a Bump) -> Result<Self, Error> {
+    match self {
       Univ(u) => {
-        let v = Sort::univ_rule(u).ok_or(Error::UniverseOverflow { univ: u })?;
-        Ok(pool.alloc(Univ(v)))
+        let v = Sort::univ_rule(u).ok_or(Error::UniverseOverflow)?;
+        Ok(Univ(v))
       }
       Var(i) => {
-        let (t, _) = ctx.get(ctx.len() - 1 - i).ok_or(Error::VariableOverflow { var: i, len: ctx.len() })?;
-        Ok(t.shift(0, i + 1, pool))
+        let (t, _) = ctx.get(ctx.len() - 1 - i).ok_or(Error::VariableOverflow)?;
+        Ok(t.shift(i + 1, pool))
       }
       App(f, x) => {
         let ft = f.assign_type(ctx, pool)?;
-        let (s, t) = ft.as_pi(ctx, pool).ok_or(Error::FunctionExpected { term: f, ty: ft })?;
+        let (s, t) = ft.as_pi(ctx, pool).ok_or(Error::FunctionExpected)?;
         let xt = x.assign_type(ctx, pool)?;
-        xt.conv(s, ctx, pool).then_some(()).ok_or(Error::TypeMismatch { term: x, ty: xt, expect: s })?;
-        Ok(t.subst(0, x, pool))
+        xt.conv(*s, ctx, pool).then_some(()).ok_or(Error::TypeMismatch)?;
+        Ok(t.subst(x, pool))
       }
       Lam(t, x) => {
         let tt = t.assign_type(ctx, pool)?;
-        let _ = tt.as_univ(ctx, pool).ok_or(Error::TypeExpected { term: t, ty: tt })?;
+        let _ = tt.as_univ(ctx, pool).ok_or(Error::TypeExpected)?;
         ctx.push((t, None));
         let xt = x.assign_type(ctx, pool)?;
         ctx.pop();
-        Ok(pool.alloc(Pi(t, xt)))
+        Ok(Pi(t, pool.alloc(xt)))
       }
       Pi(s, t) => {
         let st = s.assign_type(ctx, pool)?;
-        let u = st.as_univ(ctx, pool).ok_or(Error::TypeExpected { term: s, ty: st })?;
+        let u = st.as_univ(ctx, pool).ok_or(Error::TypeExpected)?;
         ctx.push((s, None));
         let tt = t.assign_type(ctx, pool)?;
-        let v = tt.as_univ(ctx, pool).ok_or(Error::TypeExpected { term: t, ty: tt })?;
+        let v = tt.as_univ(ctx, pool).ok_or(Error::TypeExpected)?;
         ctx.pop();
-        let w = Sort::pi_rule(u, v).ok_or(Error::FunctionOverflow { from: u, to: v })?;
-        Ok(pool.alloc(Univ(w)))
+        let w = Sort::pi_rule(u, v).ok_or(Error::FunctionOverflow)?;
+        Ok(Univ(w))
       }
-      Let(v, x) => {
-        let vt = v.assign_type(ctx, pool)?;
-        ctx.push((vt, Some(v)));
-        let xt = x.assign_type(ctx, pool)?;
-        ctx.pop();
-        Ok(xt.subst(0, v, pool))
-      }
+      ES(x, s) => x.apply(s, pool).assign_type(ctx, pool),
     }
   }
 
   /// Given preterm `self` and context `ctx`, checks if `self` is type.
-  pub fn is_type(&'a self, ctx: &mut Context<'a>, pool: &'a Arena<Self>) -> Result<(), Error<'a>> {
+  pub fn is_type(self, ctx: &mut Context<'a>, pool: &'a Bump) -> Result<(), Error> {
     let t = self.assign_type(ctx, pool)?;
-    t.as_univ(ctx, pool).map(|_| ()).ok_or(Error::TypeExpected { term: self, ty: t })
+    t.as_univ(ctx, pool).map(|_| ()).ok_or(Error::TypeExpected)
   }
 
   /// Given preterms `self`, `ty` and context `ctx`, checks if `self` has type `ty`.
-  pub fn check_type(&'a self, ty: &'a Self, ctx: &mut Context<'a>, pool: &'a Arena<Self>) -> Result<(), Error<'a>> {
+  pub fn check_type(self, ty: Self, ctx: &mut Context<'a>, pool: &'a Bump) -> Result<(), Error> {
     ty.is_type(ctx, pool)?;
     let t = self.assign_type(ctx, pool)?;
-    t.conv(ty, ctx, pool).then_some(()).ok_or(Error::TypeMismatch { term: self, ty: t, expect: ty })
+    t.conv(ty, ctx, pool).then_some(()).ok_or(Error::TypeMismatch)
   }
 }

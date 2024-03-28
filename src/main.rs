@@ -1,14 +1,14 @@
 pub mod core;
 pub mod elab;
 
-use typed_arena::Arena;
+use bumpalo::Bump;
 
 use core::term::{Context, Sort, Term::*};
 
 fn main() {
-  let pool = Arena::new();
-  let id_sig = pool.alloc(Pi(pool.alloc(Univ(Sort(1))), pool.alloc(Pi(pool.alloc(Var(0)), pool.alloc(Var(1))))));
-  let id = pool.alloc(Lam(pool.alloc(Univ(Sort(1))), pool.alloc(Lam(pool.alloc(Var(0)), pool.alloc(Var(0))))));
+  let pool = Bump::new();
+  let id_sig = Pi(pool.alloc(Univ(Sort(1))), pool.alloc(Pi(pool.alloc(Var(0)), pool.alloc(Var(1)))));
+  let id = Lam(pool.alloc(Univ(Sort(1))), pool.alloc(Lam(pool.alloc(Var(0)), pool.alloc(Var(0)))));
 
   print!("{id_sig} : ");
   match id_sig.assign_type(&mut Context::new(), &pool) {

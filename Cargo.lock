@@ -3,14 +3,14 @@
 version = 3
 
 [[package]]
-name = "typed-arena"
-version = "2.0.2"
+name = "bumpalo"
+version = "3.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
+checksum = "7ff69b9dd49fd426c69a0db9fc04dd934cdb6645ff000864d98f7e2af8830eaa"
 
 [[package]]
 name = "zenith"
 version = "0.1.0"
 dependencies = [
- "typed-arena",
+ "bumpalo",
 ]
