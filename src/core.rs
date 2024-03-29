@@ -1,5 +1,5 @@
-pub mod error;
-pub mod term;
+mod term;
+pub use term::{Context, Sort, Term};
 
+mod error;
 pub use error::Error;
-pub use term::{Sort, Term};
