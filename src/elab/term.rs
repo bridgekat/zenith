@@ -153,7 +153,7 @@ impl<'a> Term<'a> {
     )
   }
 
-  /// Replaces all variables at level = `n` by a term `other` (while dropping the outermost layer of binder).
+  /// Replaces all variables at level = `n` by a term `other`.
   pub fn subst(&'a self, n: usize, other: &'a Self, pool: &'a Arena<Self>) -> &'a Self {
     self.map_vars(
       n,

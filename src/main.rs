@@ -3,7 +3,7 @@ pub mod elab;
 
 use typed_arena::Arena;
 
-use core::term::{Context, Sort, Term::*};
+use core::{Context, Sort, Term::*};
 
 fn main() {
   let pool = Arena::new();

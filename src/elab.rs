@@ -1,9 +1,11 @@
-pub mod context;
-pub mod error;
-pub mod sort;
-pub mod term;
-
+mod context;
 pub use context::Context;
-pub use error::Error;
+
+mod sort;
 pub use sort::Sort;
+
+mod term;
 pub use term::{BinderInfo, SourceInfo, Term};
+
+mod error;
+pub use error::Error;

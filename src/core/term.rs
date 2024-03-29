@@ -1,4 +1,4 @@
-//! See also: https://github.com/bridgekat/calculus-of-constructions/blob/main/src/checker.lean
+//! See: <https://github.com/bridgekat/calculus-of-constructions/blob/main/src/checker.lean>
 
 use std::cmp::max;
 use typed_arena::Arena;
@@ -37,7 +37,7 @@ impl Sort {
   /// Function type formation rule.
   pub fn pi_rule(u: Sort, v: Sort) -> Option<Sort> {
     let (Sort(u), Sort(v)) = (u, v);
-    match u == 0 || v == 0 {
+    match v == 0 {
       true => Some(Sort(0)),
       _ => Some(Sort(max(u, v))),
     }
@@ -104,7 +104,7 @@ impl<'a> Term<'a> {
     )
   }
 
-  /// Replaces all variables at level = `n` by a term `other` (while dropping the outermost layer of binder).
+  /// Replaces all variables at level = `n` by a term `other`.
   pub fn subst(&'a self, n: usize, other: &'a Self, pool: &'a Arena<Self>) -> &'a Self {
     self.map_vars(
       n,
@@ -169,10 +169,8 @@ impl<'a> Term<'a> {
         (Univ(u), Univ(v)) => return u == v,
         (Var(i), Var(j)) => return i == j,
         (App(f, x), App(g, y)) if x.conv(y, ctx, pool) => (self, other) = (f, g),
-        (App(_, _), App(_, _)) => return false,
         (Lam(s, x), Lam(t, y)) => return s.conv(t, ctx, pool) && x.conv(y, ctx, pool),
         (Pi(q, r), Pi(s, t)) => return q.conv(s, ctx, pool) && r.conv(t, ctx, pool),
-        (Let(v, x), Let(w, y)) => return v.conv(w, ctx, pool) && x.conv(y, ctx, pool),
         _ => return false,
       };
     }
@@ -198,10 +196,13 @@ impl<'a> Term<'a> {
       }
       Lam(t, x) => {
         let tt = t.assign_type(ctx, pool)?;
-        let _ = tt.as_univ(ctx, pool).ok_or(Error::TypeExpected { term: t, ty: tt })?;
+        let u = tt.as_univ(ctx, pool).ok_or(Error::TypeExpected { term: t, ty: tt })?;
         ctx.push((t, None));
         let xt = x.assign_type(ctx, pool)?;
+        let xtt = xt.assign_type(ctx, pool)?;
+        let v = xtt.as_univ(ctx, pool).ok_or(Error::TypeExpected { term: xt, ty: xtt })?;
         ctx.pop();
+        let _ = Sort::pi_rule(u, v).ok_or(Error::FunctionOverflow { from: u, to: v })?;
         Ok(pool.alloc(Pi(t, xt)))
       }
       Pi(s, t) => {

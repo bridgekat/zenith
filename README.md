@@ -8,7 +8,7 @@ If possible, this will be made compatible with other foundations as well.
 
 Goals:
 
-- Implement a core language based on the [calculus of constructions](https://en.wikipedia.org/wiki/Calculus_of_constructions);
+- Implement a [core language](src/core/term.rs) based on the [calculus of constructions](https://en.wikipedia.org/wiki/Calculus_of_constructions);
 - Implement an elaborator with type inference and support for typeclasses;
 - Inject primitive types to make a programming language;
 - Formalise and use categories as the organising principle of mathematics;
@@ -21,4 +21,8 @@ Non-goals:
 - Focus on constructive mathematics;
 - Focus on the univalence axiom and the interpretation of propositional equalities as homotopies.
 
-For the sake of simplicity, **computation of (co)inductive types is excluded from the core language**. This should be recovered by assuming additional propositional equalities and writing scripts for term normalisation. In fact, I advise against relying on definitional equalities too much, as the little kernel uses a naive reduction strategy (all definitions are eagerly unfolded!)
+For the sake of simplicity, **computation of (co)inductive types is excluded from the core language**. This should be recovered by assuming additional propositional equalities and writing scripts for term normalisation. In fact, I advise against relying on definitional equalities too much, as the little kernel uses a naive reduction strategy (call by name + unfolding all definitions...)
+
+## Outline (draft)
+
+![](doc/design.png)

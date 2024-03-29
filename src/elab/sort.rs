@@ -17,7 +17,7 @@ impl Sort {
   /// Function type formation rule.
   pub fn pi_rule(u: Sort, v: Sort) -> Option<Sort> {
     let (Sort(u), Sort(v)) = (u, v);
-    match u == 0 || v == 0 {
+    match v == 0 {
       true => Some(Sort(0)),
       _ => Some(Sort(max(u, v))),
     }
