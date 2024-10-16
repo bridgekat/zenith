@@ -1,4 +1,6 @@
-# Zenith theorem prover (planned)
+# Zenith: a minimalistic framework for formal mathematics
+
+![](doc/title.png)
 
 This is my personal attempt at making a theorem prover centred around the classical foundation of ZFC, but which also uses dependent types as an abstraction mechanism to facilitate the organisation of mathematical theories.
 
@@ -10,10 +12,8 @@ Goals:
 
 - Implement a [core language](src/core/term.rs) based on the [calculus of constructions](https://en.wikipedia.org/wiki/Calculus_of_constructions);
 - Implement an elaborator with type inference and support for typeclasses;
-- Inject primitive types to make a programming language;
-- Formalise and use categories as the organising principle of mathematics;
-- Keep compatibility with different axioms and foundations;
-- Support interaction with special-purpose automated theorem provers (e.g. tableaux for first-order logic, SMT for arithmetic, etc).
+- Formalise basic mathematical concepts;
+- Implement a tactic mode.
 
 Non-goals:
 
@@ -21,8 +21,4 @@ Non-goals:
 - Focus on constructive mathematics;
 - Focus on the univalence axiom and the interpretation of propositional equalities as homotopies.
 
-For the sake of simplicity, **computation of (co)inductive types is excluded from the core language**. This should be recovered by assuming additional propositional equalities and writing scripts for term normalisation. In fact, I advise against relying on definitional equalities too much, as the little kernel uses a naive reduction strategy (call by name + unfolding all definitions...)
-
-## Outline (draft)
-
-![](doc/design.png)
+For the sake of simplicity, **computation of (co)inductive types is excluded from the core language**. The first stage of development will not focus on any programming language stuff.

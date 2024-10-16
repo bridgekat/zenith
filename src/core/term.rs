@@ -11,7 +11,7 @@ use super::*;
 pub struct Sort(pub usize);
 
 /// Preterms.
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Copy)]
 pub enum Term<'a> {
   Univ(Sort),
   Var(usize),

@@ -4,8 +4,14 @@ use self::Term::*;
 use super::*;
 use crate::core;
 
-/// Preterms.
-#[derive(Debug, Clone, Copy, Hash)]
+/// One of the two central data structures of the elaborator. The other one is [`Context`].
+///
+/// A [`Term`] is conceptually associated with a unique [`Context`], under which should it be interpreted.
+/// A [`Lam`], [`Pi`] or [`Let`] binder introduces a new layer in the associated context of the enclosed sub-term,
+/// compared with the parent term.
+///
+///
+#[derive(Debug, Clone, Copy)]
 pub enum Term<'a> {
   /// Universes.
   Univ(Sort),
@@ -142,6 +148,9 @@ impl<'a> Term<'a> {
   }
 
   /// Shifts variables with level ≥ `n` by `m` levels.
+  ///
+  /// This can be used to implement weakening: `term.shift(0, m, pool)` returns a term associated with a context
+  /// `m` variable entries more than the original context.
   pub fn shift(&'a self, n: usize, m: usize, pool: &'a Arena<Self>) -> &'a Self {
     self.map_vars(
       n,
@@ -154,6 +163,11 @@ impl<'a> Term<'a> {
   }
 
   /// Replaces all variables at level = `n` by a term `other`.
+  ///
+  /// This is the central operation of terms: `term.subst(0, other, pool)` returns a term associated with a context
+  /// one variable entry less than the original context. The free variable referencing the last variable entry in the
+  /// original context is replaced with `other`. Here `other` is required to associate with the context one variable
+  /// entry less than the original context of `term`.
   pub fn subst(&'a self, n: usize, other: &'a Self, pool: &'a Arena<Self>) -> &'a Self {
     self.map_vars(
       n,
