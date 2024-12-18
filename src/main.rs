@@ -3,27 +3,26 @@ pub mod elab;
 
 use typed_arena::Arena;
 
-use core::{Context, Sort, Term::*};
+use core::{Ctx, Env, Term, Univ};
 
 fn main() {
-  let pool = Arena::new();
-  let id_sig = pool.alloc(Pi(pool.alloc(Univ(Sort(1))), pool.alloc(Pi(pool.alloc(Var(0)), pool.alloc(Var(1))))));
-  let id = pool.alloc(Lam(pool.alloc(Univ(Sort(1))), pool.alloc(Lam(pool.alloc(Var(0)), pool.alloc(Var(0))))));
+  let terms = Arena::new();
+  let vals = Arena::new();
+  let ty = terms.alloc(Term::Pi(
+    terms.alloc(Term::Univ(Univ(0))),
+    terms.alloc(Term::Pi(terms.alloc(Term::Var(0)), terms.alloc(Term::Var(1)))),
+  ));
+  let tm = terms.alloc(Term::Ann(terms.alloc(Term::Fun(terms.alloc(Term::Fun(terms.alloc(Term::Var(0)))))), ty));
 
-  print!("{id_sig} : ");
-  match id_sig.assign_type(&mut Context::new(), &pool) {
-    Ok(t) => println!("{t}"),
+  print!("{ty} : ");
+  match ty.infer(&Ctx::new(), &Env::new(), &vals) {
+    Ok(t) => println!("{}", t.quote(0, &terms, &vals).unwrap()),
     Err(e) => println!("{e}"),
-  }
+  };
 
-  print!("{id} : ");
-  match id.assign_type(&mut Context::new(), &pool) {
-    Ok(t) => println!("{t}"),
+  print!("{tm} : ");
+  match tm.infer(&Ctx::new(), &Env::new(), &vals) {
+    Ok(t) => println!("{}", t.quote(0, &terms, &vals).unwrap()),
     Err(e) => println!("{e}"),
-  }
-
-  match id.check_type(id_sig, &mut Context::new(), &pool) {
-    Ok(()) => println!("Ok"),
-    Err(e) => println!("{e}"),
-  }
+  };
 }

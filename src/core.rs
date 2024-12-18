@@ -1,5 +1,8 @@
-mod term;
-pub use term::{Context, Sort, Term};
+pub mod stack;
+pub use stack::{ListStack, TreeStack};
 
-mod error;
-pub use error::Error;
+pub mod term;
+pub use term::{Clos, Ctx, Env, Term, Univ, Val};
+
+pub mod error;
+pub use error::{EvalError, TypeError};
