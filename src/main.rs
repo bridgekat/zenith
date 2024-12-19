@@ -1,3 +1,5 @@
+#![feature(dropck_eyepatch)]
+
 pub mod core;
 pub mod elab;
 

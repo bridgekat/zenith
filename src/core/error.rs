@@ -25,7 +25,7 @@ pub enum TypeError<'a> {
   TypeMismatch { term: &'a Term<'a>, ty: Val<'a>, expect: Val<'a> },
 }
 
-impl<'a> std::convert::From<EvalError> for TypeError<'a> {
+impl std::convert::From<EvalError> for TypeError<'_> {
   fn from(err: EvalError) -> Self {
     Eval { err }
   }
@@ -41,7 +41,7 @@ impl std::fmt::Display for EvalError {
 }
 
 /// Simple pretty-printer for debugging purposes.
-impl<'a> std::fmt::Display for TypeError<'a> {
+impl std::fmt::Display for TypeError<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Eval { err } => write!(f, "{err}"),
@@ -73,13 +73,13 @@ impl std::fmt::Display for Univ {
 }
 
 /// Simple pretty-printer for debugging purposes.
-impl<'a> std::fmt::Display for Term<'a> {
+impl std::fmt::Display for Term<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     self.fmt(&mut 0, &mut Vec::new(), f)
   }
 }
 
-impl<'a> Term<'a> {
+impl Term<'_> {
   fn name(mut n: usize) -> String {
     let mut len = 0;
     let mut m = 1;

@@ -77,10 +77,10 @@ pub enum Val<'a> {
 }
 
 /// Typing contexts: lists of types.
-pub type Ctx<'a> = ListStack<Val<'a>>;
+pub type Ctx<'a> = Stack<'a>;
 
 /// Evaluation environments: lists of definitions.
-pub type Env<'a> = ListStack<Val<'a>>;
+pub type Env<'a> = Stack<'a>;
 
 impl<'a> Term<'a> {
   /// Reduces well-typed `self` so that all `let`s are collected into the environment and then
@@ -246,9 +246,9 @@ impl Univ {
 
 impl<'a> Term<'a> {
   /// Given preterm `self`, returns the type of `self`.
-  pub fn infer(&self, ctx: &Ctx<'a>, env: &Env<'a>, vals: &'a Arena<Val<'a>>) -> Result<Val<'a>, TypeError> {
+  pub fn infer(&'a self, ctx: &Ctx<'a>, env: &Env<'a>, vals: &'a Arena<Val<'a>>) -> Result<Val<'a>, TypeError<'a>> {
     match self {
-      Term::Univ(u) => Univ::univ_rule(*u).ok_or(TypeError::UnivForm { univ: *u }).map(Val::Univ),
+      Term::Univ(u) => Ok(Val::Univ(Univ::univ_rule(*u).ok_or(TypeError::UnivForm { univ: *u })?)),
       Term::Var(ix) => ctx.get(*ix).ok_or(TypeError::CtxIndex { ix: *ix, len: ctx.len() }),
       Term::Ann(x, t) => {
         let tt = t.infer(ctx, env, vals)?;
@@ -300,7 +300,13 @@ impl<'a> Term<'a> {
   }
 
   /// Given preterms `self`, `t`, checks if `self` has type `t`.
-  pub fn check(&self, t: Val<'a>, ctx: &Ctx<'a>, env: &Env<'a>, vals: &'a Arena<Val<'a>>) -> Result<(), TypeError> {
+  pub fn check(
+    &'a self,
+    t: Val<'a>,
+    ctx: &Ctx<'a>,
+    env: &Env<'a>,
+    vals: &'a Arena<Val<'a>>,
+  ) -> Result<(), TypeError<'a>> {
     match self {
       Term::Let(v, x) => x.check(t, &ctx.extend(v.infer(ctx, env, vals)?), &env.extend(v.eval(env, vals)?), vals),
       Term::Fun(b) => match t {

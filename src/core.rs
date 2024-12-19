@@ -1,5 +1,5 @@
 pub mod stack;
-pub use stack::{ListStack, TreeStack};
+pub use stack::{Frame, Stack};
 
 pub mod term;
 pub use term::{Clos, Ctx, Env, Term, Univ, Val};
