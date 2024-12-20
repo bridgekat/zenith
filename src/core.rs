@@ -1,8 +1,7 @@
-pub mod stack;
-pub use stack::{Frame, Stack};
+mod error;
+mod stack;
+mod structs;
+mod term;
 
-pub mod term;
-pub use term::{Clos, Ctx, Env, Term, Univ, Val};
-
-pub mod error;
 pub use error::{EvalError, TypeError};
+pub use structs::{Arena, Clos, Entry, Frame, Stack, Term, Univ, Val};

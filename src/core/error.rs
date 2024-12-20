@@ -1,14 +1,30 @@
-//! # Basic error handling
+use super::*;
 
 use self::EvalError::*;
 use self::TypeError::*;
-use super::*;
 
+/// # Evaluation errors
+///
+/// Errors produced by the evaluator (i.e. the conversion checking process).
 #[derive(Debug, Clone)]
 pub enum EvalError {
   EnvIndex { ix: usize, len: usize },
+  GenLevel { lvl: usize, len: usize },
 }
 
+impl EvalError {
+  pub fn env_index(ix: usize, len: usize) -> Self {
+    EnvIndex { ix, len }
+  }
+
+  pub fn gen_level(lvl: usize, len: usize) -> Self {
+    GenLevel { lvl, len }
+  }
+}
+
+/// # Type errors
+///
+/// Errors produced by the type checker (i.e. the type assignment process).
 #[derive(Debug, Clone)]
 pub enum TypeError<'a> {
   Eval { err: EvalError },
@@ -17,12 +33,12 @@ pub enum TypeError<'a> {
   SigForm { fst: Univ, snd: Univ },
   CtxIndex { ix: usize, len: usize },
   AnnExpected { term: &'a Term<'a> },
-  TypeExpected { term: &'a Term<'a>, ty: Val<'a> },
-  PiExpected { term: &'a Term<'a>, ty: Val<'a> },
-  SigExpected { term: &'a Term<'a>, ty: Val<'a> },
-  PiAnnExpected { ty: Val<'a> },
-  SigAnnExpected { ty: Val<'a> },
-  TypeMismatch { term: &'a Term<'a>, ty: Val<'a>, expect: Val<'a> },
+  TypeExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
+  PiExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
+  SigExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
+  PiAnnExpected { ty: &'a Term<'a> },
+  SigAnnExpected { ty: &'a Term<'a> },
+  TypeMismatch { term: &'a Term<'a>, ty: &'a Term<'a>, expect: &'a Term<'a> },
 }
 
 impl std::convert::From<EvalError> for TypeError<'_> {
@@ -31,16 +47,82 @@ impl std::convert::From<EvalError> for TypeError<'_> {
   }
 }
 
-/// Simple pretty-printer for debugging purposes.
-impl std::fmt::Display for EvalError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      EnvIndex { ix, len } => write!(f, "variable index {ix} out of bound, environment has size {len}"),
+impl<'a> TypeError<'a> {
+  pub fn univ_form(univ: Univ) -> Self {
+    UnivForm { univ }
+  }
+
+  pub fn pi_form(from: Univ, to: Univ) -> Self {
+    PiForm { from, to }
+  }
+
+  pub fn sig_form(fst: Univ, snd: Univ) -> Self {
+    SigForm { fst, snd }
+  }
+
+  pub fn ctx_index(ix: usize, len: usize) -> Self {
+    CtxIndex { ix, len }
+  }
+
+  pub fn ann_expected(term: &'a Term<'a>) -> Self {
+    AnnExpected { term }
+  }
+
+  pub fn type_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+    match ty.quote(lvl, ar) {
+      Ok(ty) => TypeExpected { term, ty: ar.term(ty) },
+      Err(err) => Eval { err },
+    }
+  }
+
+  pub fn pi_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+    match ty.quote(lvl, ar) {
+      Ok(ty) => PiExpected { term, ty: ar.term(ty) },
+      Err(err) => Eval { err },
+    }
+  }
+
+  pub fn sig_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+    match ty.quote(lvl, ar) {
+      Ok(ty) => SigExpected { term, ty: ar.term(ty) },
+      Err(err) => Eval { err },
+    }
+  }
+
+  pub fn pi_ann_expected(ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+    match ty.quote(lvl, ar) {
+      Ok(ty) => PiAnnExpected { ty: ar.term(ty) },
+      Err(err) => Eval { err },
+    }
+  }
+
+  pub fn sig_ann_expected(ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+    match ty.quote(lvl, ar) {
+      Ok(ty) => SigAnnExpected { ty: ar.term(ty) },
+      Err(err) => Eval { err },
+    }
+  }
+
+  pub fn type_mismatch(term: &'a Term<'a>, ty: Val<'a>, expect: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+    match ty.quote(lvl, ar) {
+      Ok(ty) => match expect.quote(lvl, ar) {
+        Ok(expect) => TypeMismatch { term, ty: ar.term(ty), expect: ar.term(expect) },
+        Err(err) => Eval { err },
+      },
+      Err(err) => Eval { err },
     }
   }
 }
 
-/// Simple pretty-printer for debugging purposes.
+impl std::fmt::Display for EvalError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      EnvIndex { ix, len } => write!(f, "variable index {ix} out of bound, environment has size {len}"),
+      GenLevel { lvl, len } => write!(f, "generic variable level {lvl} out of bound, environment has size {len}"),
+    }
+  }
+}
+
 impl std::fmt::Display for TypeError<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
@@ -50,17 +132,16 @@ impl std::fmt::Display for TypeError<'_> {
       SigForm { fst, snd } => write!(f, "dependent pairs with {fst} and {snd} are unspecified"),
       CtxIndex { ix, len } => write!(f, "variable index {ix} out of bound, context has size {len}"),
       AnnExpected { term } => write!(f, "type annotation expected around term {term}"),
-      TypeExpected { term, ty: _ } => write!(f, "type expected, term {term} has type ? but not universe type"),
-      PiExpected { term, ty: _ } => write!(f, "function expected, term {term} has type ? but not function type"),
-      SigExpected { term, ty: _ } => write!(f, "pair expected, term {term} has type ? but not pair type"),
-      PiAnnExpected { ty: _ } => write!(f, "function found but type annotation ? is not function type"),
-      SigAnnExpected { ty: _ } => write!(f, "pair found but type annotation ? is not pair type"),
-      TypeMismatch { term, ty: _, expect: _ } => write!(f, "term {term} has type ?, but the expected type is ?"),
+      TypeExpected { term, ty } => write!(f, "type expected, term {term} has type {ty} but not universe type"),
+      PiExpected { term, ty } => write!(f, "function expected, term {term} has type {ty} but not function type"),
+      SigExpected { term, ty } => write!(f, "pair expected, term {term} has type {ty} but not pair type"),
+      PiAnnExpected { ty } => write!(f, "function found but type annotation {ty} is not function type"),
+      SigAnnExpected { ty } => write!(f, "pair found but type annotation {ty} is not pair type"),
+      TypeMismatch { term, ty, expect } => write!(f, "term {term} has type {ty}, but the expected type is {expect}"),
     }
   }
 }
 
-/// Simple pretty-printer for debugging purposes.
 impl std::fmt::Display for Univ {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let Univ(u) = *self;
@@ -72,7 +153,6 @@ impl std::fmt::Display for Univ {
   }
 }
 
-/// Simple pretty-printer for debugging purposes.
 impl std::fmt::Display for Term<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     self.fmt(&mut 0, &mut Vec::new(), f)
@@ -103,9 +183,9 @@ impl Term<'_> {
   fn fmt(&self, count: &mut usize, names: &mut Vec<usize>, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Term::Univ(univ) => write!(f, "{univ}"),
-      Term::Var(ix) => match names.get(names.len() - 1 - ix) {
-        Some(n) => write!(f, "{}", Self::name(*n)),
-        None => write!(f, "@{}", ix - names.len()),
+      Term::Var(ix) => match *ix < names.len() {
+        true => write!(f, "{}", Self::name(names[names.len() - 1 - ix])),
+        false => write!(f, "^{}", ix - names.len()),
       },
       Term::Ann(x, t) => {
         write!(f, "(")?;

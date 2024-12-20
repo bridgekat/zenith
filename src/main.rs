@@ -3,28 +3,23 @@
 pub mod core;
 pub mod elab;
 
-use typed_arena::Arena;
-
-use core::{Ctx, Env, Term, Univ};
+use core::{Arena, Stack, Term, Univ};
 
 fn main() {
-  let terms = Arena::new();
-  let vals = Arena::new();
-  let ty = terms.alloc(Term::Pi(
-    terms.alloc(Term::Univ(Univ(0))),
-    terms.alloc(Term::Pi(terms.alloc(Term::Var(0)), terms.alloc(Term::Var(1)))),
-  ));
-  let tm = terms.alloc(Term::Ann(terms.alloc(Term::Fun(terms.alloc(Term::Fun(terms.alloc(Term::Var(0)))))), ty));
+  let ar = Arena::new();
+  let ty =
+    ar.term(Term::Pi(ar.term(Term::Univ(Univ(0))), ar.term(Term::Pi(ar.term(Term::Var(0)), ar.term(Term::Var(1))))));
+  let tm = ar.term(Term::Ann(ar.term(Term::Fun(ar.term(Term::Fun(ar.term(Term::Var(0)))))), ty));
 
   print!("{ty} : ");
-  match ty.infer(&Ctx::new(), &Env::new(), &vals) {
-    Ok(t) => println!("{}", t.quote(0, &terms, &vals).unwrap()),
+  match ty.infer(&Stack::new(), &Stack::new(), &ar) {
+    Ok(t) => println!("{}", t.quote(0, &ar).unwrap()),
     Err(e) => println!("{e}"),
   };
 
   print!("{tm} : ");
-  match tm.infer(&Ctx::new(), &Env::new(), &vals) {
-    Ok(t) => println!("{}", t.quote(0, &terms, &vals).unwrap()),
+  match tm.infer(&Stack::new(), &Stack::new(), &ar) {
+    Ok(t) => println!("{}", t.quote(0, &ar).unwrap()),
     Err(e) => println!("{e}"),
   };
 }
