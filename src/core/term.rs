@@ -70,21 +70,21 @@ impl<'a> Val<'a> {
       (Val::Univ(u), Val::Univ(v)) => Ok(u == v),
       (Val::Gen(i), Val::Gen(j)) => Ok(i == j),
       (Val::Pi(s, u), Val::Pi(t, v)) => {
-        // Go under a binder, reducing the body without assigning a value to the argument.
+        // Go under a binder, reducing the bodies without appending definitions to their environments.
         Ok(s.conv(t, len, ar)? && u.apply(Val::Gen(len), ar)?.conv(&v.apply(Val::Gen(len), ar)?, len + 1, ar)?)
       }
       (Val::Fun(b), Val::Fun(c)) => {
-        // Go under a binder, reducing the body without assigning a value to the argument.
+        // Go under a binder, reducing the bodies without appending definitions to their environments.
         Ok(b.apply(Val::Gen(len), ar)?.conv(&c.apply(Val::Gen(len), ar)?, len + 1, ar)?)
       }
       (Val::App(f, x), Val::App(g, y)) => Ok(f.conv(g, len, ar)? && x.conv(y, len, ar)?),
       (Val::Sig(s, u), Val::Sig(t, v)) => {
-        // Go under a binder, reducing the body without assigning a value to the argument.
+        // Go under a binder, reducing the bodies without appending definitions to their environments.
         Ok(s.conv(t, len, ar)? && u.apply(Val::Gen(len), ar)?.conv(&v.apply(Val::Gen(len), ar)?, len + 1, ar)?)
       }
       (Val::Pair(a, c), Val::Pair(b, d)) => {
-        // Go under a binder, reducing the body without assigning a value to the argument.
-        Ok(a.conv(b, len, ar)? && c.apply(Val::Gen(len), ar)?.conv(&d.apply(Val::Gen(len), ar)?, len + 1, ar)?)
+        // Go under a binder, reducing the bodies with definitions appended to their environments.
+        Ok(a.conv(b, len, ar)? && c.apply((*a).clone(), ar)?.conv(&d.apply((*b).clone(), ar)?, len + 1, ar)?)
       }
       (Val::Fst(x), Val::Fst(y)) => Ok(x.conv(y, len, ar)?),
       (Val::Snd(x), Val::Snd(y)) => Ok(x.conv(y, len, ar)?),
@@ -109,21 +109,21 @@ impl<'a> Val<'a> {
         false => Err(EvalError::gen_level(*lvl, len)),
       },
       Val::Pi(s, t) => {
-        // Go under a binder, reducing the body without assigning a value to the argument.
+        // Go under a binder, reducing the body without appending definitions to its environment.
         Ok(Term::Pi(ar.term(s.quote(len, ar)?), ar.term(t.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
       Val::Fun(b) => {
-        // Go under a binder, reducing the body without assigning a value to the argument.
+        // Go under a binder, reducing the body without appending definitions to its environment.
         Ok(Term::Fun(ar.term(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
       Val::App(f, x) => Ok(Term::App(ar.term(f.quote(len, ar)?), ar.term(x.quote(len, ar)?))),
       Val::Sig(s, t) => {
-        // Go under a binder, reducing the body without assigning a value to the argument.
+        // Go under a binder, reducing the body without appending definitions to its environment.
         Ok(Term::Sig(ar.term(s.quote(len, ar)?), ar.term(t.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
       Val::Pair(a, b) => {
-        // Go under a binder, reducing the body without assigning a value to the argument.
-        Ok(Term::Pair(ar.term(a.quote(len, ar)?), ar.term(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
+        // Go under a binder, reducing the body with a definition appended to its environment.
+        Ok(Term::Pair(ar.term(a.quote(len, ar)?), ar.term(b.apply((*a).clone(), ar)?.quote(len + 1, ar)?)))
       }
       Val::Fst(x) => Ok(Term::Fst(ar.term(x.quote(len, ar)?))),
       Val::Snd(x) => Ok(Term::Snd(ar.term(x.quote(len, ar)?))),
