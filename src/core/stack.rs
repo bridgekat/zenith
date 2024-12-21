@@ -1,4 +1,3 @@
-use std::cell::UnsafeCell;
 use std::num::NonZeroUsize;
 
 use super::*;
@@ -64,7 +63,7 @@ impl<'a> Stack<'a> {
     None
   }
 
-  pub fn extend(&self, value: Val<'a>, ar: &'a Arena<'a>) -> Self {
+  pub fn extend(&self, value: Val<'a>, ar: &'a Arena) -> Self {
     // If the current pointer is at the end of a frame, we can append to it.
     // Otherwise, we need to branch off or create a new frame.
     let entry = Entry { value: Some(value), refcount: 1 };
@@ -84,14 +83,14 @@ impl<'a> Stack<'a> {
           unsafe { (*frame.entries.get())[position.get() - 1].refcount += 1 };
           // A new pointer is created. Reference counting done in the previous line.
           let prev = Stack::Ptr { frame, position: *position };
-          let frame = ar.frame(Frame { prev, entries: UnsafeCell::new(Vec::from([entry])) });
+          let frame = ar.frame(prev, entry);
           let position = NonZeroUsize::new(1).unwrap();
           // A new pointer is returned. Reference counting done in the first line.
           Stack::Ptr { frame, position }
         }
       }
       Stack::Empty => {
-        let frame = ar.frame(Frame { prev: Stack::Empty, entries: UnsafeCell::new(Vec::from([entry])) });
+        let frame = ar.frame(Stack::Empty, entry);
         let position = NonZeroUsize::new(1).unwrap();
         // A new pointer is returned. Reference counting done in the first line.
         Stack::Ptr { frame, position }

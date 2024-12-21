@@ -9,12 +9,12 @@ impl<'a> Term<'a> {
   /// Pre-conditions:
   ///
   /// - `self` is well-typed under a context and environment `env` (to ensure termination).
-  pub fn eval(self, env: &Stack<'a>, ar: &'a Arena<'a>) -> Result<Val<'a>, EvalError> {
+  pub fn eval(&self, env: &Stack<'a>, ar: &'a Arena) -> Result<Val<'a>, EvalError> {
     match self {
       // Universes are already in normal form.
-      Term::Univ(u) => Ok(Val::Univ(u)),
+      Term::Univ(u) => Ok(Val::Univ(*u)),
       // The (δ) rule is always applied.
-      Term::Var(ix) => env.get(ix).ok_or_else(|| EvalError::env_index(ix, env.len())),
+      Term::Var(ix) => env.get(*ix).ok_or_else(|| EvalError::env_index(*ix, env.len())),
       // The (τ) rule is always applied.
       Term::Ann(x, _) => x.eval(env, ar),
       // For `let`s, we reduce the value, collect it into the environment to reduce the body.
@@ -52,7 +52,7 @@ impl<'a> Clos<'a> {
   /// Inserts a new `let` around the body after the frozen `let`s, and reduces the body under the
   /// empty environment populated with all `let`s. This is mutually recursive with [`Term::eval`],
   /// forming an eval-apply loop.
-  pub fn apply(self, x: Val<'a>, ar: &'a Arena<'a>) -> Result<Val<'a>, EvalError> {
+  pub fn apply(&self, x: Val<'a>, ar: &'a Arena) -> Result<Val<'a>, EvalError> {
     let Self { env, body } = self;
     body.eval(&env.extend(x, ar), ar)
   }
@@ -65,37 +65,32 @@ impl<'a> Val<'a> {
   /// Pre-conditions:
   ///
   /// - `self` and `other` are well-typed under a context with size `len` (to ensure termination).
-  pub fn conv(&self, other: &Self, len: usize, ar: &'a Arena<'a>) -> Result<bool, EvalError> {
-    let mut lhs = self.clone();
-    let mut rhs = other.clone();
-    let mut len = len;
-    loop {
-      match (lhs, rhs) {
-        (Val::Univ(u), Val::Univ(v)) if u == v => return Ok(true),
-        (Val::Gen(i), Val::Gen(j)) if i == j => return Ok(true),
-        (Val::Pi(s, u), Val::Pi(t, v)) if s.conv(t, len, ar)? => {
-          // Go under a binder, reducing the body without assigning a value to the argument.
-          (lhs, rhs, len) = (u.apply(Val::Gen(len), ar)?, v.apply(Val::Gen(len), ar)?, len + 1)
-        }
-        (Val::Fun(b), Val::Fun(c)) => {
-          // Go under a binder, reducing the body without assigning a value to the argument.
-          (lhs, rhs, len) = (b.apply(Val::Gen(len), ar)?, c.apply(Val::Gen(len), ar)?, len + 1)
-        }
-        (Val::App(f, x), Val::App(g, y)) if f.conv(g, len, ar)? => (lhs, rhs, len) = (x.clone(), y.clone(), len),
-        (Val::Sig(s, u), Val::Sig(t, v)) if s.conv(t, len, ar)? => {
-          // Go under a binder, reducing the body without assigning a value to the argument.
-          (lhs, rhs, len) = (u.apply(Val::Gen(len), ar)?, v.apply(Val::Gen(len), ar)?, len + 1)
-        }
-        (Val::Pair(a, c), Val::Pair(b, d)) if a.conv(b, len, ar)? => {
-          // Go under a binder, reducing the body without assigning a value to the argument.
-          (lhs, rhs, len) = (c.apply(Val::Gen(len), ar)?, d.apply(Val::Gen(len), ar)?, len + 1)
-        }
-        (Val::Fst(x), Val::Fst(y)) => (lhs, rhs, len) = (x.clone(), y.clone(), len),
-        (Val::Snd(x), Val::Snd(y)) => (lhs, rhs, len) = (x.clone(), y.clone(), len),
-        (Val::Unit, Val::Unit) => return Ok(true),
-        (Val::Star, Val::Star) => return Ok(true),
-        _ => return Ok(false),
-      };
+  pub fn conv(&self, other: &Self, len: usize, ar: &'a Arena) -> Result<bool, EvalError> {
+    match (self, other) {
+      (Val::Univ(u), Val::Univ(v)) => Ok(u == v),
+      (Val::Gen(i), Val::Gen(j)) => Ok(i == j),
+      (Val::Pi(s, u), Val::Pi(t, v)) => {
+        // Go under a binder, reducing the body without assigning a value to the argument.
+        Ok(s.conv(t, len, ar)? && u.apply(Val::Gen(len), ar)?.conv(&v.apply(Val::Gen(len), ar)?, len + 1, ar)?)
+      }
+      (Val::Fun(b), Val::Fun(c)) => {
+        // Go under a binder, reducing the body without assigning a value to the argument.
+        Ok(b.apply(Val::Gen(len), ar)?.conv(&c.apply(Val::Gen(len), ar)?, len + 1, ar)?)
+      }
+      (Val::App(f, x), Val::App(g, y)) => Ok(f.conv(g, len, ar)? && x.conv(y, len, ar)?),
+      (Val::Sig(s, u), Val::Sig(t, v)) => {
+        // Go under a binder, reducing the body without assigning a value to the argument.
+        Ok(s.conv(t, len, ar)? && u.apply(Val::Gen(len), ar)?.conv(&v.apply(Val::Gen(len), ar)?, len + 1, ar)?)
+      }
+      (Val::Pair(a, c), Val::Pair(b, d)) => {
+        // Go under a binder, reducing the body without assigning a value to the argument.
+        Ok(a.conv(b, len, ar)? && c.apply(Val::Gen(len), ar)?.conv(&d.apply(Val::Gen(len), ar)?, len + 1, ar)?)
+      }
+      (Val::Fst(x), Val::Fst(y)) => Ok(x.conv(y, len, ar)?),
+      (Val::Snd(x), Val::Snd(y)) => Ok(x.conv(y, len, ar)?),
+      (Val::Unit, Val::Unit) => Ok(true),
+      (Val::Star, Val::Star) => Ok(true),
+      _ => Ok(false),
     }
   }
 
@@ -105,7 +100,7 @@ impl<'a> Val<'a> {
   /// Pre-conditions:
   ///
   /// - `self` is well-typed under a context with size `len` (to ensure termination).
-  pub fn quote(&self, len: usize, ar: &'a Arena<'a>) -> Result<Term<'a>, EvalError> {
+  pub fn quote(&self, len: usize, ar: &'a Arena) -> Result<Term<'a>, EvalError> {
     match self {
       Val::Univ(u) => Ok(Term::Univ(*u)),
       Val::Gen(lvl) => match *lvl < len {
@@ -115,20 +110,20 @@ impl<'a> Val<'a> {
       },
       Val::Pi(s, t) => {
         // Go under a binder, reducing the body without assigning a value to the argument.
-        Ok(Term::Pi(ar.term(s.quote(len, ar)?), ar.term(t.clone().apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
+        Ok(Term::Pi(ar.term(s.quote(len, ar)?), ar.term(t.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
       Val::Fun(b) => {
         // Go under a binder, reducing the body without assigning a value to the argument.
-        Ok(Term::Fun(ar.term(b.clone().apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
+        Ok(Term::Fun(ar.term(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
       Val::App(f, x) => Ok(Term::App(ar.term(f.quote(len, ar)?), ar.term(x.quote(len, ar)?))),
       Val::Sig(s, t) => {
         // Go under a binder, reducing the body without assigning a value to the argument.
-        Ok(Term::Sig(ar.term(s.quote(len, ar)?), ar.term(t.clone().apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
+        Ok(Term::Sig(ar.term(s.quote(len, ar)?), ar.term(t.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
       Val::Pair(a, b) => {
         // Go under a binder, reducing the body without assigning a value to the argument.
-        Ok(Term::Pair(ar.term(a.quote(len, ar)?), ar.term(b.clone().apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
+        Ok(Term::Pair(ar.term(a.quote(len, ar)?), ar.term(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
       Val::Fst(x) => Ok(Term::Fst(ar.term(x.quote(len, ar)?))),
       Val::Snd(x) => Ok(Term::Snd(ar.term(x.quote(len, ar)?))),
@@ -146,17 +141,17 @@ impl<'a> Val<'a> {
   }
 
   /// Given well-typed `self`, tries elimination as [`Val::Pi`].
-  pub fn as_pi(&self) -> Option<(&'a Val<'a>, Clos<'a>)> {
+  pub fn as_pi<'b>(&'b self) -> Option<(&'b Val<'a>, &'b Clos<'a>)> {
     match self {
-      Val::Pi(s, t) => Some((*s, t.clone())),
+      Val::Pi(s, t) => Some((s, t)),
       _ => None,
     }
   }
 
   /// Given well-typed `self`, tries elimination as [`Val::Sig`].
-  pub fn as_sig(&self) -> Option<(&'a Val<'a>, Clos<'a>)> {
+  pub fn as_sig<'b>(&'b self) -> Option<(&'b Val<'a>, &'b Clos<'a>)> {
     match self {
-      Val::Sig(s, t) => Some((*s, t.clone())),
+      Val::Sig(s, t) => Some((s, t)),
       _ => None,
     }
   }
@@ -200,7 +195,7 @@ impl<'a> Term<'a> {
   ///
   /// - `ctx` is well-formed context.
   /// - `env` is well-formed environment.
-  pub fn infer(&'a self, ctx: &Stack<'a>, env: &Stack<'a>, ar: &'a Arena<'a>) -> Result<Val<'a>, TypeError<'a>> {
+  pub fn infer(&'a self, ctx: &Stack<'a>, env: &Stack<'a>, ar: &'a Arena) -> Result<Val<'a>, TypeError<'a>> {
     match self {
       // The (univ) rule is used.
       Term::Univ(u) => Ok(Val::Univ(Univ::univ_rule(*u).ok_or_else(|| TypeError::univ_form(*u))?)),
@@ -236,7 +231,7 @@ impl<'a> Term<'a> {
       // The (Π elim) rule is used.
       Term::App(f, x) => {
         let ft = f.infer(ctx, env, ar)?;
-        let (s, t) = ft.as_pi().ok_or_else(|| TypeError::pi_expected(f, ft, ctx.len(), ar))?;
+        let (s, t) = ft.as_pi().ok_or_else(|| TypeError::pi_expected(f, ft.clone(), ctx.len(), ar))?;
         x.check(s.clone(), ctx, env, ar)?;
         Ok(t.apply(x.eval(env, ar)?, ar)?)
       }
@@ -253,13 +248,13 @@ impl<'a> Term<'a> {
       // The (Σ fst) rule is used.
       Term::Fst(x) => {
         let xt = x.infer(ctx, env, ar)?;
-        let (s, _) = xt.as_sig().ok_or_else(|| TypeError::sig_expected(x, xt, ctx.len(), ar))?;
+        let (s, _) = xt.as_sig().ok_or_else(|| TypeError::sig_expected(x, xt.clone(), ctx.len(), ar))?;
         Ok(s.clone())
       }
       // The (Σ snd) rule is used.
       Term::Snd(x) => {
         let xt = x.infer(ctx, env, ar)?;
-        let (_, t) = xt.as_sig().ok_or_else(|| TypeError::sig_expected(x, xt, ctx.len(), ar))?;
+        let (_, t) = xt.as_sig().ok_or_else(|| TypeError::sig_expected(x, xt.clone(), ctx.len(), ar))?;
         Ok(t.apply(Term::Fst(x).eval(env, ar)?, ar)?)
       }
       // The (⊤ form) rule is used.
@@ -278,7 +273,7 @@ impl<'a> Term<'a> {
   /// - `env` is well-formed environment.
   /// - `t` is well-typed under context `ctx` and environment `env`.
   /// - `t` has universe type under context `ctx` and environment `env`.
-  pub fn check(&'a self, t: Val<'a>, ctx: &Stack<'a>, env: &Stack<'a>, ar: &'a Arena<'a>) -> Result<(), TypeError<'a>> {
+  pub fn check(&'a self, t: Val<'a>, ctx: &Stack<'a>, env: &Stack<'a>, ar: &'a Arena) -> Result<(), TypeError<'a>> {
     match self {
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly inversely used on the `t` passed into the recursive call.

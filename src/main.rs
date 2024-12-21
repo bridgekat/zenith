@@ -1,15 +1,17 @@
-#![feature(dropck_eyepatch)]
+#![feature(allocator_api)]
 
 pub mod core;
 pub mod elab;
 
 use std::io::Write;
+use std::thread::Builder;
 
 use core::{Arena, Stack, Term};
 
 /// # Examples
 ///
-/// - `([A] ↦ [a] ↦ a) : [A : Type] → [a : A] → A`
+/// - `[id ≔ ([X] ↦ [x] ↦ x) : [X : Type] → [x : X] → X]
+///   ([A] ↦ id ([a : A] → A) (id A)) : [A : Type] → [a : A] → A`
 /// - `([P] ↦ [Q] ↦ [h] ↦ [hq ≔ Fst (Snd h)], [hp ≔ Fst h], [])
 ///   : [P : Type] → [Q : Type] → [h : [hp : P] × [hq : Q] × Unit] → [hq : Q] × [hp : P] × Unit`
 /// - `[Prop : Type] ×
@@ -19,6 +21,14 @@ use core::{Arena, Stack, Term};
 ///   [∧left : [p : Prop] → [q : Prop] → [h : ⊢ (∧ p q)] → ⊢ p] ×
 ///   [∧right : [p : Prop] → [q : Prop] → [h : ⊢ (∧ p q)] → ⊢ q] ×
 ///   Unit`
+/// - `[ℕ ≔ [A : Type] → [s : [a : A] → A] → [z : A] → A]
+///   [add ≔ ([n] ↦ [m] ↦ [A] ↦ [s] ↦ [z] ↦ n A s (m A s z)) : [n : ℕ] → [m : ℕ] → ℕ]
+///   [mul ≔ ([n] ↦ [m] ↦ [A] ↦ [s] ↦ [z] ↦ n A (m A s) z) : [n : ℕ] → [m : ℕ] → ℕ]
+///   [5 ≔ ([A] ↦ [s] ↦ [z] ↦ s (s (s (s (s z))))) : ℕ]
+///   [10 ≔ add 5 5]
+///   [100 ≔ mul 10 10]
+///   [1000 ≔ mul 10 100]
+///   1000`
 /// - `[I ≔ [x] ↦ x]
 ///   [K ≔ [x] ↦ [y] ↦ x]
 ///   [S ≔ [x] ↦ [y] ↦ [z] ↦ x z (y z)]
@@ -37,7 +47,7 @@ use core::{Arena, Stack, Term};
 ///   [5 ≔ succ 4]
 ///   [+ ≔ Y [self] ↦ [n] ↦ [m] ↦ if (is_zero n) ([_] ↦ m) ([_] ↦ succ (self [] (pred n) m))]
 ///   (+ 2 3)` *(not typable)*
-fn main() -> std::io::Result<()> {
+fn repl() -> std::io::Result<()> {
   let prompt = "> ";
   loop {
     let ar = Arena::new();
@@ -46,6 +56,9 @@ fn main() -> std::io::Result<()> {
     std::io::stdout().flush()?;
     std::io::stdin().read_line(&mut line)?;
     let trimmed = line.trim_end();
+    if trimmed.is_empty() {
+      continue;
+    }
     let spans = match Term::lex(trimmed) {
       Ok(t) => t,
       Err(e) => {
@@ -53,7 +66,7 @@ fn main() -> std::io::Result<()> {
         let end = end.max(start + 1);
         let indicator = " ".repeat(prompt.len() + start) + &"~".repeat(end - start);
         println!("{indicator}");
-        println!("Error: {e}");
+        println!("⨯ Error: {e}");
         println!();
         continue;
       }
@@ -65,7 +78,7 @@ fn main() -> std::io::Result<()> {
         let end = end.max(start + 1);
         let indicator = " ".repeat(prompt.len() + start) + &"~".repeat(end - start);
         println!("{indicator}");
-        println!("Error: {e}");
+        println!("⨯ Error: {e}");
         println!();
         continue;
       }
@@ -73,17 +86,25 @@ fn main() -> std::io::Result<()> {
     match term.eval(&Stack::new(), &ar) {
       Ok(t) => match t.quote(0, &ar) {
         Ok(t) => println!("≡ {t}"),
-        Err(e) => println!("Error: {e}"),
+        Err(e) => println!("⨯ Error: {e}"),
       },
-      Err(e) => println!("Error: {e}"),
+      Err(e) => println!("⨯ Error: {e}"),
     };
     match term.infer(&Stack::new(), &Stack::new(), &ar) {
       Ok(t) => match t.quote(0, &ar) {
         Ok(t) => println!(": {t}"),
-        Err(e) => println!("Error: {e}"),
+        Err(e) => println!("⨯ Error: {e}"),
       },
-      Err(e) => println!("Error: {e}"),
+      Err(e) => println!("⨯ Error: {e}"),
     };
     println!();
+    println!("  Heap: {} terms, {} frames, {} values", ar.term_count(), ar.frame_count(), ar.val_count(),);
+    println!();
   }
+}
+
+fn main() -> std::io::Result<()> {
+  // Due to heavy use of recursion, stack size limit is set to 1 GB.
+  Builder::new().stack_size(1024 * 1024 * 1024).spawn(repl)?.join().unwrap()?;
+  Ok(())
 }

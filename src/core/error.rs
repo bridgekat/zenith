@@ -79,42 +79,42 @@ impl<'a> TypeError<'a> {
     Self::AnnExpected { term }
   }
 
-  pub fn type_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+  pub fn type_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena) -> Self {
     match ty.quote(lvl, ar) {
       Ok(ty) => Self::TypeExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
-  pub fn pi_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+  pub fn pi_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena) -> Self {
     match ty.quote(lvl, ar) {
       Ok(ty) => Self::PiExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
-  pub fn sig_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+  pub fn sig_expected(term: &'a Term<'a>, ty: Val<'a>, lvl: usize, ar: &'a Arena) -> Self {
     match ty.quote(lvl, ar) {
       Ok(ty) => Self::SigExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
-  pub fn pi_ann_expected(ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+  pub fn pi_ann_expected(ty: Val<'a>, lvl: usize, ar: &'a Arena) -> Self {
     match ty.quote(lvl, ar) {
       Ok(ty) => Self::PiAnnExpected { ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
-  pub fn sig_ann_expected(ty: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+  pub fn sig_ann_expected(ty: Val<'a>, lvl: usize, ar: &'a Arena) -> Self {
     match ty.quote(lvl, ar) {
       Ok(ty) => Self::SigAnnExpected { ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
-  pub fn type_mismatch(term: &'a Term<'a>, ty: Val<'a>, expect: Val<'a>, lvl: usize, ar: &'a Arena<'a>) -> Self {
+  pub fn type_mismatch(term: &'a Term<'a>, ty: Val<'a>, expect: Val<'a>, lvl: usize, ar: &'a Arena) -> Self {
     match ty.quote(lvl, ar) {
       Ok(ty) => match expect.quote(lvl, ar) {
         Ok(expect) => Self::TypeMismatch { term, ty: ar.term(ty), ety: ar.term(expect) },

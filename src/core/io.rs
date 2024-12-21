@@ -126,7 +126,7 @@ impl<'a> Term<'a> {
     Ok(res)
   }
 
-  pub fn parse(spans: Vec<Span>, ar: &'a Arena<'a>) -> Result<&'a Term<'a>, ParseError> {
+  pub fn parse(spans: Vec<Span>, ar: &'a Arena) -> Result<&'a Term<'a>, ParseError> {
     fn expect(it: &mut Peekable<IntoIter<Span>>, tok: Token) -> Result<(), ParseError> {
       match it.next() {
         Some(s) if s.tok == tok => Ok(()),
@@ -136,7 +136,7 @@ impl<'a> Term<'a> {
     fn parse_binder<'a>(
       it: &mut Peekable<IntoIter<Span>>,
       vars: &mut Vec<String>,
-      ar: &'a Arena<'a>,
+      ar: &'a Arena,
     ) -> Result<(String, Option<&'a Term<'a>>, Option<&'a Term<'a>>), ParseError> {
       let x = match it.next() {
         Some(Span { tok: Token::Ident(x), .. }) => x,
@@ -158,7 +158,7 @@ impl<'a> Term<'a> {
     fn try_parse_arg<'a>(
       it: &mut Peekable<IntoIter<Span>>,
       vars: &mut Vec<String>,
-      ar: &'a Arena<'a>,
+      ar: &'a Arena,
     ) -> Result<Option<&'a Term<'a>>, ParseError> {
       match it.peek().cloned() {
         Some(Span { tok: Token::LeftBracket, .. }) => {
@@ -244,8 +244,8 @@ impl<'a> Term<'a> {
         }
         Some(Span { tok: Token::Ident(x), start, end }) => {
           it.next();
-          match vars.iter().position(|y| y == &x) {
-            Some(lvl) => Ok(Some(ar.term(Term::Var(vars.len() - lvl - 1)))),
+          match vars.iter().rev().position(|y| y == &x) {
+            Some(ix) => Ok(Some(ar.term(Term::Var(ix)))),
             None => Err(ParseError::undefined_ident(x, start, end)),
           }
         }
@@ -255,7 +255,7 @@ impl<'a> Term<'a> {
     fn parse_term<'a>(
       it: &mut Peekable<IntoIter<Span>>,
       vars: &mut Vec<String>,
-      ar: &'a Arena<'a>,
+      ar: &'a Arena,
     ) -> Result<&'a Term<'a>, ParseError> {
       let mut args = Vec::new();
       while let Some(arg) = try_parse_arg(it, vars, ar)? {

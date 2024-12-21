@@ -2,15 +2,9 @@
 //!
 //! This module defines syntax nodes [`Term`], value objects [`Val`] and stack frames [`Frame`],
 //! among other core structures that are allocated on [`Arena`].
-//!
-//! Due to interior mutability in the implemetation of [`Frame`], all structures are invariant over
-//! their lifetime generics. This unfortunately makes it impossible to have terms spanning across
-//! multiple arenas, which limits the use of arenas as a garbage collection mechanism. This should
-//! nevertheless be memory-safe; more code will be migrated to unsafe Rust in the future so as to
-//! allow covariance.
 
+use bumpalo::Bump;
 use std::cell::UnsafeCell;
-use std::mem::ManuallyDrop;
 use std::num::NonZeroUsize;
 
 /// # Universes
@@ -110,7 +104,7 @@ pub struct Entry<'a> {
 #[derive(Debug)]
 pub struct Frame<'a> {
   pub prev: Stack<'a>,
-  pub entries: UnsafeCell<Vec<Entry<'a>>>,
+  pub entries: UnsafeCell<Vec<Entry<'a>, &'a Bump>>,
 }
 
 /// # Linked stacks
@@ -139,82 +133,54 @@ pub enum Stack<'a> {
 
 /// # Arena allocators
 ///
-/// A mixed-type arena allocator for [`Term`], [`Val`] and [`Frame`]. This is basically a wrapper
-/// around three [`typed_arena::Arena`], but also takes care of the dropping process.
+/// Mixed-type arena allocators for [`Term`], [`Val`] and [`Frame`]. These types never allocate
+/// memory or manage resources outside the arena, so there is no need to call destructors.
 #[derive(Default)]
-pub struct Arena<'a> {
-  terms: ManuallyDrop<typed_arena::Arena<Term<'a>>>,
-  vals: ManuallyDrop<typed_arena::Arena<Val<'a>>>,
-  frames: ManuallyDrop<typed_arena::Arena<Frame<'a>>>,
+pub struct Arena {
+  data: Bump,
+  term_count: UnsafeCell<usize>,
+  val_count: UnsafeCell<usize>,
+  frame_count: UnsafeCell<usize>,
 }
 
-impl<'a> Arena<'a> {
+impl Arena {
   /// Creates an empty arena.
   pub fn new() -> Self {
     Self::default()
   }
 
   /// Allocates a new term.
-  pub fn term(&'a self, term: Term<'a>) -> &'a Term<'a> {
-    self.terms.alloc(term)
+  pub fn term<'a>(&'a self, term: Term<'a>) -> &'a Term<'a> {
+    unsafe { (*self.term_count.get()) += 1 };
+    self.data.alloc(term)
   }
 
   /// Allocates a new value.
-  pub fn val(&'a self, val: Val<'a>) -> &'a Val<'a> {
-    self.vals.alloc(val)
+  pub fn val<'a>(&'a self, val: Val<'a>) -> &'a Val<'a> {
+    unsafe { (*self.val_count.get()) += 1 };
+    self.data.alloc(val)
   }
 
-  /// Allocates a new frame.
-  pub fn frame(&'a self, frame: Frame<'a>) -> &'a Frame<'a> {
-    self.frames.alloc(frame)
-  }
-}
-
-impl Frame<'_> {
-  /// Drops all [`Stack::Ptr`] instances inside `self`.
-  ///
-  /// To safely drop a [`Frame`], we must drop all [`Stack::Ptr`] referencing it. Rust detects
-  /// this problem through [drop check](https://doc.rust-lang.org/nomicon/dropck.html) and rejects
-  /// the code unless a custom [`Drop`] implementation is provided, possibly by using the
-  /// [unsafe `may_dangle` attribute](https://github.com/rust-lang/rfcs/pull/1327).
-  pub fn unlink_ref(&mut self) {
-    self.prev = Stack::Empty;
-    for entry in self.entries.get_mut().iter_mut() {
-      entry.value = None;
-    }
+  /// Allocates a new frame with a single entry.
+  pub fn frame<'a>(&'a self, prev: Stack<'a>, entry: Entry<'a>) -> &'a Frame<'a> {
+    unsafe { (*self.frame_count.get()) += 1 };
+    let mut entries = Vec::with_capacity_in(1, &self.data);
+    entries.push(entry);
+    self.data.alloc(Frame { prev, entries: UnsafeCell::new(entries) })
   }
 
-  /// Panics if there are still [`Stack::Ptr`] instances referencing `self`.
-  ///
-  /// To safely drop a [`Frame`], we must drop all [`Stack::Ptr`] referencing it. Rust detects
-  /// this problem through [drop check](https://doc.rust-lang.org/nomicon/dropck.html) and rejects
-  /// the code unless a custom [`Drop`] implementation is provided, possibly by using the
-  /// [unsafe `may_dangle` attribute](https://github.com/rust-lang/rfcs/pull/1327).
-  pub fn assert_unref(&mut self) {
-    for entry in self.entries.get_mut().iter_mut() {
-      if entry.refcount != 0 {
-        unreachable!();
-      }
-    }
+  /// Returns the number of terms in the arena.
+  pub fn term_count(&self) -> usize {
+    unsafe { *self.term_count.get() }
   }
-}
 
-#[allow(clippy::needless_lifetimes)]
-unsafe impl<#[may_dangle] 'a> Drop for Arena<'a> {
-  fn drop(&mut self) {
-    // SAFETY: terms reference other terms, but their destructors do not read these references.
-    unsafe { ManuallyDrop::drop(&mut self.terms) };
-    // SAFETY: values reference other values, but their destructors do not read these references.
-    unsafe { ManuallyDrop::drop(&mut self.vals) };
-    // Unlink all references in frames.
-    for frame in self.frames.iter_mut() {
-      frame.unlink_ref();
-    }
-    for frame in self.frames.iter_mut() {
-      frame.assert_unref();
-    }
-    // SAFETY: frames reference other frames, but their destructors do not read these references,
-    // as long as all references are already unlinked.
-    unsafe { ManuallyDrop::drop(&mut self.frames) };
+  /// Returns the number of values in the arena.
+  pub fn val_count(&self) -> usize {
+    unsafe { *self.val_count.get() }
+  }
+
+  /// Returns the number of frames in the arena.
+  pub fn frame_count(&self) -> usize {
+    unsafe { *self.frame_count.get() }
   }
 }
