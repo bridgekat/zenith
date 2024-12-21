@@ -5,7 +5,6 @@
 
 use bumpalo::Bump;
 use std::cell::UnsafeCell;
-use std::num::NonZeroUsize;
 
 /// # Universes
 ///
@@ -93,21 +92,17 @@ pub enum Val<'a> {
   Star,
 }
 
-/// Entries of [`Frame`]
-#[derive(Debug)]
-pub struct Entry<'a> {
-  pub value: Option<Val<'a>>,
-  pub refcount: usize,
+/// # Linked list stacks
+///
+/// The baseline implementation of evaluation environments.
+#[cfg(not(feature = "linked_frame_stacks"))]
+#[derive(Debug, Clone)]
+pub enum Stack<'a> {
+  Nil,
+  Cons { prev: &'a Stack<'a>, value: &'a Val<'a> },
 }
 
-/// Underlying linked frames of [`Stack`]
-#[derive(Debug)]
-pub struct Frame<'a> {
-  pub prev: Stack<'a>,
-  pub entries: UnsafeCell<Vec<Entry<'a>, &'a Bump>>,
-}
-
-/// # Linked stacks
+/// # Linked frame stacks
 ///
 /// In the simplest implementation of NbE, evaluation environments are represented as linked lists
 /// of definitions. This becomes infeasible when the environment grows large, as indexing into a
@@ -125,22 +120,46 @@ pub struct Frame<'a> {
 /// node, so that pushing work on arrays whenever possible, and new nodes are created only when
 /// strictly necessary (i.e. when branching occurs). Moreover, to reduce the chance of branching,
 /// entries at the end of the array are dropped when they are no longer referenced.
+#[cfg(feature = "linked_frame_stacks")]
 #[derive(Debug)]
 pub enum Stack<'a> {
   Empty,
-  Ptr { frame: &'a Frame<'a>, position: NonZeroUsize },
+  Ptr { frame: &'a Frame<'a>, position: std::num::NonZeroUsize },
+}
+
+/// # Linked frames of [`Stack`]
+///
+/// Each frame contains a reference to the previous frame, and an array of entries.
+#[cfg(feature = "linked_frame_stacks")]
+#[derive(Debug)]
+pub struct Frame<'a> {
+  pub prev: Stack<'a>,
+  pub entries: UnsafeCell<Vec<Entry<'a>, &'a Bump>>,
+}
+
+/// # Entries of [`Frame`]
+///
+/// Each entry contains a value, and a reference count to it as well as all preceding values.
+#[cfg(feature = "linked_frame_stacks")]
+#[derive(Debug)]
+pub struct Entry<'a> {
+  pub value: Option<Val<'a>>,
+  pub refcount: usize,
 }
 
 /// # Arena allocators
 ///
 /// Mixed-type arena allocators for [`Term`], [`Val`] and [`Frame`]. These types never allocate
 /// memory or manage resources outside the arena, so there is no need to call destructors.
+/// It also stores mutable performance counters for debugging and profiling purposes.
 #[derive(Default)]
 pub struct Arena {
   data: Bump,
   term_count: UnsafeCell<usize>,
   val_count: UnsafeCell<usize>,
   frame_count: UnsafeCell<usize>,
+  lookup_count: UnsafeCell<usize>,
+  link_count: UnsafeCell<usize>,
 }
 
 impl Arena {
@@ -161,12 +180,45 @@ impl Arena {
     self.data.alloc(val)
   }
 
-  /// Allocates a new frame with a single entry.
+  /// Allocates a new stack item.
+  #[cfg(not(feature = "linked_frame_stacks"))]
+  pub fn frame<'a>(&'a self, stack: Stack<'a>) -> &'a Stack<'a> {
+    unsafe { (*self.frame_count.get()) += 1 };
+    self.data.alloc(stack)
+  }
+
+  /// Allocates a new stack frame with a single entry.
+  #[cfg(feature = "linked_frame_stacks")]
   pub fn frame<'a>(&'a self, prev: Stack<'a>, entry: Entry<'a>) -> &'a Frame<'a> {
     unsafe { (*self.frame_count.get()) += 1 };
     let mut entries = Vec::with_capacity_in(1, &self.data);
     entries.push(entry);
     self.data.alloc(Frame { prev, entries: UnsafeCell::new(entries) })
+  }
+
+  /// Increments the term counter for profiling.
+  pub fn inc_term_count(&self) {
+    unsafe { (*self.term_count.get()) += 1 };
+  }
+
+  /// Increments the value counter for profiling.
+  pub fn inc_val_count(&self) {
+    unsafe { (*self.val_count.get()) += 1 };
+  }
+
+  /// Increments the frame counter for profiling.
+  pub fn inc_frame_count(&self) {
+    unsafe { (*self.frame_count.get()) += 1 };
+  }
+
+  /// Increments the stack lookup counter for profiling.
+  pub fn inc_lookup_count(&self) {
+    unsafe { (*self.lookup_count.get()) += 1 };
+  }
+
+  /// Increments the stack lookup length counter for profiling.
+  pub fn inc_link_count(&self) {
+    unsafe { (*self.link_count.get()) += 1 };
   }
 
   /// Returns the number of terms in the arena.
@@ -182,5 +234,15 @@ impl Arena {
   /// Returns the number of frames in the arena.
   pub fn frame_count(&self) -> usize {
     unsafe { *self.frame_count.get() }
+  }
+
+  /// Returns the number of stack lookups.
+  pub fn lookup_count(&self) -> usize {
+    unsafe { *self.lookup_count.get() }
+  }
+
+  /// Returns the average length of stack lookups.
+  pub fn average_link_count(&self) -> f32 {
+    unsafe { *self.link_count.get() as f32 / (*self.lookup_count.get()).max(1) as f32 }
   }
 }
