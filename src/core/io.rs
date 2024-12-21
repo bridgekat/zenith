@@ -3,6 +3,9 @@ use std::vec::IntoIter;
 
 use super::*;
 
+/// # Lexer tokens
+///
+/// Produced by the simple lexer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
   LeftParen,
@@ -25,6 +28,9 @@ pub enum Token {
   Ident(String),
 }
 
+/// # Lexer spans
+///
+/// Tokens together with their positions in the input string.
 #[derive(Debug, Clone)]
 pub struct Span {
   pub tok: Token,
@@ -87,30 +93,34 @@ impl<'a> Term<'a> {
           }
           res.push(Span { tok: Token::Free(n), start: pos, end: pos + len });
         }
-        c if c.is_alphabetic() => {
-          let mut len = 1;
-          let mut ident = String::new();
-          ident.push(c);
-          while let Some((_, c)) = it.peek().cloned() {
-            if c.is_alphanumeric() || c == '_' {
+        '≔' => res.push(Span { tok: Token::ColonEq, start: pos, end: pos + 1 }),
+        '→' => res.push(Span { tok: Token::Pi, start: pos, end: pos + 1 }),
+        '↦' => res.push(Span { tok: Token::Fun, start: pos, end: pos + 1 }),
+        '×' => res.push(Span { tok: Token::Sig, start: pos, end: pos + 1 }),
+        c => {
+          if !c.is_whitespace() {
+            let mut len = 1;
+            let mut ident = String::new();
+            ident.push(c);
+            let symbols = "()[]:-=*,^≔→↦×";
+            while let Some((_, c)) = it.peek().cloned() {
+              if c.is_whitespace() || symbols.chars().any(|x| x == c) {
+                break;
+              }
               it.next();
               len += 1;
               ident.push(c);
-            } else {
-              break;
+            }
+            match ident.as_str() {
+              "Type" => res.push(Span { tok: Token::Type, start: pos, end: pos + len }),
+              "Kind" => res.push(Span { tok: Token::Kind, start: pos, end: pos + len }),
+              "Fst" => res.push(Span { tok: Token::Fst, start: pos, end: pos + len }),
+              "Snd" => res.push(Span { tok: Token::Snd, start: pos, end: pos + len }),
+              "Unit" => res.push(Span { tok: Token::Unit, start: pos, end: pos + len }),
+              _ => res.push(Span { tok: Token::Ident(ident), start: pos, end: pos + len }),
             }
           }
-          match ident.as_str() {
-            "Type" => res.push(Span { tok: Token::Type, start: pos, end: pos + len }),
-            "Kind" => res.push(Span { tok: Token::Kind, start: pos, end: pos + len }),
-            "Fst" => res.push(Span { tok: Token::Fst, start: pos, end: pos + len }),
-            "Snd" => res.push(Span { tok: Token::Snd, start: pos, end: pos + len }),
-            "Unit" => res.push(Span { tok: Token::Unit, start: pos, end: pos + len }),
-            _ => res.push(Span { tok: Token::Ident(ident), start: pos, end: pos + len }),
-          }
         }
-        c if c.is_whitespace() => {}
-        c => return Err(LexError::unexpected(Some((pos, c)))),
       }
     }
     Ok(res)
@@ -327,7 +337,7 @@ impl Term<'_> {
       Term::Let(v, x) => {
         let c = *count;
         *count += 1;
-        write!(f, "[{} := ", generate_name(c))?;
+        write!(f, "[{} ≔ ", generate_name(c))?;
         v.print(count, names, f)?;
         write!(f, "] ")?;
         names.push(c);
@@ -340,7 +350,7 @@ impl Term<'_> {
         *count += 1;
         write!(f, "[{} : ", generate_name(c))?;
         s.print(count, names, f)?;
-        write!(f, "] -> ")?;
+        write!(f, "] → ")?;
         names.push(c);
         t.print(count, names, f)?;
         names.pop();
@@ -349,7 +359,7 @@ impl Term<'_> {
       Term::Fun(b) => {
         let c = *count;
         *count += 1;
-        write!(f, "[{}] => ", generate_name(c))?;
+        write!(f, "[{}] ↦ ", generate_name(c))?;
         names.push(c);
         b.print(count, names, f)?;
         names.pop();
@@ -368,7 +378,7 @@ impl Term<'_> {
         *count += 1;
         write!(f, "[{} : ", generate_name(c))?;
         s.print(count, names, f)?;
-        write!(f, "] * ")?;
+        write!(f, "] × ")?;
         names.push(c);
         t.print(count, names, f)?;
         names.pop();
@@ -377,7 +387,7 @@ impl Term<'_> {
       Term::Pair(a, b) => {
         let c = *count;
         *count += 1;
-        write!(f, "[{} := ", generate_name(c))?;
+        write!(f, "[{} ≔ ", generate_name(c))?;
         a.print(count, names, f)?;
         write!(f, "], ")?;
         names.push(c);

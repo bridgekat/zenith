@@ -25,7 +25,7 @@ impl<'a> Term<'a> {
       // For applications, we reduce both operands and combine them back.
       // In the case of a redex, the (β) rule is applied.
       Term::App(f, x) => match (f.eval(env, ar)?, x.eval(env, ar)?) {
-        (Val::Fun(b), x) => Ok(b.apply(x, ar)?),
+        (Val::Fun(b), x) => b.apply(x, ar),
         (f, x) => Ok(Val::App(ar.val(f), ar.val(x))),
       },
       // For binders, we freeze the whole environment and store the body as a closure.
@@ -38,7 +38,7 @@ impl<'a> Term<'a> {
         x => Ok(Val::Fst(ar.val(x))),
       },
       Term::Snd(x) => match x.eval(env, ar)? {
-        Val::Pair(a, b) => Ok(b.apply(a.clone(), ar)?),
+        Val::Pair(a, b) => b.apply(a.clone(), ar),
         x => Ok(Val::Snd(ar.val(x))),
       },
       // The unit type and its inhabitant are already in normal form.

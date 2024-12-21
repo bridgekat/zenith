@@ -206,7 +206,7 @@ impl std::fmt::Display for TypeError<'_> {
 impl std::fmt::Display for LexError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      Self::UnexpectedChar { ch, pos } => write!(f, "unexpected character {ch} at {pos}"),
+      Self::UnexpectedChar { ch, pos: _ } => write!(f, "unexpected character {ch}"),
       Self::UnexpectedEof => write!(f, "unexpected end of input"),
     }
   }
@@ -216,8 +216,8 @@ impl std::fmt::Display for ParseError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::Lex { err } => write!(f, "{err}"),
-      Self::UndefinedIdent { name, start, end } => write!(f, "undefined identifier {name} at {start}-{end}"),
-      Self::UnexpectedToken { tok, start, end } => write!(f, "unexpected token {tok:?} at {start}-{end}"),
+      Self::UndefinedIdent { name, start: _, end: _ } => write!(f, "undefined identifier {name}"),
+      Self::UnexpectedToken { tok, start: _, end: _ } => write!(f, "unexpected token {tok:?}"),
       Self::UnexpectedEof => write!(f, "unexpected end of input"),
     }
   }

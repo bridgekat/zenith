@@ -2,6 +2,12 @@
 //!
 //! This module defines syntax nodes [`Term`], value objects [`Val`] and stack frames [`Frame`],
 //! among other core structures that are allocated on [`Arena`].
+//!
+//! Due to interior mutability in the implemetation of [`Frame`], all structures are invariant over
+//! their lifetime generics. This unfortunately makes it impossible to have terms spanning across
+//! multiple arenas, which limits the use of arenas as a garbage collection mechanism. This should
+//! nevertheless be memory-safe; more code will be migrated to unsafe Rust in the future so as to
+//! allow covariance.
 
 use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
@@ -11,7 +17,7 @@ use std::num::NonZeroUsize;
 ///
 /// A wrapper around universe levels.
 ///
-/// Currently there are only two: 0 for `TYPE`, 1 for `KIND`.
+/// Currently there are only two: 0 for `Type`, 1 for `Kind`.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Univ(pub usize);
 
@@ -52,7 +58,7 @@ pub enum Term<'a> {
 
 /// # Closures
 ///
-/// Terms annotated with frozen `let`s capturing the whole environment.
+/// Closures are terms annotated with frozen `let`s capturing the whole environment.
 ///
 /// The environment is represented using a special data structure which supports structural sharing
 /// and fast random access (in most cases). For more details, see the documentation for [`Stack`].
@@ -186,7 +192,9 @@ impl Frame<'_> {
   /// [unsafe `may_dangle` attribute](https://github.com/rust-lang/rfcs/pull/1327).
   pub fn assert_unref(&mut self) {
     for entry in self.entries.get_mut().iter_mut() {
-      assert!(entry.refcount == 0);
+      if entry.refcount != 0 {
+        unreachable!();
+      }
     }
   }
 }
