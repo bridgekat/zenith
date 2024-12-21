@@ -98,7 +98,8 @@ fn repl() -> std::io::Result<()> {
       Err(e) => println!("⨯ Error: {e}"),
     };
     println!();
-    println!("  Heap: {} terms, {} frames, {} values", ar.term_count(), ar.frame_count(), ar.val_count(),);
+    println!("  Heap: {} terms, {} frames, {} values", ar.term_count(), ar.frame_count(), ar.val_count());
+    println!("  Stack: {} lookups, {} average lookup length", ar.lookup_count(), ar.average_link_count());
     println!();
   }
 }

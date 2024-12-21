@@ -14,7 +14,7 @@ impl<'a> Term<'a> {
       // Universes are already in normal form.
       Term::Univ(u) => Ok(Val::Univ(*u)),
       // The (δ) rule is always applied.
-      Term::Var(ix) => env.get(*ix).ok_or_else(|| EvalError::env_index(*ix, env.len())),
+      Term::Var(ix) => env.get(*ix, ar).ok_or_else(|| EvalError::env_index(*ix, env.len())),
       // The (τ) rule is always applied.
       Term::Ann(x, _) => x.eval(env, ar),
       // For `let`s, we reduce the value, collect it into the environment to reduce the body.
@@ -161,6 +161,9 @@ impl Univ {
   /// Universe formation rule.
   pub fn univ_rule(u: Self) -> Option<Self> {
     match u {
+      #[cfg(feature = "type_in_type")]
+      Self(0) => Some(Self(0)),
+      #[cfg(not(feature = "type_in_type"))]
       Self(0) => Some(Self(1)),
       _ => None,
     }
@@ -201,7 +204,7 @@ impl<'a> Term<'a> {
       Term::Univ(u) => Ok(Val::Univ(Univ::univ_rule(*u).ok_or_else(|| TypeError::univ_form(*u))?)),
       // The (var) rule is used.
       // Variables in `ctx` are in de Bruijn levels, so weakening is no-op.
-      Term::Var(ix) => ctx.get(*ix).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len())),
+      Term::Var(ix) => ctx.get(*ix, ar).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len())),
       // The (ann) rule is used.
       // To establish pre-conditions for `check()`, the type of `t` is checked first.
       Term::Ann(x, t) => {
