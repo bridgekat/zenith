@@ -47,12 +47,13 @@ use core::{Arena, Stack, Term};
 ///   [5 ≔ succ 4]
 ///   [+ ≔ Y [self] ↦ [n] ↦ [m] ↦ if (is_zero n) ([_] ↦ m) ([_] ↦ succ (self [] (pred n) m))]
 ///   (+ 2 3)` *(not typable)*
-fn repl() -> std::io::Result<()> {
-  let prompt = "> ";
+fn run_repl() -> std::io::Result<()> {
+  let mut ar = Arena::new();
+  let mut line = String::new();
   loop {
-    let ar = Arena::new();
-    let mut line = String::new();
-    print!("{prompt}");
+    ar.reset();
+    line.clear();
+    print!("> ");
     std::io::stdout().flush()?;
     std::io::stdin().read_line(&mut line)?;
     let trimmed = line.trim_end();
@@ -64,7 +65,7 @@ fn repl() -> std::io::Result<()> {
       Err(e) => {
         let (start, end) = e.position(trimmed.len());
         let end = end.max(start + 1);
-        let indicator = " ".repeat(prompt.len() + start) + &"~".repeat(end - start);
+        let indicator = " ".repeat("> ".len() + start) + &"~".repeat(end - start);
         println!("{indicator}");
         println!("⨯ Error: {e}");
         println!();
@@ -76,7 +77,7 @@ fn repl() -> std::io::Result<()> {
       Err(e) => {
         let (start, end) = e.position(trimmed.len());
         let end = end.max(start + 1);
-        let indicator = " ".repeat(prompt.len() + start) + &"~".repeat(end - start);
+        let indicator = " ".repeat("> ".len() + start) + &"~".repeat(end - start);
         println!("{indicator}");
         println!("⨯ Error: {e}");
         println!();
@@ -106,6 +107,6 @@ fn repl() -> std::io::Result<()> {
 
 fn main() -> std::io::Result<()> {
   // Due to heavy use of recursion, stack size limit is set to 1 GB.
-  Builder::new().stack_size(1024 * 1024 * 1024).spawn(repl)?.join().unwrap()?;
+  Builder::new().stack_size(1024 * 1024 * 1024).spawn(run_repl)?.join().unwrap()?;
   Ok(())
 }

@@ -1,6 +1,6 @@
 # Zenith theorem prover
 
-![](doc/title.png)
+![](docs/title.png)
 
 This is my personal attempt at making a theorem prover with an optimised interactive UI logic.
 
@@ -14,3 +14,7 @@ Goals:
 - Implement an optimised tactic mode.
 
 For the sake of simplicity, **computation of (co)inductive types is excluded from the core language**. The first development stage will not focus on any programming language stuff.
+
+Example proof terms in the core syntax:
+
+- [Some basic first-order logic theorems](examples/first_order_logic.term).

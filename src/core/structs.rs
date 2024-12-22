@@ -245,4 +245,14 @@ impl Arena {
   pub fn average_link_count(&self) -> f32 {
     unsafe { *self.link_count.get() as f32 / (*self.lookup_count.get()).max(1) as f32 }
   }
+
+  /// Deallocates all objects and resets performance counters.
+  pub fn reset(&mut self) {
+    self.data.reset();
+    *self.term_count.get_mut() = 0;
+    *self.val_count.get_mut() = 0;
+    *self.frame_count.get_mut() = 0;
+    *self.lookup_count.get_mut() = 0;
+    *self.link_count.get_mut() = 0;
+  }
 }
