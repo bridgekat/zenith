@@ -37,7 +37,7 @@ pub enum Term<'a> {
   App(&'a Term<'a>, &'a Term<'a>),
   /// Pair types (first type, *second type*).
   Sig(&'a Term<'a>, &'a Term<'a>),
-  /// Pair let-constructors (first value, *second value*).
+  /// Pair constructors (first value, second value).
   Pair(&'a Term<'a>, &'a Term<'a>),
   /// Pair projections (pair).
   Fst(&'a Term<'a>),
@@ -80,8 +80,8 @@ pub enum Val<'a> {
   App(&'a Val<'a>, &'a Val<'a>),
   /// Pair types (first type, *second type*).
   Sig(&'a Val<'a>, Clos<'a>),
-  /// Pair let-constructors (first value, *second value*).
-  Pair(&'a Val<'a>, Clos<'a>),
+  /// Pair constructors (first value, second value).
+  Pair(&'a Val<'a>, &'a Val<'a>),
   /// Pair projections (pair).
   Fst(&'a Val<'a>),
   /// Pair projections (pair).

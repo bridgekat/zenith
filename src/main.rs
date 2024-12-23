@@ -12,7 +12,7 @@ use core::{Arena, Stack, Term};
 ///
 /// - `[id ≔ ([X] ↦ [x] ↦ x) : [X : Type] → [x : X] → X]
 ///   ([A] ↦ id ([a : A] → A) (id A)) : [A : Type] → [a : A] → A`
-/// - `([P] ↦ [Q] ↦ [h] ↦ [hq ≔ Fst (Snd h)], [hp ≔ Fst h], [])
+/// - `([P] ↦ [Q] ↦ [h] ↦ [hq ≔ Fst (Snd h)] hq; [hp ≔ Fst h] hp; ())
 ///   : [P : Type] → [Q : Type] → [h : [hp : P] × [hq : Q] × Unit] → [hq : Q] × [hp : P] × Unit`
 /// - `[Prop : Type] ×
 ///   [⊢ : [p : Prop] → Type] ×
@@ -35,7 +35,7 @@ use core::{Arena, Stack, Term};
 ///   [Y ≔ [f] ↦ ([x] ↦ f ([_] ↦ x x)) ([x] ↦ f ([_] ↦ x x))]
 ///   [true ≔ [x] ↦ [y] ↦ x]
 ///   [false ≔ [x] ↦ [y] ↦ y]
-///   [if ≔ [b] ↦ [t] ↦ [f] ↦ b t f []]
+///   [if ≔ [b] ↦ [t] ↦ [f] ↦ b t f ()]
 ///   [succ ≔ [n] ↦ [x] ↦ [y] ↦ y n]
 ///   [pred ≔ [n] ↦ n K I]
 ///   [is_zero ≔ [n] ↦ if n ([_] ↦ true) ([_] ↦ [p] ↦ false)]
@@ -45,7 +45,7 @@ use core::{Arena, Stack, Term};
 ///   [3 ≔ succ 2]
 ///   [4 ≔ succ 3]
 ///   [5 ≔ succ 4]
-///   [+ ≔ Y [self] ↦ [n] ↦ [m] ↦ if (is_zero n) ([_] ↦ m) ([_] ↦ succ (self [] (pred n) m))]
+///   [+ ≔ Y [self] ↦ [n] ↦ [m] ↦ if (is_zero n) ([_] ↦ m) ([_] ↦ succ (self () (pred n) m))]
 ///   (+ 2 3)` *(not typable)*
 fn run_repl() -> std::io::Result<()> {
   let mut ar = Arena::new();

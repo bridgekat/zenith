@@ -50,16 +50,16 @@ impl<'a> Term<'a> {
     let mut res = Vec::new();
     while let Some((pos, c)) = it.next() {
       match c {
-        '(' => res.push(Span { tok: Token::LeftParen, start: pos, end: pos + 1 }),
-        ')' => res.push(Span { tok: Token::RightParen, start: pos, end: pos + 1 }),
-        '[' => {
-          if let Some((_, ']')) = it.peek().cloned() {
+        '(' => {
+          if let Some((_, ')')) = it.peek().cloned() {
             it.next();
             res.push(Span { tok: Token::Star, start: pos, end: pos + 2 });
           } else {
-            res.push(Span { tok: Token::LeftBracket, start: pos, end: pos + 1 });
+            res.push(Span { tok: Token::LeftParen, start: pos, end: pos + 1 });
           }
         }
+        ')' => res.push(Span { tok: Token::RightParen, start: pos, end: pos + 1 }),
+        '[' => res.push(Span { tok: Token::LeftBracket, start: pos, end: pos + 1 }),
         ']' => res.push(Span { tok: Token::RightBracket, start: pos, end: pos + 1 }),
         ':' => {
           if let Some((_, '=')) = it.peek().cloned() {
@@ -78,7 +78,7 @@ impl<'a> Term<'a> {
           res.push(Span { tok: Token::Fun, start: pos, end: pos + 2 });
         }
         '*' => res.push(Span { tok: Token::Sig, start: pos, end: pos + 1 }),
-        ',' => res.push(Span { tok: Token::Pair, start: pos, end: pos + 1 }),
+        ';' => res.push(Span { tok: Token::Pair, start: pos, end: pos + 1 }),
         '^' => {
           let mut len = 1;
           let mut n = 0;
@@ -102,7 +102,7 @@ impl<'a> Term<'a> {
             let mut len = 1;
             let mut ident = String::new();
             ident.push(c);
-            let symbols = "()[]:-=*,^≔→↦×";
+            let symbols = "()[]:-=*;^≔→↦×";
             while let Some((_, c)) = it.peek().cloned() {
               if c.is_whitespace() || symbols.chars().any(|x| x == c) {
                 break;
@@ -184,21 +184,12 @@ impl<'a> Term<'a> {
               }
               _ => Err(ParseError::unexpected(it.next())),
             },
-            (None, Some(v)) => match it.peek() {
-              Some(Span { tok: Token::Pair, .. }) => {
-                expect(it, Token::Pair)?;
-                vars.push(x);
-                let b = parse_term(it, vars, ar)?;
-                vars.pop();
-                Ok(Some(ar.term(Term::Pair(v, b))))
-              }
-              _ => {
-                vars.push(x);
-                let b = parse_term(it, vars, ar)?;
-                vars.pop();
-                Ok(Some(ar.term(Term::Let(v, b))))
-              }
-            },
+            (None, Some(v)) => {
+              vars.push(x);
+              let b = parse_term(it, vars, ar)?;
+              vars.pop();
+              Ok(Some(ar.term(Term::Let(v, b))))
+            }
             (None, None) => {
               expect(it, Token::Fun)?;
               vars.push(x);
@@ -252,30 +243,58 @@ impl<'a> Term<'a> {
         _ => Ok(None),
       }
     }
-    fn parse_term<'a>(
+    fn try_parse_elem<'a>(
       it: &mut Peekable<IntoIter<Span>>,
       vars: &mut Vec<String>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a>, ParseError> {
+    ) -> Result<Option<&'a Term<'a>>, ParseError> {
       let mut args = Vec::new();
       while let Some(arg) = try_parse_arg(it, vars, ar)? {
         args.push(arg);
       }
       args.reverse();
-      let mut res = match args.pop() {
-        Some(x) => x,
-        None => return Err(ParseError::unexpected(it.next())),
-      };
-      while let Some(arg) = args.pop() {
-        res = ar.term(Term::App(res, arg));
-      }
-      match it.peek() {
-        Some(Span { tok: Token::Colon, .. }) => {
-          expect(it, Token::Colon)?;
-          let ty = parse_term(it, vars, ar)?;
-          Ok(ar.term(Term::Ann(res, ty)))
+      match args.pop() {
+        Some(x) => {
+          let mut res = x;
+          while let Some(arg) = args.pop() {
+            res = ar.term(Term::App(res, arg));
+          }
+          match it.peek() {
+            Some(Span { tok: Token::Colon, .. }) => {
+              expect(it, Token::Colon)?;
+              let ty = parse_term(it, vars, ar)?;
+              Ok(Some(ar.term(Term::Ann(res, ty))))
+            }
+            _ => Ok(Some(res)),
+          }
         }
-        _ => Ok(res),
+        None => Ok(None),
+      }
+    }
+    fn parse_term<'a>(
+      it: &mut Peekable<IntoIter<Span>>,
+      vars: &mut Vec<String>,
+      ar: &'a Arena,
+    ) -> Result<&'a Term<'a>, ParseError> {
+      let mut elems = Vec::new();
+      while let Some(elem) = try_parse_elem(it, vars, ar)? {
+        elems.push(elem);
+        match it.peek() {
+          Some(Span { tok: Token::Pair, .. }) => {
+            expect(it, Token::Pair)?;
+          }
+          _ => break,
+        }
+      }
+      match elems.pop() {
+        Some(x) => {
+          let mut res = x;
+          while let Some(elem) = elems.pop() {
+            res = ar.term(Term::Pair(elem, res));
+          }
+          Ok(res)
+        }
+        None => Err(ParseError::unexpected(it.next())),
       }
     }
     let mut it = spans.into_iter().peekable();
@@ -385,14 +404,11 @@ impl Term<'_> {
         Ok(())
       }
       Term::Pair(a, b) => {
-        let c = *count;
-        *count += 1;
-        write!(f, "[{} ≔ ", generate_name(c))?;
+        write!(f, "(")?;
         a.print(count, names, f)?;
-        write!(f, "], ")?;
-        names.push(c);
+        write!(f, "); (")?;
         b.print(count, names, f)?;
-        names.pop();
+        write!(f, ")")?;
         Ok(())
       }
       Term::Fst(x) => {
@@ -408,7 +424,7 @@ impl Term<'_> {
         Ok(())
       }
       Term::Unit => write!(f, "Unit"),
-      Term::Star => write!(f, "[]"),
+      Term::Star => write!(f, "()"),
     }
   }
 }

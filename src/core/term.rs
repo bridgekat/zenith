@@ -30,7 +30,8 @@ impl<'a> Term<'a> {
       },
       // For binders, we freeze the whole environment and store the body as a closure.
       Term::Sig(s, t) => Ok(Val::Sig(ar.val(s.eval(env, ar)?), Clos { env: env.clone(), body: t })),
-      Term::Pair(a, b) => Ok(Val::Pair(ar.val(a.eval(env, ar)?), Clos { env: env.clone(), body: b })),
+      // For pairs, we reduce both operands and combine them back.
+      Term::Pair(a, b) => Ok(Val::Pair(ar.val(a.eval(env, ar)?), ar.val(b.eval(env, ar)?))),
       // For projections, we reduce the operand and combine it back.
       // In the case of a redex, the (π fst) and (π snd) rules are applied.
       Term::Fst(x) => match x.eval(env, ar)? {
@@ -38,7 +39,7 @@ impl<'a> Term<'a> {
         x => Ok(Val::Fst(ar.val(x))),
       },
       Term::Snd(x) => match x.eval(env, ar)? {
-        Val::Pair(a, b) => b.apply(a.clone(), ar),
+        Val::Pair(_, b) => Ok(b.clone()),
         x => Ok(Val::Snd(ar.val(x))),
       },
       // The unit type and its inhabitant are already in normal form.
@@ -82,10 +83,7 @@ impl<'a> Val<'a> {
         // Go under a binder, reducing the bodies without appending definitions to their environments.
         Ok(s.conv(t, len, ar)? && u.apply(Val::Gen(len), ar)?.conv(&v.apply(Val::Gen(len), ar)?, len + 1, ar)?)
       }
-      (Val::Pair(a, c), Val::Pair(b, d)) => {
-        // Go under a binder, reducing the bodies with definitions appended to their environments.
-        Ok(a.conv(b, len, ar)? && c.apply((*a).clone(), ar)?.conv(&d.apply((*b).clone(), ar)?, len + 1, ar)?)
-      }
+      (Val::Pair(a, c), Val::Pair(b, d)) => Ok(a.conv(b, len, ar)? && c.conv(d, len, ar)?),
       (Val::Fst(x), Val::Fst(y)) => Ok(x.conv(y, len, ar)?),
       (Val::Snd(x), Val::Snd(y)) => Ok(x.conv(y, len, ar)?),
       (Val::Unit, Val::Unit) => Ok(true),
@@ -121,10 +119,7 @@ impl<'a> Val<'a> {
         // Go under a binder, reducing the body without appending definitions to its environment.
         Ok(Term::Sig(ar.term(s.quote(len, ar)?), ar.term(t.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
-      Val::Pair(a, b) => {
-        // Go under a binder, reducing the body with a definition appended to its environment.
-        Ok(Term::Pair(ar.term(a.quote(len, ar)?), ar.term(b.apply((*a).clone(), ar)?.quote(len + 1, ar)?)))
-      }
+      Val::Pair(a, b) => Ok(Term::Pair(ar.term(a.quote(len, ar)?), ar.term(b.quote(len, ar)?))),
       Val::Fst(x) => Ok(Term::Fst(ar.term(x.quote(len, ar)?))),
       Val::Snd(x) => Ok(Term::Snd(ar.term(x.quote(len, ar)?))),
       Val::Unit => Ok(Term::Unit),
@@ -206,7 +201,7 @@ impl<'a> Term<'a> {
       // Variables in `ctx` are in de Bruijn levels, so weakening is no-op.
       Term::Var(ix) => ctx.get(*ix, ar).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len())),
       // The (ann) rule is used.
-      // To establish pre-conditions for `check()`, the type of `t` is checked first.
+      // To establish pre-conditions for `eval()` and `check()`, the type of `t` is checked first.
       Term::Ann(x, t) => {
         let tt = t.infer(ctx, env, ar)?;
         let _ = tt.as_univ().ok_or_else(|| TypeError::type_expected(t, tt, ctx.len(), ar))?;
@@ -288,10 +283,12 @@ impl<'a> Term<'a> {
       // The (Π intro) and (extend) rules is used.
       // By pre-conditions, `t` is already known to have universe type.
       Term::Fun(b) => match t {
-        Val::Pi(s, t) => {
-          let g = Val::Gen(env.len());
-          b.check(t.apply(g.clone(), ar)?, &ctx.extend(s.clone(), ar), &env.extend(g, ar), ar)
-        }
+        Val::Pi(s, t) => b.check(
+          t.apply(Val::Gen(env.len()), ar)?,
+          &ctx.extend(s.clone(), ar),
+          &env.extend(Val::Gen(env.len()), ar),
+          ar,
+        ),
         t => Err(TypeError::pi_ann_expected(t, ctx.len(), ar)),
       },
       // The (∑ intro) and (extend) rules are used.
@@ -299,8 +296,7 @@ impl<'a> Term<'a> {
       Term::Pair(a, b) => match t {
         Val::Sig(s, t) => {
           a.check(s.clone(), ctx, env, ar)?;
-          let a = a.eval(env, ar)?;
-          b.check(t.apply(a.clone(), ar)?, &ctx.extend(s.clone(), ar), &env.extend(a, ar), ar)
+          b.check(t.apply(a.eval(env, ar)?, ar)?, ctx, env, ar)
         }
         t => Err(TypeError::sig_ann_expected(t, ctx.len(), ar)),
       },
