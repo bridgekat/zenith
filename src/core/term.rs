@@ -1,4 +1,5 @@
 use std::cmp::max;
+use std::slice::from_raw_parts;
 
 use super::*;
 
@@ -49,11 +50,18 @@ impl<'b> Term<'b> {
         let mut bs = Vec::new();
         while let Term::Tup(a, b) = init {
           init = a;
-          bs.push(Clos { env: *env, body: b });
+          bs.push(b);
         }
         if let Term::Star = init {
           bs.reverse();
-          Ok(Val::Tup(ar.closures(&bs)))
+          // Eagerly evaluate tuple elements.
+          let vs = ar.values(bs.len(), Val::Gen(0));
+          for (i, b) in bs.iter().enumerate() {
+            // SAFETY: the borrowed range `&vs[..i]` is no longer modified.
+            let a = Val::Tup(unsafe { from_raw_parts(vs.as_ptr(), i) });
+            vs[i] = b.eval(&env.extend(a, ar), ar)?;
+          }
+          Ok(Val::Tup(vs))
         } else {
           Err(EvalError::tup_improper(ar.term(*self)))
         }
@@ -69,11 +77,11 @@ impl<'b> Term<'b> {
         a => Ok(Val::Init(*n, ar.val(a))),
       },
       // For lasts (i.e. second projections), we reduce the operand and combine it back.
-      // In the case of a redex, the (π proj) rule is applied.
+      // In the case of a redex, the (π last) rule is applied.
       Term::Last(x) => match x.eval(env, ar)? {
         Val::Tup(bs) => {
           let i = bs.len().checked_sub(1).ok_or_else(|| EvalError::tup_last(1, bs.len()))?;
-          Ok(bs[i].apply(Val::Tup(&bs[..i]), ar)?)
+          Ok(bs[i])
         }
         a => Ok(Val::Last(ar.val(a))),
       },
@@ -119,8 +127,8 @@ impl<'b> Val<'_, 'b> {
         Ok(true)
       }
       (Val::Tup(bs), Val::Tup(cs)) if bs.len() == cs.len() => {
-        for (i, (b, c)) in bs.iter().zip(cs.iter()).enumerate() {
-          if !Val::conv(&b.apply(Val::Tup(&bs[..i]), ar)?, &c.apply(Val::Tup(&cs[..i]), ar)?, len + 1, ar)? {
+        for (b, c) in bs.iter().zip(cs.iter()) {
+          if !Val::conv(b, c, len, ar)? {
             return Ok(false);
           }
         }
@@ -156,8 +164,8 @@ impl<'b> Val<'_, 'b> {
       }
       Val::Tup(bs) => {
         let mut init = Term::Star;
-        for (i, b) in bs.iter().enumerate() {
-          init = Term::Tup(ar.term(init), ar.term(b.apply(Val::Tup(&bs[..i]), ar)?.quote(len + 1, ar)?));
+        for b in bs.iter() {
+          init = Term::Tup(ar.term(init), ar.term(b.quote(len + 1, ar)?));
         }
         Ok(init)
       }
@@ -327,7 +335,7 @@ impl<'b> Term<'b> {
         let m = us.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, us.len()))?;
         Ok(Val::Sig(&us[..m]))
       }
-      // The (Σ proj) rule is used.
+      // The (Σ last) rule is used.
       Term::Last(x) => {
         let xt = x.infer(ctx, env, ar)?;
         let us = xt.as_sig(Some(x), ctx.len(), ar)?;
@@ -364,11 +372,11 @@ impl<'b> Term<'b> {
       // The (Π intro) and (extend) rules is used.
       // By pre-conditions, `t` is already known to have universe type.
       Term::Fun(b) => {
+        let x = Val::Gen(env.len());
         let (t, u) = t.as_pi(None, ctx.len(), ar)?;
-        let g = Val::Gen(env.len());
-        b.check(u.apply(g, ar)?, &ctx.extend(*t, ar), &env.extend(g, ar), ar)
+        b.check(u.apply(x, ar)?, &ctx.extend(*t, ar), &env.extend(x, ar), ar)
       }
-      // The (∑ extend), (let) and (extend) rules are used.
+      // The (∑ intro) and (extend) rules are used.
       // By pre-conditions, `t` is already known to have universe type.
       Term::Star | Term::Tup(_, _) => {
         let us = t.as_sig(None, ctx.len(), ar)?;
@@ -381,12 +389,14 @@ impl<'b> Term<'b> {
         if let Term::Star = init {
           bs.reverse();
           if bs.len() == us.len() {
-            let mut a = Vec::new();
+            // Eagerly evaluate tuple elements.
+            let vs = ar.values(bs.len(), Val::Gen(0));
             for (i, (b, u)) in bs.iter().zip(us.iter()).enumerate() {
+              // SAFETY: the borrowed range `&vs[..i]` is no longer modified.
+              let a = Val::Tup(unsafe { from_raw_parts(vs.as_ptr(), i) });
               let t = Val::Sig(&us[..i]);
-              let g = Val::Tup(&a);
-              b.check(u.apply(g, ar)?, &ctx.extend(t, ar), &env.extend(g, ar), ar)?;
-              a.push(Clos { env: *env, body: b });
+              b.check(u.apply(a, ar)?, &ctx.extend(t, ar), &env.extend(a, ar), ar)?;
+              vs[i] = b.eval(&env.extend(a, ar), ar)?;
             }
             Ok(())
           } else {

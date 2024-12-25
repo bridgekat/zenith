@@ -5,7 +5,7 @@
 ]
   ↦
 {
-  first_theorem :=
+  first_theorem ≔
     ([p, q] ↦ ⇔_intro (¬ (∨ p q)) (∧ (¬ p) (¬ q))
       ([h] ↦ ∧_intro (¬ p) (¬ q)
         (¬_intro p ([hp] ↦ ¬_elim (∨ p q) h (∨_inl p q hp)))
@@ -14,14 +14,14 @@
         ([hpq] ↦ ∨_elim p q ⊥ hpq
           ([hp] ↦ ¬_elim p (∧_left (¬ p) (¬ q) h) hp)
           ([hq] ↦ ¬_elim q (∧_right (¬ p) (¬ q) h) hq)))),
-
-  second_theorem :=
+  
+  second_theorem ≔
     ([p] ↦ ⇔_intro (¬ (∃ ([x] ↦ p x))) (∀ ([x] ↦ ¬ (p x)))
       ([h] ↦ ∀_intro ([x] ↦ ¬ (p x))
         ([x] ↦ ¬_intro (p x)
           ([hp] ↦ ¬_elim (∃ ([x] ↦ p x)) h (∃_intro ([x] ↦ p x) x hp))))
       ([h] ↦ ¬_intro (∃ ([x] ↦ p x))
-        ([hp] ↦ [x := ∃_some ([x] ↦ p x) hp] ¬_elim (p x)
+        ([hp] ↦ [x ≔ ∃_some ([x] ↦ p x) hp] ¬_elim (p x)
           (∀_elim ([x] ↦ ¬ (p x)) h x)
           (∃_prop ([x] ↦ p x) hp))))
 }

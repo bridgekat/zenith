@@ -1,4 +1,3 @@
-#![feature(allocator_api)]
 #![feature(cell_update)]
 
 pub mod core;
@@ -8,6 +7,49 @@ use std::io::Write;
 use std::thread::Builder;
 
 use core::{Arena, Stack, Term, Val};
+
+/// Converts `pos` to line and column numbers.
+fn pos_to_line_col(pos: usize, lines: &[String]) -> (usize, usize) {
+  let mut remaining = pos;
+  for (i, line) in lines.iter().enumerate() {
+    if remaining < line.chars().count() {
+      return (i, remaining);
+    }
+    remaining -= line.chars().count();
+  }
+  match lines.last() {
+    Some(line) => (lines.len() - 1, line.chars().count()),
+    None => (0, 0),
+  }
+}
+
+/// Prints a location indicator.
+fn print_location_indicator(start: usize, end: usize, lines: &[String]) {
+  let end = end.max(start);
+  let (start_line, start_col) = pos_to_line_col(start, lines);
+  let (end_line, end_col) = pos_to_line_col(end, lines);
+  if start_line == end_line {
+    // let width = (end_line + 1).to_string().chars().count() + 1;
+    let line = lines.get(start_line).map(|s| s.as_ref()).unwrap_or("");
+    println!("|");
+    println!("| {}", line);
+    println!("| {}{}", " ".repeat(start_col), "~".repeat((end_col - start_col).max(1)));
+  } else {
+    // let width = (end_line + 1).to_string().chars().count() + 1;
+    let line = lines.get(start_line).map(|s| s.as_ref()).unwrap_or("");
+    println!("|");
+    println!("| {}", line);
+    println!("| {}{}", " ".repeat(start_col), "~".repeat(line.chars().count() - start_col));
+    // for i in start_line + 1..end_line {
+    //   let line = lines.get(i).map(|s| s.as_ref()).unwrap_or("");
+    //   println!("{:>width$} | {}", i + 1, line);
+    //   println!("{:>width$} | {}", "", "~".repeat(line.chars().count()));
+    // }
+    // let line = lines.get(end_line).map(|s| s.as_ref()).unwrap_or("");
+    // println!("{:>width$} | {}", end_line + 1, line);
+    // println!("{:>width$} | {}", "", "~".repeat(end_col));
+  }
+}
 
 /// # Examples
 ///
@@ -26,9 +68,9 @@ use core::{Arena, Stack, Term, Val};
 ///   Prop : Type,
 ///   ⊢ : [p : Prop] → Type,
 ///   ∧ : [p : Prop, q : Prop] → Prop,
-///   ∧intro : [p : Prop, q : Prop, hp : ⊢ p, hq : ⊢ q] → ⊢ (∧ p q),
-///   ∧left : [p : Prop, q : Prop, h : ⊢ (∧ p q)] → ⊢ p,
-///   ∧right : [p : Prop, q : Prop, h : ⊢ (∧ p q)] → ⊢ q
+///   ∧_intro : [p : Prop, q : Prop, hp : ⊢ p, hq : ⊢ q] → ⊢ (∧ p q),
+///   ∧_left : [p : Prop, q : Prop, h : ⊢ (∧ p q)] → ⊢ p,
+///   ∧_right : [p : Prop, q : Prop, h : ⊢ (∧ p q)] → ⊢ q
 /// }
 /// ```
 ///
@@ -69,41 +111,54 @@ use core::{Arena, Stack, Term, Val};
 /// ```
 fn run_repl() -> std::io::Result<()> {
   let mut ar = Arena::new();
-  let mut line = String::new();
   loop {
     ar.reset();
-    line.clear();
+
+    let mut lines = Vec::new();
+    let mut line = String::new();
+
     print!("> ");
     std::io::stdout().flush()?;
     std::io::stdin().read_line(&mut line)?;
-    let trimmed = line.trim_end();
-    if trimmed.is_empty() {
+    line = line.trim_end_matches(|c| "\r\n".contains(c)).to_string();
+
+    while !line.is_empty() {
+      lines.push(line);
+      line = String::new();
+
+      print!("  ");
+      std::io::stdout().flush()?;
+      std::io::stdin().read_line(&mut line)?;
+      line = line.trim_end_matches(|c| "\r\n".contains(c)).to_string();
+    }
+
+    let input = lines.join("");
+    if input.is_empty() {
       continue;
     }
-    let spans = match Term::lex(trimmed.chars()) {
+
+    let spans = match Term::lex(input.chars()) {
       Ok(t) => t,
       Err(e) => {
-        let (start, end) = e.position(trimmed.len());
-        let end = end.max(start + 1);
-        let indicator = " ".repeat("> ".len() + start) + &"~".repeat(end - start);
-        println!("{indicator}");
+        let (start, end) = e.position(input.chars().count());
         println!("⨯ Error: {e}");
+        print_location_indicator(start, end, &lines);
         println!();
         continue;
       }
     };
+
     let term = match Term::parse(spans.into_iter(), &ar) {
       Ok(t) => t,
       Err(e) => {
-        let (start, end) = e.position(trimmed.len());
-        let end = end.max(start + 1);
-        let indicator = " ".repeat("> ".len() + start) + &"~".repeat(end - start);
-        println!("{indicator}");
+        let (start, end) = e.position(input.chars().count());
         println!("⨯ Error: {e}");
+        print_location_indicator(start, end, &lines);
         println!();
         continue;
       }
     };
+
     match Term::eval(term, &Stack::new(), &ar) {
       Ok(t) => match Val::quote(&t, 0, &ar) {
         Ok(t) => println!("≡ {t}"),
@@ -111,6 +166,7 @@ fn run_repl() -> std::io::Result<()> {
       },
       Err(e) => println!("⨯ Error: {e}"),
     };
+
     match Term::infer(term, &Stack::new(), &Stack::new(), &ar) {
       Ok(t) => match Val::quote(&t, 0, &ar) {
         Ok(t) => println!(": {t}"),
@@ -118,6 +174,7 @@ fn run_repl() -> std::io::Result<()> {
       },
       Err(e) => println!("⨯ Error: {e}"),
     };
+
     println!();
     println!(
       "  Heap: {} terms, {} frames, {} values, {} closures",

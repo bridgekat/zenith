@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bumpalo = { version = "3.16.0", features = ["allocator_api", "boxed"] }
+bumpalo = { version = "3.16.0", features = ["boxed"] }
 
 [features]
 type_in_type = []

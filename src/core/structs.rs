@@ -68,8 +68,8 @@ pub enum Val<'a, 'b> {
   App(&'a Val<'a, 'b>, &'a Val<'a, 'b>),
   /// Tuple types (*element types*).
   Sig(&'a [Clos<'a, 'b>]),
-  /// Tuple constructors (*element values*).
-  Tup(&'a [Clos<'a, 'b>]),
+  /// Tuple constructors (element values).
+  Tup(&'a [Val<'a, 'b>]),
   /// Tuple initial elements (amount, tuple).
   Init(usize, &'a Val<'a, 'b>),
   /// Tuple last element (tuple).
@@ -133,6 +133,12 @@ impl Arena {
     self.data.alloc(val)
   }
 
+  /// Allocates a new array of values for writing.
+  pub fn values<'a, 'b>(&'a self, len: usize, nil: Val<'a, 'b>) -> &'a mut [Val<'a, 'b>] {
+    self.val_count.update(|x| x + len);
+    self.data.alloc_slice_fill_copy(len, nil)
+  }
+
   /// Allocates a new closure.
   pub fn clos<'a, 'b>(&'a self, clos: Clos<'a, 'b>) -> &'a Clos<'a, 'b> {
     self.clos_count.update(|x| x + 1);
@@ -140,9 +146,9 @@ impl Arena {
   }
 
   /// Allocates a new array of closures.
-  pub fn closures<'a, 'b>(&'a self, clos: &[Clos<'a, 'b>]) -> &'a [Clos<'a, 'b>] {
-    self.clos_count.update(|x| x + clos.len());
-    self.data.alloc_slice_copy(clos)
+  pub fn closures<'a, 'b>(&'a self, closures: &[Clos<'a, 'b>]) -> &'a [Clos<'a, 'b>] {
+    self.clos_count.update(|x| x + closures.len());
+    self.data.alloc_slice_copy(closures)
   }
 
   /// Allocates a new stack item.

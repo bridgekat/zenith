@@ -128,8 +128,7 @@ impl<'a> Term<'a> {
           let mut len = 1;
           let mut ident = String::new();
           ident.push(c);
-          // let ends = "()[]{},≔:=→->↦=>@^";
-          let ends = "()[]{},≔:=^";
+          let ends = "()[]{},≔:=→->↦=>@^";
           while let Some((_, c)) = it.peek().cloned() {
             if c.is_whitespace() || ends.chars().any(|x| x == c) {
               break;
