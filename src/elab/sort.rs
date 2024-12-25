@@ -1,7 +1,7 @@
 // use std::cmp::max;
 
 // /// Universes.
-// #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 // pub struct Sort(pub usize);
 
 // impl Sort {

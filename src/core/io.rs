@@ -1,5 +1,5 @@
+use std::fmt::Formatter;
 use std::iter::Peekable;
-use std::vec::IntoIter;
 
 use super::*;
 
@@ -12,19 +12,19 @@ pub enum Token {
   RightParen,
   LeftBracket,
   RightBracket,
-  Colon,
-  ColonEq,
+  LeftBrace,
+  RightBrace,
+  Comma,
+  Def,
+  Ann,
   Pi,
   Fun,
-  Sig,
-  Pair,
+  Star,
+  Unit,
   Type,
   Kind,
-  Fst,
-  Snd,
-  Unit,
-  Star,
-  Free(usize),
+  Var(usize),
+  Proj(usize),
   Ident(String),
 }
 
@@ -38,276 +38,403 @@ pub struct Span {
   pub end: usize,
 }
 
+/// # Variable bindings
+#[derive(Debug, Clone)]
+enum Binding {
+  Named(String),
+  Tuple(Vec<String>),
+}
+
+/// # Precedence levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Prec {
+  Term,
+  Body,
+  Proj,
+  Atom,
+}
+
 impl<'a> Term<'a> {
-  pub fn lex(input: &str) -> Result<Vec<Span>, LexError> {
+  /// Tokenises `input` into a list of [`Span`].
+  pub fn lex(chars: impl Iterator<Item = char>) -> Result<Vec<Span>, LexError> {
+    /// Expects the next character to be `c`.
     fn expect(it: &mut impl Iterator<Item = (usize, char)>, c: char) -> Result<(), LexError> {
       match it.next() {
         Some((_, d)) if d == c => Ok(()),
         other => Err(LexError::unexpected(other)),
       }
     }
-    let mut it = input.chars().enumerate().peekable();
+
+    let mut it = chars.enumerate().peekable();
     let mut res = Vec::new();
-    while let Some((pos, c)) = it.next() {
+    while let Some((pos, c)) = it.peek().cloned() {
+      it.next();
       match c {
-        '(' => {
-          if let Some((_, ')')) = it.peek().cloned() {
-            it.next();
-            res.push(Span { tok: Token::Star, start: pos, end: pos + 2 });
-          } else {
-            res.push(Span { tok: Token::LeftParen, start: pos, end: pos + 1 });
-          }
-        }
+        '(' => res.push(Span { tok: Token::LeftParen, start: pos, end: pos + 1 }),
         ')' => res.push(Span { tok: Token::RightParen, start: pos, end: pos + 1 }),
         '[' => res.push(Span { tok: Token::LeftBracket, start: pos, end: pos + 1 }),
         ']' => res.push(Span { tok: Token::RightBracket, start: pos, end: pos + 1 }),
-        ':' => {
-          if let Some((_, '=')) = it.peek().cloned() {
+        '{' => {
+          if let Some((_, '}')) = it.peek() {
             it.next();
-            res.push(Span { tok: Token::ColonEq, start: pos, end: pos + 2 });
+            res.push(Span { tok: Token::Star, start: pos, end: pos + 2 });
           } else {
-            res.push(Span { tok: Token::Colon, start: pos, end: pos + 1 });
+            res.push(Span { tok: Token::LeftBrace, start: pos, end: pos + 1 });
           }
         }
+        '}' => res.push(Span { tok: Token::RightBrace, start: pos, end: pos + 1 }),
+        ',' => res.push(Span { tok: Token::Comma, start: pos, end: pos + 1 }),
+        '≔' => res.push(Span { tok: Token::Def, start: pos, end: pos + 1 }),
+        ':' => {
+          if let Some((_, '=')) = it.peek() {
+            it.next();
+            res.push(Span { tok: Token::Def, start: pos, end: pos + 2 });
+          } else {
+            res.push(Span { tok: Token::Ann, start: pos, end: pos + 1 });
+          }
+        }
+        '→' => res.push(Span { tok: Token::Pi, start: pos, end: pos + 1 }),
         '-' => {
           expect(&mut it, '>')?;
           res.push(Span { tok: Token::Pi, start: pos, end: pos + 2 });
         }
+        '↦' => res.push(Span { tok: Token::Fun, start: pos, end: pos + 1 }),
         '=' => {
           expect(&mut it, '>')?;
           res.push(Span { tok: Token::Fun, start: pos, end: pos + 2 });
         }
-        '*' => res.push(Span { tok: Token::Sig, start: pos, end: pos + 1 }),
-        ';' => res.push(Span { tok: Token::Pair, start: pos, end: pos + 1 }),
-        '^' => {
+        '@' | '^' => {
+          let free = c == '@';
+          if free {
+            expect(&mut it, '^')?;
+          }
           let mut len = 1;
           let mut n = 0;
           while let Some((_, c)) = it.peek().cloned() {
-            if c.is_ascii_digit() {
-              it.next();
-              len += 1;
-              n = n * 10 + c.to_digit(10).unwrap() as usize;
-            } else {
+            if !c.is_ascii_digit() {
               break;
             }
+            it.next();
+            len += 1;
+            n = n * 10 + c.to_digit(10).unwrap() as usize;
           }
-          res.push(Span { tok: Token::Free(n), start: pos, end: pos + len });
+          if free {
+            res.push(Span { tok: Token::Var(n), start: pos, end: pos + len });
+          } else {
+            res.push(Span { tok: Token::Proj(n), start: pos, end: pos + len });
+          }
         }
-        '≔' => res.push(Span { tok: Token::ColonEq, start: pos, end: pos + 1 }),
-        '→' => res.push(Span { tok: Token::Pi, start: pos, end: pos + 1 }),
-        '↦' => res.push(Span { tok: Token::Fun, start: pos, end: pos + 1 }),
-        '×' => res.push(Span { tok: Token::Sig, start: pos, end: pos + 1 }),
-        c => {
-          if !c.is_whitespace() {
-            let mut len = 1;
-            let mut ident = String::new();
+        c if !c.is_whitespace() => {
+          let mut len = 1;
+          let mut ident = String::new();
+          ident.push(c);
+          // let ends = "()[]{},≔:=→->↦=>@^";
+          let ends = "()[]{},≔:=^";
+          while let Some((_, c)) = it.peek().cloned() {
+            if c.is_whitespace() || ends.chars().any(|x| x == c) {
+              break;
+            }
+            it.next();
+            len += 1;
             ident.push(c);
-            let symbols = "()[]:-=*;^≔→↦×";
-            while let Some((_, c)) = it.peek().cloned() {
-              if c.is_whitespace() || symbols.chars().any(|x| x == c) {
-                break;
-              }
-              it.next();
-              len += 1;
-              ident.push(c);
-            }
-            match ident.as_str() {
-              "Type" => res.push(Span { tok: Token::Type, start: pos, end: pos + len }),
-              "Kind" => res.push(Span { tok: Token::Kind, start: pos, end: pos + len }),
-              "Fst" => res.push(Span { tok: Token::Fst, start: pos, end: pos + len }),
-              "Snd" => res.push(Span { tok: Token::Snd, start: pos, end: pos + len }),
-              "Unit" => res.push(Span { tok: Token::Unit, start: pos, end: pos + len }),
-              _ => res.push(Span { tok: Token::Ident(ident), start: pos, end: pos + len }),
-            }
+          }
+          match ident.as_str() {
+            "Unit" => res.push(Span { tok: Token::Unit, start: pos, end: pos + len }),
+            "Type" => res.push(Span { tok: Token::Type, start: pos, end: pos + len }),
+            "Kind" => res.push(Span { tok: Token::Kind, start: pos, end: pos + len }),
+            _ => res.push(Span { tok: Token::Ident(ident), start: pos, end: pos + len }),
           }
         }
+        _ => {}
       }
     }
     Ok(res)
   }
 
-  pub fn parse(spans: Vec<Span>, ar: &'a Arena) -> Result<&'a Term<'a>, ParseError> {
-    fn expect(it: &mut Peekable<IntoIter<Span>>, tok: Token) -> Result<(), ParseError> {
+  /// Parses a list of [`Span`] into a [`Term`].
+  ///
+  /// The grammar is given by the following BNF:
+  ///
+  /// ```bnf
+  /// <term> ::=
+  ///   | <body>
+  ///   | <body> ":" <term>
+  ///
+  /// <body> ::=
+  ///   | "[" <id> "≔" <term> ("," <id> "≔" <term>)* "]" <body>
+  ///   | "[" <id> ":" <term> ("," <id> ":" <term>)* "]" "→" <body>
+  ///   | "[" <id> ("," <id>)* "]" "↦" <body>
+  ///   | <proj> <proj>*
+  ///
+  /// <proj> ::=
+  ///   | <atom>
+  ///   | <proj> "^" <integer>
+  ///
+  /// <atom> ::=
+  ///   | "{}" | "Unit" | "Type" | "Kind" | "@^" <integer> | <id>
+  ///   | "(" <term> ")"
+  ///   | "{" <id> ":" <term> ("," <id> ":" <term>)* "}"
+  ///   | "{" <id> "≔" <term> ("," <id> "≔" <term>)* "}"
+  /// ```
+  pub fn parse(spans: impl Iterator<Item = Span>, ar: &'a Arena) -> Result<&'a Term<'a>, ParseError> {
+    /// Resolves an identifier to a term.
+    fn resolve<'a>(x: &str, vars: &[Binding], ar: &'a Arena) -> Option<&'a Term<'a>> {
+      for (ix, b) in vars.iter().rev().enumerate() {
+        match b {
+          Binding::Named(y) if y == x => return Some(ar.term(Term::Var(ix))),
+          Binding::Tuple(ys) => {
+            if let Some(n) = ys.iter().rev().position(|y| y == x) {
+              return Some(ar.term(Term::Last(ar.term(Term::Init(n, ar.term(Term::Var(ix)))))));
+            }
+          }
+          _ => {}
+        }
+      }
+      None
+    }
+
+    /// Expects the next token to be `tok`.
+    fn expect(it: &mut impl Iterator<Item = Span>, tok: Token) -> Result<(), ParseError> {
       match it.next() {
         Some(s) if s.tok == tok => Ok(()),
         other => Err(ParseError::unexpected(other)),
       }
     }
-    fn parse_binder<'a>(
-      it: &mut Peekable<IntoIter<Span>>,
-      vars: &mut Vec<String>,
-      ar: &'a Arena,
-    ) -> Result<(String, Option<&'a Term<'a>>, Option<&'a Term<'a>>), ParseError> {
-      let x = match it.next() {
-        Some(Span { tok: Token::Ident(x), .. }) => x,
-        other => return Err(ParseError::unexpected(other)),
-      };
-      let (t, v) = match it.peek() {
-        Some(Span { tok: Token::Colon, .. }) => {
-          expect(it, Token::Colon)?;
-          (Some(parse_term(it, vars, ar)?), None)
-        }
-        Some(Span { tok: Token::ColonEq, .. }) => {
-          expect(it, Token::ColonEq)?;
-          (None, Some(parse_term(it, vars, ar)?))
-        }
-        _ => (None, None),
-      };
-      Ok((x, t, v))
+
+    /// Expects the next token to be an identifier.
+    fn expect_ident(it: &mut impl Iterator<Item = Span>) -> Result<String, ParseError> {
+      match it.next() {
+        Some(Span { tok: Token::Ident(x), .. }) => Ok(x),
+        other => Err(ParseError::unexpected(other)),
+      }
     }
-    fn try_parse_arg<'a>(
-      it: &mut Peekable<IntoIter<Span>>,
-      vars: &mut Vec<String>,
+
+    /// Parses a term.
+    fn parse_term<'a>(
+      it: &mut Peekable<impl Iterator<Item = Span>>,
+      vars: &mut Vec<Binding>,
       ar: &'a Arena,
-    ) -> Result<Option<&'a Term<'a>>, ParseError> {
-      match it.peek().cloned() {
+    ) -> Result<&'a Term<'a>, ParseError> {
+      let res = parse_body(it, vars, ar)?;
+      match it.peek() {
+        Some(Span { tok: Token::Ann, .. }) => {
+          it.next();
+          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?)))
+        }
+        _ => Ok(res),
+      }
+    }
+
+    /// Parses a body.
+    fn parse_body<'a>(
+      it: &mut Peekable<impl Iterator<Item = Span>>,
+      vars: &mut Vec<Binding>,
+      ar: &'a Arena,
+    ) -> Result<&'a Term<'a>, ParseError> {
+      match it.peek() {
+        // Parsing a binder group (translated into nested binders and a body).
         Some(Span { tok: Token::LeftBracket, .. }) => {
-          expect(it, Token::LeftBracket)?;
-          let (x, t, v) = parse_binder(it, vars, ar)?;
-          expect(it, Token::RightBracket)?;
-          match (t, v) {
-            (Some(_), Some(_)) => unreachable!(),
-            (Some(t), None) => match it.peek() {
-              Some(Span { tok: Token::Pi, .. }) => {
-                expect(it, Token::Pi)?;
-                vars.push(x);
-                let b = parse_term(it, vars, ar)?;
-                vars.pop();
-                Ok(Some(ar.term(Term::Pi(t, b))))
+          it.next();
+          let x = expect_ident(it)?;
+          match it.peek() {
+            // Parsing a group of let binders.
+            Some(Span { tok: Token::Def, .. }) => {
+              it.next();
+              let mut vs = Vec::from([parse_term(it, vars, ar)?]);
+              vars.push(Binding::Named(x));
+              while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
+                it.next();
+                let x = expect_ident(it)?;
+                expect(it, Token::Def)?;
+                vs.push(parse_term(it, vars, ar)?);
+                vars.push(Binding::Named(x));
               }
-              Some(Span { tok: Token::Sig, .. }) => {
-                expect(it, Token::Sig)?;
-                vars.push(x);
-                let b = parse_term(it, vars, ar)?;
+              expect(it, Token::RightBracket)?;
+              let mut body = parse_body(it, vars, ar)?;
+              for v in vs.into_iter().rev() {
+                body = ar.term(Term::Let(v, body));
                 vars.pop();
-                Ok(Some(ar.term(Term::Sig(t, b))))
               }
-              _ => Err(ParseError::unexpected(it.next())),
-            },
-            (None, Some(v)) => {
-              vars.push(x);
-              let b = parse_term(it, vars, ar)?;
-              vars.pop();
-              Ok(Some(ar.term(Term::Let(v, b))))
+              Ok(body)
             }
-            (None, None) => {
+            // Parsing a group of Pi binders.
+            Some(Span { tok: Token::Ann, .. }) => {
+              it.next();
+              let mut ts = Vec::from([parse_term(it, vars, ar)?]);
+              vars.push(Binding::Named(x));
+              while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
+                it.next();
+                let x = expect_ident(it)?;
+                expect(it, Token::Ann)?;
+                ts.push(parse_term(it, vars, ar)?);
+                vars.push(Binding::Named(x));
+              }
+              expect(it, Token::RightBracket)?;
+              expect(it, Token::Pi)?;
+              let mut body = parse_body(it, vars, ar)?;
+              for t in ts.into_iter().rev() {
+                body = ar.term(Term::Pi(t, body));
+                vars.pop();
+              }
+              Ok(body)
+            }
+            // Parsing a group of function binders.
+            _ => {
+              let mut ts = Vec::from([()]);
+              vars.push(Binding::Named(x));
+              while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
+                it.next();
+                let x = expect_ident(it)?;
+                ts.push(());
+                vars.push(Binding::Named(x));
+              }
+              expect(it, Token::RightBracket)?;
               expect(it, Token::Fun)?;
-              vars.push(x);
-              let b = parse_term(it, vars, ar)?;
-              vars.pop();
-              Ok(Some(ar.term(Term::Fun(b))))
+              let mut body = parse_body(it, vars, ar)?;
+              for _ in ts.into_iter().rev() {
+                body = ar.term(Term::Fun(body));
+                vars.pop();
+              }
+              Ok(body)
             }
           }
         }
-        Some(Span { tok: Token::LeftParen, .. }) => {
-          expect(it, Token::LeftParen)?;
-          let x = parse_term(it, vars, ar)?;
-          expect(it, Token::RightParen)?;
-          Ok(Some(x))
+        // Parsing a sequence of atomic terms each followed by projections.
+        _ => {
+          let mut res = parse_proj(it, vars, ar)?;
+          loop {
+            match it.peek() {
+              Some(Span { tok: Token::Star, .. })
+              | Some(Span { tok: Token::Unit, .. })
+              | Some(Span { tok: Token::Type, .. })
+              | Some(Span { tok: Token::Kind, .. })
+              | Some(Span { tok: Token::Var(_), .. })
+              | Some(Span { tok: Token::Ident(_), .. })
+              | Some(Span { tok: Token::LeftParen, .. })
+              | Some(Span { tok: Token::LeftBrace, .. }) => {
+                res = ar.term(Term::App(res, parse_proj(it, vars, ar)?));
+              }
+              _ => break Ok(res),
+            }
+          }
         }
-        Some(Span { tok: Token::Type, .. }) => {
-          expect(it, Token::Type)?;
-          Ok(Some(ar.term(Term::Univ(Univ(0)))))
-        }
-        Some(Span { tok: Token::Kind, .. }) => {
-          expect(it, Token::Kind)?;
-          Ok(Some(ar.term(Term::Univ(Univ(1)))))
-        }
-        Some(Span { tok: Token::Fst, .. }) => {
-          expect(it, Token::Fst)?;
-          Ok(Some(ar.term(Term::Fst(parse_term(it, vars, ar)?))))
-        }
-        Some(Span { tok: Token::Snd, .. }) => {
-          expect(it, Token::Snd)?;
-          Ok(Some(ar.term(Term::Snd(parse_term(it, vars, ar)?))))
+      }
+    }
+
+    /// Parses an atomic term followed by a sequence of projections.
+    fn parse_proj<'a>(
+      it: &mut Peekable<impl Iterator<Item = Span>>,
+      vars: &mut Vec<Binding>,
+      ar: &'a Arena,
+    ) -> Result<&'a Term<'a>, ParseError> {
+      let mut res = parse_atom(it, vars, ar)?;
+      while let Some(Span { tok: Token::Proj(n), .. }) = it.peek().cloned() {
+        it.next();
+        res = ar.term(Term::Last(ar.term(Term::Init(n, res))));
+      }
+      Ok(res)
+    }
+
+    /// Parses an atomic term.
+    fn parse_atom<'a>(
+      it: &mut Peekable<impl Iterator<Item = Span>>,
+      vars: &mut Vec<Binding>,
+      ar: &'a Arena,
+    ) -> Result<&'a Term<'a>, ParseError> {
+      match it.peek().cloned() {
+        Some(Span { tok: Token::Star, .. }) => {
+          it.next();
+          Ok(ar.term(Term::Star))
         }
         Some(Span { tok: Token::Unit, .. }) => {
-          expect(it, Token::Unit)?;
-          Ok(Some(ar.term(Term::Unit)))
-        }
-        Some(Span { tok: Token::Star, .. }) => {
-          expect(it, Token::Star)?;
-          Ok(Some(ar.term(Term::Star)))
-        }
-        Some(Span { tok: Token::Free(n), .. }) => {
           it.next();
-          Ok(Some(ar.term(Term::Var(vars.len() + n))))
+          Ok(ar.term(Term::Unit))
+        }
+        Some(Span { tok: Token::Type, .. }) => {
+          it.next();
+          Ok(ar.term(Term::Univ(Univ(0))))
+        }
+        Some(Span { tok: Token::Kind, .. }) => {
+          it.next();
+          Ok(ar.term(Term::Univ(Univ(1))))
+        }
+        Some(Span { tok: Token::Var(n), .. }) => {
+          it.next();
+          Ok(ar.term(Term::Var(n)))
         }
         Some(Span { tok: Token::Ident(x), start, end }) => {
           it.next();
-          match vars.iter().rev().position(|y| y == &x) {
-            Some(ix) => Ok(Some(ar.term(Term::Var(ix)))),
-            None => Err(ParseError::undefined_ident(x, start, end)),
-          }
+          resolve(&x, vars, ar).ok_or_else(|| ParseError::undefined_ident(x, start, end))
         }
-        _ => Ok(None),
-      }
-    }
-    fn try_parse_elem<'a>(
-      it: &mut Peekable<IntoIter<Span>>,
-      vars: &mut Vec<String>,
-      ar: &'a Arena,
-    ) -> Result<Option<&'a Term<'a>>, ParseError> {
-      let mut args = Vec::new();
-      while let Some(arg) = try_parse_arg(it, vars, ar)? {
-        args.push(arg);
-      }
-      args.reverse();
-      match args.pop() {
-        Some(x) => {
-          let mut res = x;
-          while let Some(arg) = args.pop() {
-            res = ar.term(Term::App(res, arg));
-          }
-          match it.peek() {
-            Some(Span { tok: Token::Colon, .. }) => {
-              expect(it, Token::Colon)?;
-              let ty = parse_term(it, vars, ar)?;
-              Ok(Some(ar.term(Term::Ann(res, ty))))
-            }
-            _ => Ok(Some(res)),
-          }
-        }
-        None => Ok(None),
-      }
-    }
-    fn parse_term<'a>(
-      it: &mut Peekable<IntoIter<Span>>,
-      vars: &mut Vec<String>,
-      ar: &'a Arena,
-    ) -> Result<&'a Term<'a>, ParseError> {
-      let mut elems = Vec::new();
-      while let Some(elem) = try_parse_elem(it, vars, ar)? {
-        elems.push(elem);
-        match it.peek() {
-          Some(Span { tok: Token::Pair, .. }) => {
-            expect(it, Token::Pair)?;
-          }
-          _ => break,
-        }
-      }
-      match elems.pop() {
-        Some(x) => {
-          let mut res = x;
-          while let Some(elem) = elems.pop() {
-            res = ar.term(Term::Pair(elem, res));
-          }
+        Some(Span { tok: Token::LeftParen, .. }) => {
+          it.next();
+          let res = parse_term(it, vars, ar)?;
+          expect(it, Token::RightParen)?;
           Ok(res)
         }
-        None => Err(ParseError::unexpected(it.next())),
+        // Parsing an aggregate (translated into a dependent snoc list).
+        Some(Span { tok: Token::LeftBrace, .. }) => {
+          it.next();
+          let x = expect_ident(it)?;
+          match it.peek() {
+            // Parsing a tuple aggregate.
+            Some(Span { tok: Token::Def, .. }) => {
+              it.next();
+              vars.push(Binding::Tuple(Vec::new()));
+              let mut init = ar.term(Term::Star);
+              init = ar.term(Term::Tup(init, parse_term(it, vars, ar)?));
+              if let Some(Binding::Tuple(var)) = vars.last_mut() {
+                var.push(x);
+              }
+              while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
+                it.next();
+                let x = expect_ident(it)?;
+                expect(it, Token::Def)?;
+                init = ar.term(Term::Tup(init, parse_term(it, vars, ar)?));
+                if let Some(Binding::Tuple(var)) = vars.last_mut() {
+                  var.push(x);
+                }
+              }
+              expect(it, Token::RightBrace)?;
+              vars.pop();
+              Ok(init)
+            }
+            // Parsing a tuple type aggregate.
+            Some(Span { tok: Token::Ann, .. }) => {
+              it.next();
+              vars.push(Binding::Tuple(Vec::new()));
+              let mut init = ar.term(Term::Unit);
+              init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
+              if let Some(Binding::Tuple(var)) = vars.last_mut() {
+                var.push(x);
+              }
+              while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
+                it.next();
+                let x = expect_ident(it)?;
+                expect(it, Token::Ann)?;
+                init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
+                if let Some(Binding::Tuple(var)) = vars.last_mut() {
+                  var.push(x);
+                }
+              }
+              expect(it, Token::RightBrace)?;
+              vars.pop();
+              Ok(init)
+            }
+            _ => Err(ParseError::unexpected(it.next())),
+          }
+        }
+        _ => Err(ParseError::unexpected(it.next())),
       }
     }
-    let mut it = spans.into_iter().peekable();
-    let res = parse_term(&mut it, &mut Vec::new(), ar)?;
-    match it.peek() {
-      Some(_) => Err(ParseError::unexpected(it.next())),
-      _ => Ok(res),
-    }
+
+    let mut it = spans.peekable();
+    parse_term(&mut it, &mut Vec::new(), ar)
   }
 }
 
 impl Univ {
-  fn print(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+  fn print(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     let Univ(u) = *self;
     if u == 0 {
       write!(f, "Type")
@@ -318,8 +445,11 @@ impl Univ {
 }
 
 impl Term<'_> {
-  fn print(&self, count: &mut usize, names: &mut Vec<usize>, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    // Generates a unique lowercase variable name from a unique number.
+  /// Pretty-prints a term.
+  ///
+  /// See documentation of [`Term::parse`] for the BNF grammar.
+  fn print(&self, f: &mut Formatter<'_>, count: &mut usize, vars: &mut Vec<Binding>, prec: Prec) -> std::fmt::Result {
+    /// Generates a unique lowercase variable name from a unique number.
     fn generate_name(mut id: usize) -> String {
       let mut len = 0;
       let mut m = 1;
@@ -332,111 +462,251 @@ impl Term<'_> {
           break;
         }
       }
-      let mut res = String::new();
+      let mut res = Vec::new();
       for _ in 0..len {
-        res.insert(0, ((id % 26) as u8 + b'a') as char);
+        res.push(((id % 26) as u8 + b'a') as char);
         id /= 26;
       }
-      res
+      res.reverse();
+      res.into_iter().collect()
     }
+
+    /// Prints a left parenthesis if the actual precedence level is lower than the expected.
+    fn left_paren(f: &mut Formatter<'_>, actual: Prec, expected: Prec) -> std::fmt::Result {
+      if actual < expected {
+        write!(f, "(")?
+      }
+      Ok(())
+    }
+
+    /// Prints a right parenthesis if the actual precedence level is lower than the expected.
+    fn right_paren(f: &mut Formatter<'_>, actual: Prec, expected: Prec) -> std::fmt::Result {
+      if actual < expected {
+        write!(f, ")")?
+      }
+      Ok(())
+    }
+
     match self {
-      Term::Univ(univ) => write!(f, "{univ}"),
-      Term::Var(ix) => match *ix < names.len() {
-        true => write!(f, "{}", generate_name(names[names.len() - 1 - ix])),
-        false => write!(f, "^{}", ix - names.len()),
-      },
+      Term::Univ(v) => {
+        left_paren(f, Prec::Atom, prec)?;
+        v.print(f)?;
+        right_paren(f, Prec::Atom, prec)?;
+        Ok(())
+      }
+      Term::Var(ix) => {
+        if let Some(i) = vars.len().checked_sub(ix + 1) {
+          if let Binding::Named(name) = &vars[i] {
+            left_paren(f, Prec::Atom, prec)?;
+            write!(f, "{}", name)?;
+            right_paren(f, Prec::Atom, prec)?;
+            return Ok(());
+          }
+        }
+        left_paren(f, Prec::Atom, prec)?;
+        write!(f, "@^{}", ix)?;
+        right_paren(f, Prec::Atom, prec)?;
+        Ok(())
+      }
       Term::Ann(x, t) => {
-        write!(f, "(")?;
-        x.print(count, names, f)?;
-        write!(f, ") : (")?;
-        t.print(count, names, f)?;
-        write!(f, ")")?;
+        left_paren(f, Prec::Term, prec)?;
+        x.print(f, count, vars, Prec::Body)?;
+        write!(f, " : ")?;
+        t.print(f, count, vars, Prec::Term)?;
+        right_paren(f, Prec::Term, prec)?;
         Ok(())
       }
-      Term::Let(v, x) => {
-        let c = *count;
-        *count += 1;
-        write!(f, "[{} ≔ ", generate_name(c))?;
-        v.print(count, names, f)?;
+      Term::Let(_, _) => {
+        let mut body = self;
+        let mut names = Vec::new();
+        let mut vs = Vec::new();
+        while let Term::Let(v, x) = body {
+          body = x;
+          names.push(generate_name(*count));
+          *count += 1;
+          vs.push(v);
+        }
+        left_paren(f, Prec::Body, prec)?;
+        write!(f, "[")?;
+        for (i, (name, t)) in names.iter_mut().zip(vs.iter()).enumerate() {
+          if i != 0 {
+            write!(f, ", ")?;
+          }
+          write!(f, "{} ≔ ", name)?;
+          t.print(f, count, vars, Prec::Term)?;
+          vars.push(Binding::Named(std::mem::take(name)));
+        }
         write!(f, "] ")?;
-        names.push(c);
-        x.print(count, names, f)?;
-        names.pop();
+        body.print(f, count, vars, Prec::Body)?;
+        right_paren(f, Prec::Body, prec)?;
+        vars.truncate(vars.len() - names.len());
         Ok(())
       }
-      Term::Pi(s, t) => {
-        let c = *count;
-        *count += 1;
-        write!(f, "[{} : ", generate_name(c))?;
-        s.print(count, names, f)?;
+      Term::Pi(_, _) => {
+        let mut body = self;
+        let mut names = Vec::new();
+        let mut ts = Vec::new();
+        while let Term::Pi(t, u) = body {
+          body = u;
+          names.push(generate_name(*count));
+          *count += 1;
+          ts.push(t);
+        }
+        left_paren(f, Prec::Body, prec)?;
+        write!(f, "[")?;
+        for (i, (name, t)) in names.iter_mut().zip(ts.iter()).enumerate() {
+          if i != 0 {
+            write!(f, ", ")?;
+          }
+          write!(f, "{} : ", name)?;
+          t.print(f, count, vars, Prec::Term)?;
+          vars.push(Binding::Named(std::mem::take(name)));
+        }
         write!(f, "] → ")?;
-        names.push(c);
-        t.print(count, names, f)?;
-        names.pop();
+        body.print(f, count, vars, Prec::Body)?;
+        right_paren(f, Prec::Body, prec)?;
+        vars.truncate(vars.len() - names.len());
         Ok(())
       }
-      Term::Fun(b) => {
-        let c = *count;
-        *count += 1;
-        write!(f, "[{}] ↦ ", generate_name(c))?;
-        names.push(c);
-        b.print(count, names, f)?;
-        names.pop();
+      Term::Fun(_) => {
+        let mut body = self;
+        let mut names = Vec::new();
+        while let Term::Fun(b) = body {
+          body = b;
+          names.push(generate_name(*count));
+          *count += 1;
+        }
+        left_paren(f, Prec::Body, prec)?;
+        write!(f, "[")?;
+        for (i, name) in names.iter_mut().enumerate() {
+          if i != 0 {
+            write!(f, ", ")?;
+          }
+          write!(f, "{}", name)?;
+          vars.push(Binding::Named(std::mem::take(name)));
+        }
+        write!(f, "] ↦ ")?;
+        body.print(f, count, vars, Prec::Body)?;
+        right_paren(f, Prec::Body, prec)?;
+        vars.truncate(vars.len() - names.len());
         Ok(())
       }
-      Term::App(g, x) => {
-        write!(f, "(")?;
-        g.print(count, names, f)?;
-        write!(f, ") (")?;
-        x.print(count, names, f)?;
-        write!(f, ")")?;
-        Ok(())
-      }
-      Term::Sig(s, t) => {
-        let c = *count;
-        *count += 1;
-        write!(f, "[{} : ", generate_name(c))?;
-        s.print(count, names, f)?;
-        write!(f, "] × ")?;
-        names.push(c);
-        t.print(count, names, f)?;
-        names.pop();
-        Ok(())
-      }
-      Term::Pair(a, b) => {
-        write!(f, "(")?;
-        a.print(count, names, f)?;
-        write!(f, "); (")?;
-        b.print(count, names, f)?;
-        write!(f, ")")?;
-        Ok(())
-      }
-      Term::Fst(x) => {
-        write!(f, "Fst (")?;
-        x.print(count, names, f)?;
-        write!(f, ")")?;
-        Ok(())
-      }
-      Term::Snd(x) => {
-        write!(f, "Snd (")?;
-        x.print(count, names, f)?;
-        write!(f, ")")?;
+      Term::App(_, _) => {
+        let mut init = self;
+        let mut xs = Vec::new();
+        while let Term::App(f, x) = init {
+          init = f;
+          xs.push(x);
+        }
+        let g = init;
+        xs.reverse();
+        left_paren(f, Prec::Body, prec)?;
+        g.print(f, count, vars, Prec::Proj)?;
+        for x in xs.iter() {
+          write!(f, " ")?;
+          x.print(f, count, vars, Prec::Proj)?;
+        }
+        right_paren(f, Prec::Body, prec)?;
         Ok(())
       }
       Term::Unit => write!(f, "Unit"),
-      Term::Star => write!(f, "()"),
+      Term::Sig(_, _) => {
+        let mut init = self;
+        let mut us = Vec::new();
+        while let Term::Sig(t, u) = init {
+          init = t;
+          us.push(u);
+        }
+        if let Term::Unit = init {
+          us.reverse();
+          left_paren(f, Prec::Atom, prec)?;
+          write!(f, "{{")?;
+          vars.push(Binding::Tuple(Vec::new()));
+          for (i, t) in us.iter().enumerate() {
+            if i != 0 {
+              write!(f, ", ")?;
+            }
+            let name = generate_name(*count);
+            *count += 1;
+            write!(f, "{} : ", name)?;
+            t.print(f, count, vars, Prec::Term)?;
+            if let Some(Binding::Tuple(var)) = vars.last_mut() {
+              var.push(name);
+            }
+          }
+          vars.pop();
+          write!(f, "}}")?;
+          right_paren(f, Prec::Atom, prec)?;
+        } else {
+          write!(f, "<improper tuple type>")?;
+        }
+        Ok(())
+      }
+      Term::Star | Term::Tup(_, _) => {
+        let mut init = self;
+        let mut bs = Vec::new();
+        while let Term::Tup(a, b) = init {
+          init = a;
+          bs.push(b);
+        }
+        if let Term::Star = init {
+          bs.reverse();
+          left_paren(f, Prec::Atom, prec)?;
+          write!(f, "{{")?;
+          vars.push(Binding::Tuple(Vec::new()));
+          for (i, b) in bs.iter().enumerate() {
+            if i != 0 {
+              write!(f, ", ")?;
+            }
+            let name = generate_name(*count);
+            *count += 1;
+            write!(f, "{} ≔ ", name)?;
+            b.print(f, count, vars, Prec::Term)?;
+            if let Some(Binding::Tuple(var)) = vars.last_mut() {
+              var.push(name);
+            }
+          }
+          vars.pop();
+          write!(f, "}}")?;
+          right_paren(f, Prec::Atom, prec)?;
+        } else {
+          write!(f, "<improper tuple constructor>")?;
+        }
+        Ok(())
+      }
+      Term::Last(Term::Init(n, x)) => {
+        if let Term::Var(ix) = x {
+          if let Some(i) = vars.len().checked_sub(ix + 1) {
+            if let Binding::Tuple(var) = &vars[i] {
+              if let Some(n) = var.len().checked_sub(n + 1) {
+                left_paren(f, Prec::Atom, prec)?;
+                write!(f, "{}", var[n])?;
+                right_paren(f, Prec::Atom, prec)?;
+                return Ok(());
+              }
+            }
+          }
+        }
+        left_paren(f, Prec::Proj, prec)?;
+        x.print(f, count, vars, Prec::Proj)?;
+        write!(f, "^{}", n)?;
+        right_paren(f, Prec::Proj, prec)?;
+        Ok(())
+      }
+      Term::Init(_, _) => write!(f, "<improper init projection>"),
+      Term::Last(_) => write!(f, "<improper last projection>"),
     }
   }
 }
 
 impl std::fmt::Display for Univ {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     self.print(f)
   }
 }
 
 impl std::fmt::Display for Term<'_> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    self.print(&mut 0, &mut Vec::new(), f)
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    self.print(f, &mut 0, &mut Vec::new(), Prec::Term)
   }
 }

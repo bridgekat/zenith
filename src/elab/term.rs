@@ -30,14 +30,14 @@
 // }
 
 // /// Dictionary index and implicitness of the bound variable.
-// #[derive(Debug, Clone, Copy, Hash)]
+// #[derive(Debug, Clone, Copy)]
 // pub struct BinderInfo {
 //   pub name_id: usize,
 //   pub is_implicit: bool,
 // }
 
 // /// Starting and ending positions in input source code.
-// #[derive(Debug, Clone, Copy, Hash)]
+// #[derive(Debug, Clone, Copy)]
 // pub struct SourceInfo {
 //   pub begin: usize,
 //   pub end: usize,
