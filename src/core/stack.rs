@@ -37,24 +37,6 @@ impl<'a, 'b> Stack<'a, 'b> {
     None
   }
 
-  pub fn truncate(&self, amount: usize, ar: &'a Arena) -> Option<Self> {
-    let mut curr = self;
-    let mut remaining = amount;
-    ar.inc_lookup_count();
-    while let Stack::Cons { prev, value: _ } = curr {
-      ar.inc_link_count();
-      if remaining == 0 {
-        return Some(*curr);
-      }
-      remaining -= 1;
-      curr = prev;
-    }
-    if remaining == 0 {
-      return Some(Stack::Nil);
-    }
-    None
-  }
-
   pub fn extend(&self, value: Val<'a, 'b>, ar: &'a Arena) -> Self {
     Stack::Cons { prev: ar.frame(*self), value: ar.val(value) }
   }

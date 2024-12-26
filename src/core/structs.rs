@@ -6,14 +6,6 @@
 use bumpalo::Bump;
 use std::cell::Cell;
 
-/// # Universes
-///
-/// A wrapper around universe levels.
-///
-/// Currently there are only two: 0 for `Type`, 1 for `Kind`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Univ(pub usize);
-
 /// # Terms
 ///
 /// Terms of the core calculus.
@@ -21,8 +13,8 @@ pub struct Univ(pub usize);
 /// Can be understood as the "source code" given to the evaluator.
 #[derive(Debug, Clone, Copy)]
 pub enum Term<'a> {
-  /// Universes.
-  Univ(Univ),
+  /// Universe in levels.
+  Univ(usize),
   /// Variables in de Bruijn indices.
   Var(usize),
   /// Type annotations (value, type).
@@ -39,7 +31,7 @@ pub enum Term<'a> {
   Sig(&'a Term<'a>, &'a Term<'a>),
   /// Tuple constructors (initial values, *last value*).
   Tup(&'a Term<'a>, &'a Term<'a>),
-  /// Tuple initial elements (amount, tuple).
+  /// Tuple initial segments (truncation, tuple).
   Init(usize, &'a Term<'a>),
   /// Tuple last element (tuple).
   Last(&'a Term<'a>),
@@ -56,8 +48,8 @@ pub enum Term<'a> {
 /// Can be understood as "runtime objects" produced by the evaluator.
 #[derive(Debug, Clone, Copy)]
 pub enum Val<'a, 'b> {
-  /// Universes.
-  Univ(Univ),
+  /// Universe in levels.
+  Univ(usize),
   /// Generic variables in de Bruijn *levels* for cheap weakening.
   Gen(usize),
   /// Function types (parameter type, *return type*).
@@ -70,7 +62,7 @@ pub enum Val<'a, 'b> {
   Sig(&'a [Clos<'a, 'b>]),
   /// Tuple constructors (element values).
   Tup(&'a [Val<'a, 'b>]),
-  /// Tuple initial elements (amount, tuple).
+  /// Tuple initial segments (truncation, tuple).
   Init(usize, &'a Val<'a, 'b>),
   /// Tuple last element (tuple).
   Last(&'a Val<'a, 'b>),

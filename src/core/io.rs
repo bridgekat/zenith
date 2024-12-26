@@ -103,46 +103,43 @@ impl<'a> Term<'a> {
           expect(&mut it, '>')?;
           res.push(Span { tok: Token::Fun, start: pos, end: pos + 2 });
         }
-        '@' | '^' => {
-          let free = c == '@';
-          if free {
-            expect(&mut it, '^')?;
-          }
+        '#' | '^' => {
           let mut len = 1;
           let mut n = 0;
-          while let Some((_, c)) = it.peek().cloned() {
-            if !c.is_ascii_digit() {
+          while let Some((_, d)) = it.peek().cloned() {
+            if !d.is_ascii_digit() {
               break;
             }
             it.next();
             len += 1;
-            n = n * 10 + c.to_digit(10).unwrap() as usize;
+            n = n * 10 + d.to_digit(10).unwrap() as usize;
           }
-          if free {
-            res.push(Span { tok: Token::Var(n), start: pos, end: pos + len });
-          } else {
-            res.push(Span { tok: Token::Proj(n), start: pos, end: pos + len });
-          }
+          let tok = match c {
+            '#' => Token::Var(n),
+            _ => Token::Proj(n),
+          };
+          res.push(Span { tok, start: pos, end: pos + len });
         }
         c if !c.is_whitespace() => {
           let mut len = 1;
           let mut ident = String::new();
           ident.push(c);
-          let ends = "()[]{},≔:=→->↦=>@^";
-          while let Some((_, c)) = it.peek().cloned() {
-            if c.is_whitespace() || ends.chars().any(|x| x == c) {
+          let ends = "()[]{},≔:=→->↦=>#^";
+          while let Some((_, d)) = it.peek().cloned() {
+            if d.is_whitespace() || ends.chars().any(|x| x == d) {
               break;
             }
             it.next();
             len += 1;
-            ident.push(c);
+            ident.push(d);
           }
-          match ident.as_str() {
-            "Unit" => res.push(Span { tok: Token::Unit, start: pos, end: pos + len }),
-            "Type" => res.push(Span { tok: Token::Type, start: pos, end: pos + len }),
-            "Kind" => res.push(Span { tok: Token::Kind, start: pos, end: pos + len }),
-            _ => res.push(Span { tok: Token::Ident(ident), start: pos, end: pos + len }),
-          }
+          let tok = match ident.as_str() {
+            "Unit" => Token::Unit,
+            "Type" => Token::Type,
+            "Kind" => Token::Kind,
+            _ => Token::Ident(ident),
+          };
+          res.push(Span { tok, start: pos, end: pos + len });
         }
         _ => {}
       }
@@ -170,7 +167,7 @@ impl<'a> Term<'a> {
   ///   | <proj> "^" <integer>
   ///
   /// <atom> ::=
-  ///   | "{}" | "Unit" | "Type" | "Kind" | "@^" <integer> | <id>
+  ///   | "{}" | "Unit" | "Type" | "Kind" | "#" <integer> | <id>
   ///   | "(" <term> ")"
   ///   | "{" <id> ":" <term> ("," <id> ":" <term>)* "}"
   ///   | "{" <id> "≔" <term> ("," <id> "≔" <term>)* "}"
@@ -192,7 +189,7 @@ impl<'a> Term<'a> {
       None
     }
 
-    /// Expects the next token to be `tok`.
+    /// Expects the next token to be a content-free `tok`.
     fn expect(it: &mut impl Iterator<Item = Span>, tok: Token) -> Result<(), ParseError> {
       match it.next() {
         Some(s) if s.tok == tok => Ok(()),
@@ -200,10 +197,26 @@ impl<'a> Term<'a> {
       }
     }
 
-    /// Expects the next token to be an identifier.
-    fn expect_ident(it: &mut impl Iterator<Item = Span>) -> Result<String, ParseError> {
+    /// Expects the next token to be a de Bruijn index.
+    fn expect_var(it: &mut impl Iterator<Item = Span>) -> Result<usize, ParseError> {
       match it.next() {
-        Some(Span { tok: Token::Ident(x), .. }) => Ok(x),
+        Some(Span { tok: Token::Var(ix), .. }) => Ok(ix),
+        other => Err(ParseError::unexpected(other)),
+      }
+    }
+
+    /// Expects the next token to be a projection.
+    fn expect_proj(it: &mut impl Iterator<Item = Span>) -> Result<usize, ParseError> {
+      match it.next() {
+        Some(Span { tok: Token::Proj(n), .. }) => Ok(n),
+        other => Err(ParseError::unexpected(other)),
+      }
+    }
+
+    /// Expects the next token to be an identifier. Also returns the starting and ending positions.
+    fn expect_ident(it: &mut impl Iterator<Item = Span>) -> Result<(String, usize, usize), ParseError> {
+      match it.next() {
+        Some(Span { tok: Token::Ident(x), start, end }) => Ok((x, start, end)),
         other => Err(ParseError::unexpected(other)),
       }
     }
@@ -214,8 +227,10 @@ impl<'a> Term<'a> {
       vars: &mut Vec<Binding>,
       ar: &'a Arena,
     ) -> Result<&'a Term<'a>, ParseError> {
+      // Parsing a term body.
       let res = parse_body(it, vars, ar)?;
       match it.peek() {
+        // Parsing an optional type annotation.
         Some(Span { tok: Token::Ann, .. }) => {
           it.next();
           Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?)))
@@ -224,17 +239,17 @@ impl<'a> Term<'a> {
       }
     }
 
-    /// Parses a body.
+    /// Parses a term body.
     fn parse_body<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
       vars: &mut Vec<Binding>,
       ar: &'a Arena,
     ) -> Result<&'a Term<'a>, ParseError> {
       match it.peek() {
-        // Parsing a binder group (translated into nested binders and a body).
+        // Parsing a binder group.
         Some(Span { tok: Token::LeftBracket, .. }) => {
           it.next();
-          let x = expect_ident(it)?;
+          let (x, _, _) = expect_ident(it)?;
           match it.peek() {
             // Parsing a group of let binders.
             Some(Span { tok: Token::Def, .. }) => {
@@ -243,7 +258,7 @@ impl<'a> Term<'a> {
               vars.push(Binding::Named(x));
               while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
                 it.next();
-                let x = expect_ident(it)?;
+                let (x, _, _) = expect_ident(it)?;
                 expect(it, Token::Def)?;
                 vs.push(parse_term(it, vars, ar)?);
                 vars.push(Binding::Named(x));
@@ -263,7 +278,7 @@ impl<'a> Term<'a> {
               vars.push(Binding::Named(x));
               while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
                 it.next();
-                let x = expect_ident(it)?;
+                let (x, _, _) = expect_ident(it)?;
                 expect(it, Token::Ann)?;
                 ts.push(parse_term(it, vars, ar)?);
                 vars.push(Binding::Named(x));
@@ -283,7 +298,7 @@ impl<'a> Term<'a> {
               vars.push(Binding::Named(x));
               while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
                 it.next();
-                let x = expect_ident(it)?;
+                let (x, _, _) = expect_ident(it)?;
                 ts.push(());
                 vars.push(Binding::Named(x));
               }
@@ -298,11 +313,13 @@ impl<'a> Term<'a> {
             }
           }
         }
-        // Parsing a sequence of atomic terms each followed by projections.
+        // Parsing a sequence of atomic terms, each followed by a sequence of projections.
         _ => {
+          // Parsing the first atomic term.
           let mut res = parse_proj(it, vars, ar)?;
           loop {
             match it.peek() {
+              // Parsing the next atomic term.
               Some(Span { tok: Token::Star, .. })
               | Some(Span { tok: Token::Unit, .. })
               | Some(Span { tok: Token::Type, .. })
@@ -327,8 +344,8 @@ impl<'a> Term<'a> {
       ar: &'a Arena,
     ) -> Result<&'a Term<'a>, ParseError> {
       let mut res = parse_atom(it, vars, ar)?;
-      while let Some(Span { tok: Token::Proj(n), .. }) = it.peek().cloned() {
-        it.next();
+      while let Some(Span { tok: Token::Proj(_), .. }) = it.peek() {
+        let n = expect_proj(it)?;
         res = ar.term(Term::Last(ar.term(Term::Init(n, res))));
       }
       Ok(res)
@@ -340,31 +357,38 @@ impl<'a> Term<'a> {
       vars: &mut Vec<Binding>,
       ar: &'a Arena,
     ) -> Result<&'a Term<'a>, ParseError> {
-      match it.peek().cloned() {
+      match it.peek() {
+        // Parsing an empty tuple.
         Some(Span { tok: Token::Star, .. }) => {
           it.next();
           Ok(ar.term(Term::Star))
         }
+        // Parsing an empty tuple type.
         Some(Span { tok: Token::Unit, .. }) => {
           it.next();
           Ok(ar.term(Term::Unit))
         }
+        // Parsing a universe.
         Some(Span { tok: Token::Type, .. }) => {
           it.next();
-          Ok(ar.term(Term::Univ(Univ(0))))
+          Ok(ar.term(Term::Univ(0)))
         }
+        // Parsing a universe.
         Some(Span { tok: Token::Kind, .. }) => {
           it.next();
-          Ok(ar.term(Term::Univ(Univ(1))))
+          Ok(ar.term(Term::Univ(1)))
         }
-        Some(Span { tok: Token::Var(n), .. }) => {
-          it.next();
+        // Parsing a de Bruijn index.
+        Some(Span { tok: Token::Var(_), .. }) => {
+          let n = expect_var(it)?;
           Ok(ar.term(Term::Var(n)))
         }
-        Some(Span { tok: Token::Ident(x), start, end }) => {
-          it.next();
+        // Parsing a named identifier.
+        Some(Span { tok: Token::Ident(_), .. }) => {
+          let (x, start, end) = expect_ident(it)?;
           resolve(&x, vars, ar).ok_or_else(|| ParseError::undefined_ident(x, start, end))
         }
+        // Parsing a parenthesised term.
         Some(Span { tok: Token::LeftParen, .. }) => {
           it.next();
           let res = parse_term(it, vars, ar)?;
@@ -374,7 +398,7 @@ impl<'a> Term<'a> {
         // Parsing an aggregate (translated into a dependent snoc list).
         Some(Span { tok: Token::LeftBrace, .. }) => {
           it.next();
-          let x = expect_ident(it)?;
+          let (x, _, _) = expect_ident(it)?;
           match it.peek() {
             // Parsing a tuple aggregate.
             Some(Span { tok: Token::Def, .. }) => {
@@ -387,7 +411,7 @@ impl<'a> Term<'a> {
               }
               while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
                 it.next();
-                let x = expect_ident(it)?;
+                let (x, _, _) = expect_ident(it)?;
                 expect(it, Token::Def)?;
                 init = ar.term(Term::Tup(init, parse_term(it, vars, ar)?));
                 if let Some(Binding::Tuple(var)) = vars.last_mut() {
@@ -409,7 +433,7 @@ impl<'a> Term<'a> {
               }
               while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
                 it.next();
-                let x = expect_ident(it)?;
+                let (x, _, _) = expect_ident(it)?;
                 expect(it, Token::Ann)?;
                 init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
                 if let Some(Binding::Tuple(var)) = vars.last_mut() {
@@ -429,17 +453,6 @@ impl<'a> Term<'a> {
 
     let mut it = spans.peekable();
     parse_term(&mut it, &mut Vec::new(), ar)
-  }
-}
-
-impl Univ {
-  fn print(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    let Univ(u) = *self;
-    if u == 0 {
-      write!(f, "Type")
-    } else {
-      write!(f, "Kind")
-    }
   }
 }
 
@@ -489,7 +502,11 @@ impl Term<'_> {
     match self {
       Term::Univ(v) => {
         left_paren(f, Prec::Atom, prec)?;
-        v.print(f)?;
+        match v {
+          0 => write!(f, "Type")?,
+          1 => write!(f, "Kind")?,
+          _ => write!(f, "<unsupported universe level>")?,
+        };
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
@@ -503,7 +520,7 @@ impl Term<'_> {
           }
         }
         left_paren(f, Prec::Atom, prec)?;
-        write!(f, "@^{}", ix)?;
+        write!(f, "#{}", ix)?;
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
@@ -695,12 +712,6 @@ impl Term<'_> {
       Term::Init(_, _) => write!(f, "<improper init projection>"),
       Term::Last(_) => write!(f, "<improper last projection>"),
     }
-  }
-}
-
-impl std::fmt::Display for Univ {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    self.print(f)
   }
 }
 

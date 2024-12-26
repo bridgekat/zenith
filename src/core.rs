@@ -1,9 +1,9 @@
-mod error;
+mod errors;
 mod io;
 mod stack;
 mod structs;
 mod term;
 
-pub use error::{EvalError, LexError, ParseError, TypeError};
+pub use errors::{EvalError, LexError, ParseError, TypeError};
 pub use io::{Span, Token};
-pub use structs::{Arena, Clos, Stack, Term, Univ, Val};
+pub use structs::{Arena, Clos, Stack, Term, Val};

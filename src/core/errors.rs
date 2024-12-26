@@ -15,13 +15,13 @@ pub enum EvalError<'a> {
 
 /// # Typing errors
 ///
-/// Errors produced by the type checker (i.e. the type assignment process).
+/// Errors produced by the typer (i.e. the bidirectional infer/check process).
 #[derive(Debug, Clone)]
 pub enum TypeError<'a> {
   Eval { err: EvalError<'a> },
-  UnivForm { univ: Univ },
-  PiForm { from: Univ, to: Univ },
-  SigForm { fst: Univ, snd: Univ },
+  UnivForm { univ: usize },
+  PiForm { from: usize, to: usize },
+  SigForm { fst: usize, snd: usize },
   CtxIndex { ix: usize, len: usize },
   SigInit { n: usize, len: usize },
   SigLast { n: usize, len: usize },
@@ -37,7 +37,7 @@ pub enum TypeError<'a> {
 
 /// # Lexing errors
 ///
-/// Errors produced by the simple lexer.
+/// Errors produced by the simple lexer. Positions are in numbers of characters instead of bytes.
 #[derive(Debug, Clone)]
 pub enum LexError {
   UnexpectedChar { ch: char, pos: usize },
@@ -46,7 +46,7 @@ pub enum LexError {
 
 /// # Parsing errors
 ///
-/// Errors produced by the simple parser.
+/// Errors produced by the simple parser. Positions are in numbers of characters instead of bytes.
 #[derive(Debug, Clone)]
 pub enum ParseError {
   Lex { err: LexError },
@@ -82,15 +82,15 @@ impl<'a> EvalError<'a> {
 }
 
 impl<'a> TypeError<'a> {
-  pub fn univ_form(univ: Univ) -> Self {
+  pub fn univ_form(univ: usize) -> Self {
     Self::UnivForm { univ }
   }
 
-  pub fn pi_form(from: Univ, to: Univ) -> Self {
+  pub fn pi_form(from: usize, to: usize) -> Self {
     Self::PiForm { from, to }
   }
 
-  pub fn sig_form(fst: Univ, snd: Univ) -> Self {
+  pub fn sig_form(fst: usize, snd: usize) -> Self {
     Self::SigForm { fst, snd }
   }
 
@@ -180,10 +180,10 @@ impl LexError {
     }
   }
 
-  pub fn position(&self, len: usize) -> (usize, usize) {
+  pub fn position(&self, chars: usize) -> (usize, usize) {
     match self {
       Self::UnexpectedChar { ch: _, pos } => (*pos, *pos),
-      Self::UnexpectedEof => (len, len),
+      Self::UnexpectedEof => (chars, chars),
     }
   }
 }
@@ -200,12 +200,12 @@ impl ParseError {
     }
   }
 
-  pub fn position(&self, len: usize) -> (usize, usize) {
+  pub fn position(&self, chars: usize) -> (usize, usize) {
     match self {
-      Self::Lex { err } => err.position(len),
+      Self::Lex { err } => err.position(chars),
       Self::UndefinedIdent { start, end, .. } => (*start, *end),
       Self::UnexpectedToken { start, end, .. } => (*start, *end),
-      Self::UnexpectedEof => (len, len),
+      Self::UnexpectedEof => (chars, chars),
     }
   }
 }
@@ -234,8 +234,8 @@ impl std::fmt::Display for TypeError<'_> {
     match self {
       Self::Eval { err } => write!(f, "{err}"),
       Self::UnivForm { univ } => write!(f, "universe {univ} does not have a type"),
-      Self::PiForm { from, to } => write!(f, "dependent functions from {from} to {to} are unspecified"),
-      Self::SigForm { fst, snd } => write!(f, "dependent tuples with {fst} and {snd} are unspecified"),
+      Self::PiForm { from, to } => write!(f, "dependent functions from universe {from} to {to} are unspecified"),
+      Self::SigForm { fst, snd } => write!(f, "dependent tuples in universes {fst} and {snd} are unspecified"),
       Self::CtxIndex { ix, len } => write!(f, "variable index {ix} out of bound, context has size {len}"),
       Self::SigInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple type has size {len}"),
       Self::SigLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple type"),

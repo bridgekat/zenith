@@ -175,39 +175,39 @@ impl<'b> Val<'_, 'b> {
   }
 }
 
-impl Univ {
-  /// Universe formation rule.
-  pub fn univ_rule(u: Self) -> Result<Self, TypeError<'static>> {
+impl Term<'_> {
+  /// Given universe level `u`, returns the universe level of its type.
+  pub fn univ_rule(u: usize) -> Result<usize, TypeError<'static>> {
     match u {
       #[cfg(feature = "type_in_type")]
-      Self(0) => Ok(Self(0)),
+      0 => Ok(0),
       #[cfg(not(feature = "type_in_type"))]
-      Self(0) => Ok(Self(1)),
+      0 => Ok(1),
       _ => Err(TypeError::univ_form(u)),
     }
   }
 
-  /// Function type formation rule.
-  pub fn pi_rule(v: Self, w: Self) -> Result<Self, TypeError<'static>> {
-    let (Self(v), Self(w)) = (v, w);
-    Ok(Self(max(v, w)))
+  /// Given universe levels `v` and `w`, returns the universe level of dependent function types
+  /// from `v` to `w`.
+  pub fn pi_rule(v: usize, w: usize) -> Result<usize, TypeError<'static>> {
+    Ok(max(v, w))
   }
 
-  /// Tuple type formation rule.
-  pub fn sig_rule(v: Self, w: Self) -> Result<Self, TypeError<'static>> {
-    let (Self(v), Self(w)) = (v, w);
-    Ok(Self(max(v, w)))
+  /// Given universe levels `v` and `w`, returns the universe level of dependent tuple types
+  /// containing elements in `v` and `w`.
+  pub fn sig_rule(v: usize, w: usize) -> Result<usize, TypeError<'static>> {
+    Ok(max(v, w))
   }
 
-  /// Unit type formation rule.
-  pub fn unit_rule() -> Result<Self, TypeError<'static>> {
-    Ok(Self(0))
+  /// Returns the universe level of the unit type.
+  pub fn unit_rule() -> Result<usize, TypeError<'static>> {
+    Ok(0)
   }
 }
 
 impl<'a, 'b> Val<'a, 'b> {
   /// Given `self`, eliminate as [`Val::Univ`].
-  pub fn as_univ(self, term: &'b Term<'b>, len: usize, ar: &'b Arena) -> Result<Univ, TypeError<'b>> {
+  pub fn as_univ(self, term: &'b Term<'b>, len: usize, ar: &'b Arena) -> Result<usize, TypeError<'b>> {
     match self {
       Val::Univ(v) => Ok(v),
       ty => Err(TypeError::type_expected(term, ty, len, ar)),
@@ -266,7 +266,7 @@ impl<'b> Term<'b> {
   ) -> Result<Val<'a, 'b>, TypeError<'b>> {
     match self {
       // The (univ) rule is used.
-      Term::Univ(v) => Ok(Val::Univ(Univ::univ_rule(*v)?)),
+      Term::Univ(v) => Ok(Val::Univ(Term::univ_rule(*v)?)),
       // The (var) rule is used.
       // Variables of values are in de Bruijn levels, so weakening is no-op.
       Term::Var(ix) => ctx.get(*ix, ar).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len())),
@@ -291,8 +291,8 @@ impl<'b> Term<'b> {
         let tt = t.infer(ctx, env, ar)?;
         let v = tt.as_univ(t, ctx.len(), ar)?;
         let ut = u.infer(&ctx.extend(t.eval(env, ar)?, ar), &env.extend(Val::Gen(env.len()), ar), ar)?;
-        let w = ut.as_univ(u, ctx.len(), ar)?;
-        Ok(Val::Univ(Univ::pi_rule(v, w)?))
+        let w = ut.as_univ(u, ctx.len() + 1, ar)?;
+        Ok(Val::Univ(Term::pi_rule(v, w)?))
       }
       // Function abstractions must be enclosed in type annotations, or appear as an argument.
       Term::Fun(_) => Err(TypeError::ann_expected(ar.term(*self))),
@@ -314,12 +314,12 @@ impl<'b> Term<'b> {
         if let Term::Unit = init {
           us.reverse();
           let mut t = Vec::new();
-          let mut v = Univ::unit_rule()?;
+          let mut v = Term::unit_rule()?;
           for u in us.iter() {
             let ut = u.infer(&ctx.extend(Val::Sig(&t), ar), &env.extend(Val::Gen(env.len()), ar), ar)?;
-            let w = ut.as_univ(u, ctx.len(), ar)?;
+            let w = ut.as_univ(u, ctx.len() + 1, ar)?;
             t.push(Clos { env: *env, body: u });
-            v = Univ::sig_rule(v, w)?;
+            v = Term::sig_rule(v, w)?;
           }
           Ok(Val::Univ(v))
         } else {

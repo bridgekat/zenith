@@ -28,26 +28,15 @@ fn print_location_indicator(start: usize, end: usize, lines: &[String]) {
   let end = end.max(start);
   let (start_line, start_col) = pos_to_line_col(start, lines);
   let (end_line, end_col) = pos_to_line_col(end, lines);
+  let line = lines.get(start_line).map(|s| s.as_ref()).unwrap_or("");
   if start_line == end_line {
-    // let width = (end_line + 1).to_string().chars().count() + 1;
-    let line = lines.get(start_line).map(|s| s.as_ref()).unwrap_or("");
     println!("|");
     println!("| {}", line);
     println!("| {}{}", " ".repeat(start_col), "~".repeat((end_col - start_col).max(1)));
   } else {
-    // let width = (end_line + 1).to_string().chars().count() + 1;
-    let line = lines.get(start_line).map(|s| s.as_ref()).unwrap_or("");
     println!("|");
     println!("| {}", line);
     println!("| {}{}", " ".repeat(start_col), "~".repeat(line.chars().count() - start_col));
-    // for i in start_line + 1..end_line {
-    //   let line = lines.get(i).map(|s| s.as_ref()).unwrap_or("");
-    //   println!("{:>width$} | {}", i + 1, line);
-    //   println!("{:>width$} | {}", "", "~".repeat(line.chars().count()));
-    // }
-    // let line = lines.get(end_line).map(|s| s.as_ref()).unwrap_or("");
-    // println!("{:>width$} | {}", end_line + 1, line);
-    // println!("{:>width$} | {}", "", "~".repeat(end_col));
   }
 }
 
