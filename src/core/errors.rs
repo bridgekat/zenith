@@ -79,6 +79,18 @@ impl<'a> EvalError<'a> {
   pub fn tup_improper(head: &'a Term<'a>) -> Self {
     Self::TupImproper { head }
   }
+
+  /// Clones `self` to given arena.
+  pub fn relocate(self, ar: &Arena) -> EvalError {
+    match self {
+      Self::EnvIndex { ix, len } => EvalError::EnvIndex { ix, len },
+      Self::GenLevel { lvl, len } => EvalError::GenLevel { lvl, len },
+      Self::TupInit { n, len } => EvalError::TupInit { n, len },
+      Self::TupLast { n, len } => EvalError::TupLast { n, len },
+      Self::SigImproper { head } => EvalError::SigImproper { head: head.relocate(ar) },
+      Self::TupImproper { head } => EvalError::TupImproper { head: head.relocate(ar) },
+    }
+  }
 }
 
 impl<'a> TypeError<'a> {
@@ -163,6 +175,29 @@ impl<'a> TypeError<'a> {
 
   pub fn tup_size_mismatch(term: &'a Term<'a>, sz: usize, esz: usize) -> Self {
     Self::TupSizeMismatch { term, sz, esz }
+  }
+
+  /// Clones `self` to given arena.
+  pub fn relocate(self, ar: &Arena) -> TypeError {
+    match self {
+      Self::Eval { err } => TypeError::Eval { err: err.relocate(ar) },
+      Self::UnivForm { univ } => TypeError::UnivForm { univ },
+      Self::PiForm { from, to } => TypeError::PiForm { from, to },
+      Self::SigForm { fst, snd } => TypeError::SigForm { fst, snd },
+      Self::CtxIndex { ix, len } => TypeError::CtxIndex { ix, len },
+      Self::SigInit { n, len } => TypeError::SigInit { n, len },
+      Self::SigLast { n, len } => TypeError::SigLast { n, len },
+      Self::AnnExpected { term } => TypeError::AnnExpected { term: term.relocate(ar) },
+      Self::TypeExpected { term, ty } => TypeError::TypeExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
+      Self::PiExpected { term, ty } => TypeError::PiExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
+      Self::SigExpected { term, ty } => TypeError::SigExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
+      Self::PiAnnExpected { ty } => TypeError::PiAnnExpected { ty: ty.relocate(ar) },
+      Self::SigAnnExpected { ty } => TypeError::SigAnnExpected { ty: ty.relocate(ar) },
+      Self::TypeMismatch { term, ty, ety } => {
+        TypeError::TypeMismatch { term: term.relocate(ar), ty: ty.relocate(ar), ety: ety.relocate(ar) }
+      }
+      Self::TupSizeMismatch { term, sz, esz } => TypeError::TupSizeMismatch { term: term.relocate(ar), sz, esz },
+    }
   }
 }
 

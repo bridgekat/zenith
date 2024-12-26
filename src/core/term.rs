@@ -3,6 +3,27 @@ use std::slice::from_raw_parts;
 
 use super::*;
 
+impl Term<'_> {
+  /// Clones `self` to given arena, expected to be used for outputs and error reporting.
+  pub fn relocate<'b>(&self, ar: &'b Arena) -> &'b Term<'b> {
+    match self {
+      Term::Univ(v) => ar.term(Term::Univ(*v)),
+      Term::Var(ix) => ar.term(Term::Var(*ix)),
+      Term::Ann(x, t, b) => ar.term(Term::Ann(x.relocate(ar), t.relocate(ar), *b)),
+      Term::Let(v, x) => ar.term(Term::Let(v.relocate(ar), x.relocate(ar))),
+      Term::Pi(t, u) => ar.term(Term::Pi(t.relocate(ar), u.relocate(ar))),
+      Term::Fun(b) => ar.term(Term::Fun(b.relocate(ar))),
+      Term::App(f, x) => ar.term(Term::App(f.relocate(ar), x.relocate(ar))),
+      Term::Sig(t, u) => ar.term(Term::Sig(t.relocate(ar), u.relocate(ar))),
+      Term::Tup(a, b) => ar.term(Term::Tup(a.relocate(ar), b.relocate(ar))),
+      Term::Init(n, x) => ar.term(Term::Init(*n, x.relocate(ar))),
+      Term::Last(x) => ar.term(Term::Last(x.relocate(ar))),
+      Term::Unit => ar.term(Term::Unit),
+      Term::Star => ar.term(Term::Star),
+    }
+  }
+}
+
 impl<'b> Term<'b> {
   /// Reduces `self` so that all `let`s are collected into the environment and then frozen at
   /// binders. This is mutually recursive with [`Clos::apply`], forming an eval-apply loop.
@@ -10,7 +31,7 @@ impl<'b> Term<'b> {
   /// Pre-conditions:
   ///
   /// - `self` is well-typed under a context and environment `env` (to ensure termination).
-  pub fn eval<'a, 'c: 'a + 'b>(&self, env: &Stack<'a, 'b>, ar: &'c Arena) -> Result<Val<'a, 'b>, EvalError<'b>> {
+  pub fn eval<'a>(&self, env: &Stack<'a, 'b>, ar: &'b Arena) -> Result<Val<'a, 'b>, EvalError<'b>> {
     match self {
       // Universes are already in normal form.
       Term::Univ(v) => Ok(Val::Univ(*v)),
@@ -18,7 +39,7 @@ impl<'b> Term<'b> {
       // Variables of values are in de Bruijn levels, so weakening is no-op.
       Term::Var(ix) => env.get(*ix, ar).ok_or_else(|| EvalError::env_index(*ix, env.len())),
       // The (τ) rule is always applied.
-      Term::Ann(x, _) => x.eval(env, ar),
+      Term::Ann(x, _, _) => x.eval(env, ar),
       // For `let`s, we reduce the value, collect it into the environment to reduce the body.
       Term::Let(v, x) => x.eval(&env.extend(v.eval(env, ar)?, ar), ar),
       // For binders, we freeze the whole environment and store the body as a closure.
@@ -93,20 +114,54 @@ impl<'a, 'b> Clos<'a, 'b> {
   /// Inserts a new `let` around the body after the frozen `let`s, and reduces the body under the
   /// empty environment populated with all `let`s. This is mutually recursive with [`Term::eval`],
   /// forming an eval-apply loop.
-  pub fn apply<'c: 'a + 'b>(&self, x: Val<'a, 'b>, ar: &'c Arena) -> Result<Val<'a, 'b>, EvalError<'b>> {
+  pub fn apply(&self, x: Val<'a, 'b>, ar: &'b Arena) -> Result<Val<'a, 'b>, EvalError<'b>> {
     let Self { env, body } = self;
     body.eval(&env.extend(x, ar), ar)
   }
 }
 
-impl<'b> Val<'_, 'b> {
+impl<'a, 'b> Val<'a, 'b> {
+  /// Reduces well-typed `self` to eliminate `let`s and convert it back into a [`Term`].
+  /// Can be an expensive operation, expected to be used for outputs and error reporting.
+  ///
+  /// Pre-conditions:
+  ///
+  /// - `self` is well-typed under a context with size `len` (to ensure termination).
+  pub fn quote(&self, len: usize, ar: &'b Arena) -> Result<Term<'b>, EvalError<'b>> {
+    match self {
+      Val::Univ(v) => Ok(Term::Univ(*v)),
+      Val::Gen(i) => Ok(Term::Var(len.checked_sub(i + 1).ok_or_else(|| EvalError::gen_level(*i, len))?)),
+      Val::Pi(t, u) => {
+        Ok(Term::Pi(ar.term(t.quote(len, ar)?), ar.term(u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
+      }
+      Val::Fun(b) => Ok(Term::Fun(ar.term(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?))),
+      Val::App(f, x) => Ok(Term::App(ar.term(f.quote(len, ar)?), ar.term(x.quote(len, ar)?))),
+      Val::Sig(us) => {
+        let mut init = Term::Unit;
+        for u in us.iter() {
+          init = Term::Sig(ar.term(init), ar.term(u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?));
+        }
+        Ok(init)
+      }
+      Val::Tup(bs) => {
+        let mut init = Term::Star;
+        for b in bs.iter() {
+          init = Term::Tup(ar.term(init), ar.term(b.quote(len + 1, ar)?));
+        }
+        Ok(init)
+      }
+      Val::Init(n, x) => Ok(Term::Init(*n, ar.term(x.quote(len, ar)?))),
+      Val::Last(x) => Ok(Term::Last(ar.term(x.quote(len, ar)?))),
+    }
+  }
+
   /// Returns if `self` and `other` are definitionally equal. Can be an expensive operation if
   /// they are indeed definitionally equal.
   ///
   /// Pre-conditions:
   ///
   /// - `self` and `other` are well-typed under a context with size `len` (to ensure termination).
-  pub fn conv<'c: 'b>(&self, other: &Self, len: usize, ar: &'c Arena) -> Result<bool, EvalError<'b>> {
+  pub fn conv(&self, other: &Self, len: usize, ar: &'b Arena) -> Result<bool, EvalError<'b>> {
     match (self, other) {
       (Val::Univ(v), Val::Univ(w)) => Ok(v == w),
       (Val::Gen(i), Val::Gen(j)) => Ok(i == j),
@@ -140,73 +195,7 @@ impl<'b> Val<'_, 'b> {
     }
   }
 
-  /// Reduces well-typed `self` to eliminate `let`s and convert it back into a [`Term`].
-  /// Can be an expensive operation.
-  ///
-  /// Pre-conditions:
-  ///
-  /// - `self` is well-typed under a context with size `len` (to ensure termination).
-  pub fn quote<'c: 'b>(&self, len: usize, ar: &'c Arena) -> Result<Term<'b>, EvalError<'b>> {
-    match self {
-      Val::Univ(v) => Ok(Term::Univ(*v)),
-      Val::Gen(i) => Ok(Term::Var(len.checked_sub(i + 1).ok_or_else(|| EvalError::gen_level(*i, len))?)),
-      Val::Pi(t, u) => {
-        Ok(Term::Pi(ar.term(t.quote(len, ar)?), ar.term(u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
-      }
-      Val::Fun(b) => Ok(Term::Fun(ar.term(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?))),
-      Val::App(f, x) => Ok(Term::App(ar.term(f.quote(len, ar)?), ar.term(x.quote(len, ar)?))),
-      Val::Sig(us) => {
-        let mut init = Term::Unit;
-        for u in us.iter() {
-          init = Term::Sig(ar.term(init), ar.term(u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?));
-        }
-        Ok(init)
-      }
-      Val::Tup(bs) => {
-        let mut init = Term::Star;
-        for b in bs.iter() {
-          init = Term::Tup(ar.term(init), ar.term(b.quote(len + 1, ar)?));
-        }
-        Ok(init)
-      }
-      Val::Init(n, x) => Ok(Term::Init(*n, ar.term(x.quote(len, ar)?))),
-      Val::Last(x) => Ok(Term::Last(ar.term(x.quote(len, ar)?))),
-    }
-  }
-}
-
-impl Term<'_> {
-  /// Given universe level `u`, returns the universe level of its type.
-  pub fn univ_rule(u: usize) -> Result<usize, TypeError<'static>> {
-    match u {
-      #[cfg(feature = "type_in_type")]
-      0 => Ok(0),
-      #[cfg(not(feature = "type_in_type"))]
-      0 => Ok(1),
-      _ => Err(TypeError::univ_form(u)),
-    }
-  }
-
-  /// Given universe levels `v` and `w`, returns the universe level of dependent function types
-  /// from `v` to `w`.
-  pub fn pi_rule(v: usize, w: usize) -> Result<usize, TypeError<'static>> {
-    Ok(max(v, w))
-  }
-
-  /// Given universe levels `v` and `w`, returns the universe level of dependent tuple types
-  /// containing elements in `v` and `w`.
-  pub fn sig_rule(v: usize, w: usize) -> Result<usize, TypeError<'static>> {
-    Ok(max(v, w))
-  }
-
-  /// Returns the universe level of the unit type.
-  pub fn unit_rule() -> Result<usize, TypeError<'static>> {
-    Ok(0)
-  }
-}
-
-impl<'a, 'b> Val<'a, 'b> {
-  /// Given `self`, eliminate as [`Val::Univ`].
+  /// Given `self`, eliminates as [`Val::Univ`].
   pub fn as_univ(self, term: &'b Term<'b>, len: usize, ar: &'b Arena) -> Result<usize, TypeError<'b>> {
     match self {
       Val::Univ(v) => Ok(v),
@@ -214,7 +203,7 @@ impl<'a, 'b> Val<'a, 'b> {
     }
   }
 
-  /// Given `self`, eliminate as [`Val::Pi`].
+  /// Given `self`, eliminates as [`Val::Pi`].
   pub fn as_pi(
     self,
     term: Option<&'b Term<'b>>,
@@ -230,7 +219,7 @@ impl<'a, 'b> Val<'a, 'b> {
     }
   }
 
-  /// Given `self`, eliminate as [`Val::Sig`].
+  /// Given `self`, eliminates as [`Val::Sig`].
   pub fn as_sig(
     self,
     term: Option<&'b Term<'b>>,
@@ -248,6 +237,32 @@ impl<'a, 'b> Val<'a, 'b> {
 }
 
 impl<'b> Term<'b> {
+  /// Given universe `u`, returns the universe of its type.
+  pub fn univ_univ(u: usize) -> Result<usize, TypeError<'static>> {
+    match u {
+      #[cfg(feature = "type_in_type")]
+      0 => Ok(0),
+      #[cfg(not(feature = "type_in_type"))]
+      0 => Ok(1),
+      _ => Err(TypeError::univ_form(u)),
+    }
+  }
+
+  /// Given universes `v` and `w`, returns the universe of Pi types from `v` to `w`.
+  pub fn pi_univ(v: usize, w: usize) -> Result<usize, TypeError<'static>> {
+    Ok(max(v, w))
+  }
+
+  /// Given universes `v` and `w`, returns the universe of Sigma types containing `v` and `w`.
+  pub fn sig_univ(v: usize, w: usize) -> Result<usize, TypeError<'static>> {
+    Ok(max(v, w))
+  }
+
+  /// Returns the universe of the unit type.
+  pub fn unit_univ() -> Result<usize, TypeError<'static>> {
+    Ok(0)
+  }
+
   /// Given preterm `self`, returns the type of `self`. This is mutually recursive with
   /// [`Term::check`], and is the entry point of Coquand’s type checking algorithm.
   ///
@@ -258,25 +273,28 @@ impl<'b> Term<'b> {
   ///
   /// - `ctx` is well-formed context.
   /// - `env` is well-formed environment.
-  pub fn infer<'a, 'c: 'b>(
+  pub fn infer<'a>(
     &self,
     ctx: &Stack<'a, 'b>,
     env: &Stack<'a, 'b>,
-    ar: &'c Arena,
+    ar: &'b Arena,
   ) -> Result<Val<'a, 'b>, TypeError<'b>> {
     match self {
       // The (univ) rule is used.
-      Term::Univ(v) => Ok(Val::Univ(Term::univ_rule(*v)?)),
+      Term::Univ(v) => Ok(Val::Univ(Term::univ_univ(*v)?)),
       // The (var) rule is used.
       // Variables of values are in de Bruijn levels, so weakening is no-op.
       Term::Var(ix) => ctx.get(*ix, ar).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len())),
       // The (ann) rule is used.
       // To establish pre-conditions for `eval()` and `check()`, the type of `t` is checked first.
-      Term::Ann(x, t) => {
+      Term::Ann(x, t, arena_boundary) => {
         let tt = t.infer(ctx, env, ar)?;
         let _ = tt.as_univ(t, ctx.len(), ar)?;
         let t = t.eval(env, ar)?;
-        x.check(t, ctx, env, ar)?;
+        match arena_boundary {
+          false => x.check(t, ctx, env, ar)?,
+          true => x.check(t, ctx, env, &Arena::new()).map_err(|e| e.relocate(ar))?,
+        }
         Ok(t)
       }
       // The (let) and (extend) rules are used.
@@ -292,7 +310,7 @@ impl<'b> Term<'b> {
         let v = tt.as_univ(t, ctx.len(), ar)?;
         let ut = u.infer(&ctx.extend(t.eval(env, ar)?, ar), &env.extend(Val::Gen(env.len()), ar), ar)?;
         let w = ut.as_univ(u, ctx.len() + 1, ar)?;
-        Ok(Val::Univ(Term::pi_rule(v, w)?))
+        Ok(Val::Univ(Term::pi_univ(v, w)?))
       }
       // Function abstractions must be enclosed in type annotations, or appear as an argument.
       Term::Fun(_) => Err(TypeError::ann_expected(ar.term(*self))),
@@ -314,12 +332,12 @@ impl<'b> Term<'b> {
         if let Term::Unit = init {
           us.reverse();
           let mut t = Vec::new();
-          let mut v = Term::unit_rule()?;
+          let mut v = Term::unit_univ()?;
           for u in us.iter() {
             let ut = u.infer(&ctx.extend(Val::Sig(&t), ar), &env.extend(Val::Gen(env.len()), ar), ar)?;
             let w = ut.as_univ(u, ctx.len() + 1, ar)?;
             t.push(Clos { env: *env, body: u });
-            v = Term::sig_rule(v, w)?;
+            v = Term::sig_univ(v, w)?;
           }
           Ok(Val::Univ(v))
         } else {
@@ -354,12 +372,12 @@ impl<'b> Term<'b> {
   /// - `env` is well-formed environment.
   /// - `t` is well-typed under context `ctx` and environment `env`.
   /// - `t` has universe type under context `ctx` and environment `env`.
-  pub fn check<'a, 'c: 'b>(
+  pub fn check<'a>(
     &self,
     t: Val<'a, 'b>,
     ctx: &Stack<'a, 'b>,
     env: &Stack<'a, 'b>,
-    ar: &'c Arena,
+    ar: &'b Arena,
   ) -> Result<(), TypeError<'b>> {
     match self {
       // The (let) and (extend) rules are used.

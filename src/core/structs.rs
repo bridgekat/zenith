@@ -17,8 +17,8 @@ pub enum Term<'a> {
   Univ(usize),
   /// Variables in de Bruijn indices.
   Var(usize),
-  /// Type annotations (value, type).
-  Ann(&'a Term<'a>, &'a Term<'a>),
+  /// Type annotations (value, type, arena boundary flag).
+  Ann(&'a Term<'a>, &'a Term<'a>, bool),
   /// Let expressions (value, *body*).
   Let(&'a Term<'a>, &'a Term<'a>),
   /// Function types (parameter type, *return type*).

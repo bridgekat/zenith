@@ -43,12 +43,12 @@ fn print_location_indicator(start: usize, end: usize, lines: &[String]) {
 /// # Examples
 ///
 /// ```term
-/// [id ≔ [X, x] ↦ x : [X : Type, x : X] → X] [A] ↦ id ([a : A] → A) (id A) :
+/// [id := [X, x] ↦ x : [X : Type, x : X] → X] [A] ↦ id ([a : A] → A) (id A) :
 ///   [A : Type, a : A] → A
 /// ```
 ///
 /// ```term
-/// [P, Q, h] ↦ {hq ≔ h^0, hp ≔ h^1} :
+/// [P, Q, h] ↦ {hq := h^0, hp := h^1} :
 ///   [P : Type, Q : Type, h : {hp : P, hq : Q}] → {hq : Q, hp : P}
 /// ```
 ///
@@ -65,36 +65,36 @@ fn print_location_indicator(start: usize, end: usize, lines: &[String]) {
 ///
 /// ```term
 /// [
-///   ℕ ≔ [A : Type, s : [a : A] → A, z : A] → A,
-///   add ≔ [n, m, A, s, z] ↦ n A s (m A s z) : [n : ℕ, m : ℕ] → ℕ,
-///   mul ≔ [n, m, A, s, z] ↦ n A (m A s) z : [n : ℕ, m : ℕ] → ℕ,
-///   5 ≔ [A, s, z] ↦ s (s (s (s (s z)))) : ℕ,
-///   10 ≔ add 5 5,
-///   100 ≔ mul 10 10,
-///   1000 ≔ mul 10 100
+///   ℕ := [A : Type, s : [a : A] → A, z : A] → A,
+///   add := [n, m, A, s, z] ↦ n A s (m A s z) : [n : ℕ, m : ℕ] → ℕ,
+///   mul := [n, m, A, s, z] ↦ n A (m A s) z : [n : ℕ, m : ℕ] → ℕ,
+///   5 := [A, s, z] ↦ s (s (s (s (s z)))) : ℕ,
+///   10 := add 5 5,
+///   100 := mul 10 10,
+///   1000 := mul 10 100
 /// ]
 ///   1000
 /// ```
 ///
 /// ```term
 /// [
-///   I ≔ [x] ↦ x,
-///   K ≔ [x, y] ↦ x,
-///   S ≔ [x, y, z] ↦ x z (y z),
-///   Y ≔ [f] ↦ ([x] ↦ f ([_] ↦ x x)) ([x] ↦ f ([_] ↦ x x)),
-///   true ≔ [x, y] ↦ x,
-///   false ≔ [x, y] ↦ y,
-///   if ≔ [b, t, f] ↦ b t f {},
-///   succ ≔ [n, x, y] ↦ y n,
-///   pred ≔ [n] ↦ n K I,
-///   is_zero ≔ [n] ↦ if n ([_] ↦ true) ([_, p] ↦ false),
-///   0 ≔ K,
-///   1 ≔ succ 0,
-///   2 ≔ succ 1,
-///   3 ≔ succ 2,
-///   4 ≔ succ 3,
-///   5 ≔ succ 4,
-///   + ≔ Y ([self, n, m] ↦ if (is_zero n) ([_] ↦ m) ([_] ↦ succ (self {} (pred n) m)))
+///   I := [x] ↦ x,
+///   K := [x, y] ↦ x,
+///   S := [x, y, z] ↦ x z (y z),
+///   Y := [f] ↦ ([x] ↦ f ([_] ↦ x x)) ([x] ↦ f ([_] ↦ x x)),
+///   true := [x, y] ↦ x,
+///   false := [x, y] ↦ y,
+///   if := [b, t, f] ↦ b t f {},
+///   succ := [n, x, y] ↦ y n,
+///   pred := [n] ↦ n K I,
+///   is_zero := [n] ↦ if n ([_] ↦ true) ([_, p] ↦ false),
+///   0 := K,
+///   1 := succ 0,
+///   2 := succ 1,
+///   3 := succ 2,
+///   4 := succ 3,
+///   5 := succ 4,
+///   + := Y ([self, n, m] ↦ if (is_zero n) ([_] ↦ m) ([_] ↦ succ (self {} (pred n) m)))
 /// ]
 ///   + 2 3
 /// ```

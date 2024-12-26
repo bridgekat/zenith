@@ -16,7 +16,7 @@ pub enum Token {
   RightBrace,
   Comma,
   Def,
-  Ann,
+  Ann(bool),
   Pi,
   Fun,
   Star,
@@ -38,14 +38,14 @@ pub struct Span {
   pub end: usize,
 }
 
-/// # Variable bindings
+/// Variable bindings.
 #[derive(Debug, Clone)]
 enum Binding {
   Named(String),
   Tuple(Vec<String>),
 }
 
-/// # Precedence levels
+/// Precedence levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Prec {
   Term,
@@ -64,11 +64,11 @@ impl<'a> Term<'a> {
         other => Err(LexError::unexpected(other)),
       }
     }
-
+    // The token grammar is LL(1).
     let mut it = chars.enumerate().peekable();
     let mut res = Vec::new();
-    while let Some((pos, c)) = it.peek().cloned() {
-      it.next();
+    // The first character can be taken unconditionally.
+    while let Some((pos, c)) = it.next() {
       match c {
         '(' => res.push(Span { tok: Token::LeftParen, start: pos, end: pos + 1 }),
         ')' => res.push(Span { tok: Token::RightParen, start: pos, end: pos + 1 }),
@@ -84,13 +84,15 @@ impl<'a> Term<'a> {
         }
         '}' => res.push(Span { tok: Token::RightBrace, start: pos, end: pos + 1 }),
         ',' => res.push(Span { tok: Token::Comma, start: pos, end: pos + 1 }),
-        '≔' => res.push(Span { tok: Token::Def, start: pos, end: pos + 1 }),
         ':' => {
           if let Some((_, '=')) = it.peek() {
             it.next();
             res.push(Span { tok: Token::Def, start: pos, end: pos + 2 });
+          } else if let Some((_, ':')) = it.peek() {
+            it.next();
+            res.push(Span { tok: Token::Ann(true), start: pos, end: pos + 2 });
           } else {
-            res.push(Span { tok: Token::Ann, start: pos, end: pos + 1 });
+            res.push(Span { tok: Token::Ann(false), start: pos, end: pos + 1 });
           }
         }
         '→' => res.push(Span { tok: Token::Pi, start: pos, end: pos + 1 }),
@@ -124,7 +126,7 @@ impl<'a> Term<'a> {
           let mut len = 1;
           let mut ident = String::new();
           ident.push(c);
-          let ends = "()[]{},≔:=→->↦=>#^";
+          let ends = "()[]{},:=→->↦=>#^";
           while let Some((_, d)) = it.peek().cloned() {
             if d.is_whitespace() || ends.chars().any(|x| x == d) {
               break;
@@ -155,9 +157,10 @@ impl<'a> Term<'a> {
   /// <term> ::=
   ///   | <body>
   ///   | <body> ":" <term>
+  ///   | <body> "::" <term>
   ///
   /// <body> ::=
-  ///   | "[" <id> "≔" <term> ("," <id> "≔" <term>)* "]" <body>
+  ///   | "[" <id> ":=" <term> ("," <id> ":=" <term>)* "]" <body>
   ///   | "[" <id> ":" <term> ("," <id> ":" <term>)* "]" "→" <body>
   ///   | "[" <id> ("," <id>)* "]" "↦" <body>
   ///   | <proj> <proj>*
@@ -170,7 +173,7 @@ impl<'a> Term<'a> {
   ///   | "{}" | "Unit" | "Type" | "Kind" | "#" <integer> | <id>
   ///   | "(" <term> ")"
   ///   | "{" <id> ":" <term> ("," <id> ":" <term>)* "}"
-  ///   | "{" <id> "≔" <term> ("," <id> "≔" <term>)* "}"
+  ///   | "{" <id> ":=" <term> ("," <id> ":=" <term>)* "}"
   /// ```
   pub fn parse(spans: impl Iterator<Item = Span>, ar: &'a Arena) -> Result<&'a Term<'a>, ParseError> {
     /// Resolves an identifier to a term.
@@ -188,23 +191,13 @@ impl<'a> Term<'a> {
       }
       None
     }
-
-    /// Expects the next token to be a content-free `tok`.
+    /// Expects the next token to have the same kind as `tok`.
     fn expect(it: &mut impl Iterator<Item = Span>, tok: Token) -> Result<(), ParseError> {
       match it.next() {
-        Some(s) if s.tok == tok => Ok(()),
+        Some(s) if std::mem::discriminant(&s.tok) == std::mem::discriminant(&tok) => Ok(()),
         other => Err(ParseError::unexpected(other)),
       }
     }
-
-    /// Expects the next token to be a de Bruijn index.
-    fn expect_var(it: &mut impl Iterator<Item = Span>) -> Result<usize, ParseError> {
-      match it.next() {
-        Some(Span { tok: Token::Var(ix), .. }) => Ok(ix),
-        other => Err(ParseError::unexpected(other)),
-      }
-    }
-
     /// Expects the next token to be a projection.
     fn expect_proj(it: &mut impl Iterator<Item = Span>) -> Result<usize, ParseError> {
       match it.next() {
@@ -212,7 +205,6 @@ impl<'a> Term<'a> {
         other => Err(ParseError::unexpected(other)),
       }
     }
-
     /// Expects the next token to be an identifier. Also returns the starting and ending positions.
     fn expect_ident(it: &mut impl Iterator<Item = Span>) -> Result<(String, usize, usize), ParseError> {
       match it.next() {
@@ -220,7 +212,6 @@ impl<'a> Term<'a> {
         other => Err(ParseError::unexpected(other)),
       }
     }
-
     /// Parses a term.
     fn parse_term<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
@@ -231,14 +222,18 @@ impl<'a> Term<'a> {
       let res = parse_body(it, vars, ar)?;
       match it.peek() {
         // Parsing an optional type annotation.
-        Some(Span { tok: Token::Ann, .. }) => {
+        Some(Span { tok: Token::Ann(false), .. }) => {
           it.next();
-          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?)))
+          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?, false)))
+        }
+        // Parsing an optional type annotation with double colons (indicating an arena boundary).
+        Some(Span { tok: Token::Ann(true), .. }) => {
+          it.next();
+          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?, true)))
         }
         _ => Ok(res),
       }
     }
-
     /// Parses a term body.
     fn parse_body<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
@@ -272,14 +267,14 @@ impl<'a> Term<'a> {
               Ok(body)
             }
             // Parsing a group of Pi binders.
-            Some(Span { tok: Token::Ann, .. }) => {
+            Some(Span { tok: Token::Ann(_), .. }) => {
               it.next();
               let mut ts = Vec::from([parse_term(it, vars, ar)?]);
               vars.push(Binding::Named(x));
               while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_ident(it)?;
-                expect(it, Token::Ann)?;
+                expect(it, Token::Ann(false))?;
                 ts.push(parse_term(it, vars, ar)?);
                 vars.push(Binding::Named(x));
               }
@@ -336,7 +331,6 @@ impl<'a> Term<'a> {
         }
       }
     }
-
     /// Parses an atomic term followed by a sequence of projections.
     fn parse_proj<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
@@ -350,59 +344,36 @@ impl<'a> Term<'a> {
       }
       Ok(res)
     }
-
     /// Parses an atomic term.
     fn parse_atom<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
       vars: &mut Vec<Binding>,
       ar: &'a Arena,
     ) -> Result<&'a Term<'a>, ParseError> {
-      match it.peek() {
-        // Parsing an empty tuple.
-        Some(Span { tok: Token::Star, .. }) => {
-          it.next();
-          Ok(ar.term(Term::Star))
-        }
-        // Parsing an empty tuple type.
-        Some(Span { tok: Token::Unit, .. }) => {
-          it.next();
-          Ok(ar.term(Term::Unit))
-        }
-        // Parsing a universe.
-        Some(Span { tok: Token::Type, .. }) => {
-          it.next();
-          Ok(ar.term(Term::Univ(0)))
-        }
-        // Parsing a universe.
-        Some(Span { tok: Token::Kind, .. }) => {
-          it.next();
-          Ok(ar.term(Term::Univ(1)))
-        }
-        // Parsing a de Bruijn index.
-        Some(Span { tok: Token::Var(_), .. }) => {
-          let n = expect_var(it)?;
-          Ok(ar.term(Term::Var(n)))
-        }
-        // Parsing a named identifier.
-        Some(Span { tok: Token::Ident(_), .. }) => {
-          let (x, start, end) = expect_ident(it)?;
+      // All atoms begin with a terminal token that can be taken unconditionally.
+      match it.next() {
+        // Parsing a single token.
+        Some(Span { tok: Token::Star, .. }) => Ok(ar.term(Term::Star)),
+        Some(Span { tok: Token::Unit, .. }) => Ok(ar.term(Term::Unit)),
+        Some(Span { tok: Token::Type, .. }) => Ok(ar.term(Term::Univ(0))),
+        Some(Span { tok: Token::Kind, .. }) => Ok(ar.term(Term::Univ(1))),
+        Some(Span { tok: Token::Var(n), .. }) => Ok(ar.term(Term::Var(n))),
+        Some(Span { tok: Token::Ident(x), start, end }) => {
           resolve(&x, vars, ar).ok_or_else(|| ParseError::undefined_ident(x, start, end))
         }
         // Parsing a parenthesised term.
         Some(Span { tok: Token::LeftParen, .. }) => {
-          it.next();
           let res = parse_term(it, vars, ar)?;
           expect(it, Token::RightParen)?;
           Ok(res)
         }
         // Parsing an aggregate (translated into a dependent snoc list).
         Some(Span { tok: Token::LeftBrace, .. }) => {
-          it.next();
           let (x, _, _) = expect_ident(it)?;
-          match it.peek() {
+          // The next token can be taken unconditionally.
+          match it.next() {
             // Parsing a tuple aggregate.
             Some(Span { tok: Token::Def, .. }) => {
-              it.next();
               vars.push(Binding::Tuple(Vec::new()));
               let mut init = ar.term(Term::Star);
               init = ar.term(Term::Tup(init, parse_term(it, vars, ar)?));
@@ -423,8 +394,7 @@ impl<'a> Term<'a> {
               Ok(init)
             }
             // Parsing a tuple type aggregate.
-            Some(Span { tok: Token::Ann, .. }) => {
-              it.next();
+            Some(Span { tok: Token::Ann(_), .. }) => {
               vars.push(Binding::Tuple(Vec::new()));
               let mut init = ar.term(Term::Unit);
               init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
@@ -434,7 +404,7 @@ impl<'a> Term<'a> {
               while let Some(Span { tok: Token::Comma, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_ident(it)?;
-                expect(it, Token::Ann)?;
+                expect(it, Token::Ann(false))?;
                 init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
                 if let Some(Binding::Tuple(var)) = vars.last_mut() {
                   var.push(x);
@@ -444,13 +414,13 @@ impl<'a> Term<'a> {
               vars.pop();
               Ok(init)
             }
-            _ => Err(ParseError::unexpected(it.next())),
+            other => Err(ParseError::unexpected(other)),
           }
         }
-        _ => Err(ParseError::unexpected(it.next())),
+        other => Err(ParseError::unexpected(other)),
       }
     }
-
+    // The term grammar is LL(1).
     let mut it = spans.peekable();
     parse_term(&mut it, &mut Vec::new(), ar)
   }
@@ -482,7 +452,6 @@ impl Term<'_> {
       res.reverse();
       res.into_iter().collect()
     }
-
     /// Prints a left parenthesis if the actual precedence level is lower than the expected.
     fn left_paren(f: &mut Formatter<'_>, actual: Prec, expected: Prec) -> std::fmt::Result {
       if actual < expected {
@@ -490,7 +459,6 @@ impl Term<'_> {
       }
       Ok(())
     }
-
     /// Prints a right parenthesis if the actual precedence level is lower than the expected.
     fn right_paren(f: &mut Formatter<'_>, actual: Prec, expected: Prec) -> std::fmt::Result {
       if actual < expected {
@@ -498,7 +466,6 @@ impl Term<'_> {
       }
       Ok(())
     }
-
     match self {
       Term::Univ(v) => {
         left_paren(f, Prec::Atom, prec)?;
@@ -524,10 +491,13 @@ impl Term<'_> {
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Ann(x, t) => {
+      Term::Ann(x, t, b) => {
         left_paren(f, Prec::Term, prec)?;
         x.print(f, count, vars, Prec::Body)?;
-        write!(f, " : ")?;
+        match b {
+          false => write!(f, " : ")?,
+          true => write!(f, " :: ")?,
+        }
         t.print(f, count, vars, Prec::Term)?;
         right_paren(f, Prec::Term, prec)?;
         Ok(())
@@ -548,7 +518,7 @@ impl Term<'_> {
           if i != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{} ≔ ", name)?;
+          write!(f, "{} := ", name)?;
           t.print(f, count, vars, Prec::Term)?;
           vars.push(Binding::Named(std::mem::take(name)));
         }
@@ -676,7 +646,7 @@ impl Term<'_> {
             }
             let name = generate_name(*count);
             *count += 1;
-            write!(f, "{} ≔ ", name)?;
+            write!(f, "{} := ", name)?;
             b.print(f, count, vars, Prec::Term)?;
             if let Some(Binding::Tuple(var)) = vars.last_mut() {
               var.push(name);
