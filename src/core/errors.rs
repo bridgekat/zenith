@@ -224,7 +224,7 @@ impl LexError {
 }
 
 impl ParseError {
-  pub fn undefined_ident(name: String, start: usize, end: usize) -> Self {
+  pub fn undefined_id(name: String, start: usize, end: usize) -> Self {
     Self::UndefinedIdent { name, start, end }
   }
 

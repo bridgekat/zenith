@@ -1,29 +1,28 @@
 [
   Prop, ⊢, ⊥, ¬, ∧, ∨, ⇒, ⇔, X, ∀, ∃,
-  ⊥_elim, ¬_intro, by_contra, ¬_elim, ∧_intro, ∧_left, ∧_right, ∨_inl, ∨_inr, ∨_elim,
-  ⇒_intro, ⇒_elim, ⇔_intro, ⇔_left, ⇔_right, ∀_intro, ∀_elim, ∃_intro, ∃_some, ∃_prop
+  ⊥elim, ¬intro, contra, ¬elim, ∧intro, ∧left, ∧right, ∨inl, ∨inr, ∨elim,
+  ⇒intro, ⇒elim, ⇔intro, ⇔left, ⇔right, ∀intro, ∀elim, ∃intro, ∃elim
 ]
   ↦
 {
-  first_theorem :=
-    ([p, q] ↦ ⇔_intro (¬ (∨ p q)) (∧ (¬ p) (¬ q))
-      ([h] ↦ ∧_intro (¬ p) (¬ q)
-        (¬_intro p ([hp] ↦ ¬_elim (∨ p q) h (∨_inl p q hp)))
-        (¬_intro q ([hq] ↦ ¬_elim (∨ p q) h (∨_inr p q hq))))
-      ([h] ↦ ¬_intro (∨ p q)
-        ([hpq] ↦ ∨_elim p q ⊥ hpq
-          ([hp] ↦ ¬_elim p (∧_left (¬ p) (¬ q) h) hp)
-          ([hq] ↦ ¬_elim q (∧_right (¬ p) (¬ q) h) hq)))),
+  not-or-iff-and-not ≔
+    ([p, q] ↦ ⇔intro (¬ (∨ p q)) (∧ (¬ p) (¬ q))
+      ([h] ↦ ∧intro (¬ p) (¬ q)
+        (¬intro p ([hp] ↦ ¬elim (∨ p q) h (∨inl p q hp)))
+        (¬intro q ([hq] ↦ ¬elim (∨ p q) h (∨inr p q hq))))
+      ([h] ↦ ¬intro (∨ p q)
+        ([hpq] ↦ ∨elim p q ⊥ hpq
+          ([hp] ↦ ¬elim p (∧left (¬ p) (¬ q) h) hp)
+          ([hq] ↦ ¬elim q (∧right (¬ p) (¬ q) h) hq)))),
   
-  second_theorem :=
-    ([p] ↦ ⇔_intro (¬ (∃ ([x] ↦ p x))) (∀ ([x] ↦ ¬ (p x)))
-      ([h] ↦ ∀_intro ([x] ↦ ¬ (p x))
-        ([x] ↦ ¬_intro (p x)
-          ([hp] ↦ ¬_elim (∃ ([x] ↦ p x)) h (∃_intro ([x] ↦ p x) x hp))))
-      ([h] ↦ ¬_intro (∃ ([x] ↦ p x))
-        ([hp] ↦ [x := ∃_some ([x] ↦ p x) hp] ¬_elim (p x)
-          (∀_elim ([x] ↦ ¬ (p x)) h x)
-          (∃_prop ([x] ↦ p x) hp))))
+  not-exists-iff-forall-not ≔
+    ([p] ↦ ⇔intro (¬ (∃ ([x] ↦ p x))) (∀ ([x] ↦ ¬ (p x)))
+      ([h] ↦ ∀intro ([x] ↦ ¬ (p x))
+        ([x] ↦ ¬intro (p x)
+          ([hp] ↦ ¬elim (∃ ([x] ↦ p x)) h (∃intro ([x] ↦ p x) x hp))))
+      ([h] ↦ ¬intro (∃ ([x] ↦ p x))
+        ([hp] ↦ ∃elim ([x] ↦ p x) ⊥ hp
+          ([x, hx] ↦ ¬elim (p x) (∀elim ([x] ↦ ¬ (p x)) h x) hx))))
 }
   :
 [
@@ -38,29 +37,28 @@
   X : Type,
   ∀ : [_ : [_ : X] → Prop] → Prop,
   ∃ : [_ : [_ : X] → Prop] → Prop,
-  ⊥_elim : [c : Prop, _ : ⊢ ⊥] → ⊢ c,
-  ¬_intro : [p : Prop, _ : [_ : ⊢ p] → ⊢ ⊥] → ⊢ (¬ p),
-  by_contra : [p : Prop, _ : [_ : ⊢ (¬ p)] → ⊢ ⊥] → ⊢ p,
-  ¬_elim : [p : Prop, _ : ⊢ (¬ p), _ : ⊢ p] → ⊢ ⊥,
-  ∧_intro : [p : Prop, q : Prop, _ : ⊢ p, _ : ⊢ q] → ⊢ (∧ p q),
-  ∧_left : [p : Prop, q : Prop, _ : ⊢ (∧ p q)] → ⊢ p,
-  ∧_right : [p : Prop, q : Prop, _ : ⊢ (∧ p q)] → ⊢ q,
-  ∨_inl : [p : Prop, q : Prop, _ : ⊢ p] → ⊢ (∨ p q),
-  ∨_inr : [p : Prop, q : Prop, _ : ⊢ q] → ⊢ (∨ p q),
-  ∨_elim : [p : Prop, q : Prop, c : Prop, _ : ⊢ (∨ p q), _ : [_ : ⊢ p] → ⊢ c, _ : [_ : ⊢ q] → ⊢ c] → ⊢ c,
-  ⇒_intro : [p : Prop, q : Prop, _ : [_ : ⊢ p] → ⊢ q] → ⊢ (⇒ p q),
-  ⇒_elim : [p : Prop, q : Prop, _ : ⊢ (⇒ p q), _ : ⊢ p] → ⊢ q,
-  ⇔_intro : [p : Prop, q : Prop, _ : [_ : ⊢ p] → ⊢ q, _ : [_ : ⊢ q] → ⊢ p] → ⊢ (⇔ p q),
-  ⇔_left : [p : Prop, q : Prop, _ : ⊢ (⇔ p q), _ : ⊢ q] → ⊢ p,
-  ⇔_right : [p : Prop, q : Prop, _ : ⊢ (⇔ p q), _ : ⊢ p] → ⊢ q,
-  ∀_intro : [p : [_ : X] → Prop, _ : [x : X] → ⊢ (p x)] → ⊢ (∀ p),
-  ∀_elim : [p : [_ : X] → Prop, _ : ⊢ (∀ p), x : X] → ⊢ (p x),
-  ∃_intro : [p : [_ : X] → Prop, x : X, _ : ⊢ (p x)] → ⊢ (∃ p),
-  ∃_some : [p : [_ : X] → Prop, _ : ⊢ (∃ p)] → X,
-  ∃_prop : [p : [_ : X] → Prop, h : ⊢ (∃ p)] → ⊢ (p (∃_some p h))
+  ⊥elim : [c : Prop, _ : ⊢ ⊥] → ⊢ c,
+  ¬intro : [p : Prop, _ : [_ : ⊢ p] → ⊢ ⊥] → ⊢ (¬ p),
+  contra : [p : Prop, _ : [_ : ⊢ (¬ p)] → ⊢ ⊥] → ⊢ p,
+  ¬elim : [p : Prop, _ : ⊢ (¬ p), _ : ⊢ p] → ⊢ ⊥,
+  ∧intro : [p : Prop, q : Prop, _ : ⊢ p, _ : ⊢ q] → ⊢ (∧ p q),
+  ∧left : [p : Prop, q : Prop, _ : ⊢ (∧ p q)] → ⊢ p,
+  ∧right : [p : Prop, q : Prop, _ : ⊢ (∧ p q)] → ⊢ q,
+  ∨inl : [p : Prop, q : Prop, _ : ⊢ p] → ⊢ (∨ p q),
+  ∨inr : [p : Prop, q : Prop, _ : ⊢ q] → ⊢ (∨ p q),
+  ∨elim : [p : Prop, q : Prop, c : Prop, _ : ⊢ (∨ p q), _ : [_ : ⊢ p] → ⊢ c, _ : [_ : ⊢ q] → ⊢ c] → ⊢ c,
+  ⇒intro : [p : Prop, q : Prop, _ : [_ : ⊢ p] → ⊢ q] → ⊢ (⇒ p q),
+  ⇒elim : [p : Prop, q : Prop, _ : ⊢ (⇒ p q), _ : ⊢ p] → ⊢ q,
+  ⇔intro : [p : Prop, q : Prop, _ : [_ : ⊢ p] → ⊢ q, _ : [_ : ⊢ q] → ⊢ p] → ⊢ (⇔ p q),
+  ⇔left : [p : Prop, q : Prop, _ : ⊢ (⇔ p q), _ : ⊢ q] → ⊢ p,
+  ⇔right : [p : Prop, q : Prop, _ : ⊢ (⇔ p q), _ : ⊢ p] → ⊢ q,
+  ∀intro : [p : [_ : X] → Prop, _ : [x : X] → ⊢ (p x)] → ⊢ (∀ p),
+  ∀elim : [p : [_ : X] → Prop, _ : ⊢ (∀ p), x : X] → ⊢ (p x),
+  ∃intro : [p : [_ : X] → Prop, x : X, _ : ⊢ (p x)] → ⊢ (∃ p),
+  ∃elim : [p : [_ : X] → Prop, c : Prop, _ : ⊢ (∃ p), _ : [x : X, _ : ⊢ (p x)] → ⊢ c] → ⊢ c
 ]
   →
 {
-  first_theorem : [p : Prop, q : Prop] → ⊢ (⇔ (¬ (∨ p q)) (∧ (¬ p) (¬ q))),
-  second_theorem : [p : [_ : X] → Prop] → ⊢ (⇔ (¬ (∃ ([x] ↦ p x))) (∀ ([x] ↦ ¬ (p x))))
+  not-or-iff-and-not : [p : Prop, q : Prop] → ⊢ (⇔ (¬ (∨ p q)) (∧ (¬ p) (¬ q))),
+  not-exists-iff-forall-not : [p : [_ : X] → Prop] → ⊢ (⇔ (¬ (∃ ([x] ↦ p x))) (∀ ([x] ↦ ¬ (p x))))
 }
