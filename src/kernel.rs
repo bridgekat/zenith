@@ -1,9 +1,9 @@
+mod arena;
 mod errors;
 mod io;
-mod stack;
-mod structs;
 mod term;
 
+pub use arena::Arena;
 pub use errors::{EvalError, LexError, ParseError, TypeError};
 pub use io::{Span, Token};
-pub use structs::{Arena, Clos, Stack, Term, Val};
+pub use term::{Clos, Stack, Term, Val};

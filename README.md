@@ -4,7 +4,7 @@
 
 This project is my personal attempt at making a theorem prover with an optimised interactive UI logic. It is based on a bare-bones type theory with only dependent functions (`Π`-types), dependent pairs (`Σ`-types), the `Unit` type, and two universes `Type : Kind`. All other types are to be expressed as postulates.
 
-The `Σ` and `Unit` types are presented as "dependent tuples" which follow the usual rules of snoc-lists of nested `Σ`-types, and are implemented using contiguous arrays in the small kernel (\~500 LOC without I/O and errors) for fast random access to element values and types.
+The `Σ` and `Unit` types are presented as "dependent tuples" which follow the usual rules of snoc-lists of nested `Σ`-types, and are implemented using contiguous arrays in the small kernel (\~400 LOC without I/O and errors) for fast random access to element values and types.
 
 Example proof terms in the core syntax:
 
@@ -20,7 +20,7 @@ Example proof terms in the core syntax:
 
 Goals:
 
-- Implement a [core language](src/core/term.rs) based on the [calculus of constructions](https://en.wikipedia.org/wiki/Calculus_of_constructions);
+- Implement a [core language](src/kernel/term.rs) based on the [calculus of constructions](https://en.wikipedia.org/wiki/Calculus_of_constructions);
 - Implement an elaborator with type inference and support for typeclasses;
 - Formalise basic mathematical concepts;
 - Implement an optimised tactic mode.

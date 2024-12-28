@@ -3,6 +3,138 @@ use std::slice::from_raw_parts;
 
 use super::*;
 
+/// # Terms
+///
+/// Terms of the core calculus.
+///
+/// Can be understood as the "source code" given to the evaluator.
+#[derive(Debug, Clone, Copy)]
+pub enum Term<'a> {
+  /// Universe in levels.
+  Univ(usize),
+  /// Variables in de Bruijn indices.
+  Var(usize),
+  /// Type annotations (value, type, arena boundary flag).
+  Ann(&'a Term<'a>, &'a Term<'a>, bool),
+  /// Let expressions (value, *body*).
+  Let(&'a Term<'a>, &'a Term<'a>),
+  /// Function types (parameter type, *return type*).
+  Pi(&'a Term<'a>, &'a Term<'a>),
+  /// Function abstractions (*body*).
+  Fun(&'a Term<'a>),
+  /// Function applications (function, argument).
+  App(&'a Term<'a>, &'a Term<'a>),
+  /// Tuple types (initial types, *last type*).
+  Sig(&'a Term<'a>, &'a Term<'a>),
+  /// Tuple constructors (initial values, *last value*).
+  Tup(&'a Term<'a>, &'a Term<'a>),
+  /// Tuple initial segments (truncation, tuple).
+  Init(usize, &'a Term<'a>),
+  /// Tuple last element (tuple).
+  Last(&'a Term<'a>),
+  /// Empty tuple types.
+  Unit,
+  /// Empty tuple constructors.
+  Star,
+}
+
+/// # Values
+///
+/// Values are terms whose outermost `let`s are already collected and frozen at binders.
+///
+/// Can be understood as "runtime objects" produced by the evaluator.
+#[derive(Debug, Clone, Copy)]
+pub enum Val<'a, 'b> {
+  /// Universe in levels.
+  Univ(usize),
+  /// Generic variables in de Bruijn *levels* for cheap weakening.
+  Gen(usize),
+  /// Function types (parameter type, *return type*).
+  Pi(&'a Val<'a, 'b>, &'a Clos<'a, 'b>),
+  /// Function abstractions (*body*).
+  Fun(&'a Clos<'a, 'b>),
+  /// Function applications (function, argument).
+  App(&'a Val<'a, 'b>, &'a Val<'a, 'b>),
+  /// Tuple types (*element types*).
+  Sig(&'a [Clos<'a, 'b>]),
+  /// Tuple constructors (element values).
+  Tup(&'a [Val<'a, 'b>]),
+  /// Tuple initial segments (truncation, tuple).
+  Init(usize, &'a Val<'a, 'b>),
+  /// Tuple last element (tuple).
+  Last(&'a Val<'a, 'b>),
+}
+
+/// # Closures
+///
+/// Closures are terms annotated with frozen `let`s capturing the whole environment.
+///
+/// The environment is represented using a special data structure which supports structural sharing
+/// and fast random access (in most cases). For more details, see the documentation for [`Stack`].
+#[derive(Debug, Clone, Copy)]
+pub struct Clos<'a, 'b> {
+  pub env: Stack<'a, 'b>,
+  pub body: &'b Term<'b>,
+}
+
+/// # Linked list stacks
+///
+/// The baseline implementation of evaluation environments. Cheap to append and clone, but random
+/// access takes linear time. This is acceptable if most of the context is wrapped inside tuples,
+/// which have constant-time random access.
+#[derive(Debug, Clone, Copy)]
+pub enum Stack<'a, 'b> {
+  Nil,
+  Cons { prev: &'a Stack<'a, 'b>, value: &'a Val<'a, 'b> },
+}
+
+impl<'a, 'b> Stack<'a, 'b> {
+  /// Creates an empty stack.
+  pub fn new(_: &'a Arena) -> Self {
+    Stack::Nil
+  }
+
+  /// Returns if the stack is empty.
+  pub fn is_empty(&self) -> bool {
+    match self {
+      Stack::Nil => true,
+      Stack::Cons { prev: _, value: _ } => false,
+    }
+  }
+
+  /// Returns the length of the stack.
+  pub fn len(&self) -> usize {
+    let mut curr = self;
+    let mut len = 0;
+    while let Stack::Cons { prev, value: _ } = curr {
+      len += 1;
+      curr = prev;
+    }
+    len
+  }
+
+  /// Returns the value at the given de Bruijn index, if it exists.
+  pub fn get(&self, index: usize, ar: &'a Arena) -> Option<Val<'a, 'b>> {
+    let mut curr = self;
+    let mut index = index;
+    ar.inc_lookup_count();
+    while let Stack::Cons { prev, value } = curr {
+      ar.inc_link_count();
+      if index == 0 {
+        return Some(**value);
+      }
+      index -= 1;
+      curr = prev;
+    }
+    None
+  }
+
+  /// Extends the stack with a new value.
+  pub fn extend(&self, value: Val<'a, 'b>, ar: &'a Arena) -> Self {
+    Stack::Cons { prev: ar.frame(*self), value: ar.val(value) }
+  }
+}
+
 impl Term<'_> {
   /// Clones `self` to given arena, expected to be used for outputs and error reporting.
   pub fn relocate<'b>(&self, ar: &'b Arena) -> &'b Term<'b> {
@@ -122,7 +254,7 @@ impl<'a, 'b> Clos<'a, 'b> {
 
 impl<'a, 'b> Val<'a, 'b> {
   /// Reduces well-typed `self` to eliminate `let`s and convert it back into a [`Term`].
-  /// Can be an expensive operation, expected to be used for outputs and error reporting.
+  /// Can be an expensive operation. Expected to be used for outputs and error reporting.
   ///
   /// Pre-conditions:
   ///

@@ -1,12 +1,12 @@
 #![feature(cell_update)]
 
-pub mod core;
-pub mod elab;
+pub mod ir;
+pub mod kernel;
 
 use std::io::Write;
 use std::thread::Builder;
 
-use core::{Arena, Stack, Term, Val};
+use kernel::{Arena, Stack, Term, Val};
 
 /// Converts `pos` to line and column numbers.
 fn pos_to_line_col(pos: usize, lines: &[String]) -> (usize, usize) {
@@ -148,7 +148,7 @@ fn run_repl() -> std::io::Result<()> {
       }
     };
 
-    match Term::eval(term, &Stack::new(), &ar) {
+    match Term::eval(term, &Stack::new(&ar), &ar) {
       Ok(t) => match Val::quote(&t, 0, &ar) {
         Ok(t) => println!("≡ {t}"),
         Err(e) => println!("⨯ Error: {e}"),
@@ -156,7 +156,7 @@ fn run_repl() -> std::io::Result<()> {
       Err(e) => println!("⨯ Error: {e}"),
     };
 
-    match Term::infer(term, &Stack::new(), &Stack::new(), &ar) {
+    match Term::infer(term, &Stack::new(&ar), &Stack::new(&ar), &ar) {
       Ok(t) => match Val::quote(&t, 0, &ar) {
         Ok(t) => println!(": {t}"),
         Err(e) => println!("⨯ Error: {e}"),
