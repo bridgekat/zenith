@@ -1,7 +1,7 @@
 use bumpalo::Bump;
 use std::cell::Cell;
 
-use super::*;
+use super::term::{Clos, Stack, Term, Val};
 
 /// # Arena allocators
 ///

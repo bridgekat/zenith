@@ -1,7 +1,8 @@
 use std::cmp::max;
 use std::slice::from_raw_parts;
 
-use super::*;
+use super::arena::Arena;
+use super::errors::{EvalError, TypeError};
 
 /// # Terms
 ///

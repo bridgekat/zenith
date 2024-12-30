@@ -1,12 +1,14 @@
 #![feature(cell_update)]
 
-pub mod ir;
+pub mod intermediate;
+pub mod io;
 pub mod kernel;
 
 use std::io::Write;
 use std::thread::Builder;
 
-use kernel::{Arena, Stack, Term, Val};
+use intermediate::arena::Arena;
+use intermediate::term::{Stack, Term, Val};
 
 /// Converts `pos` to line and column numbers.
 fn pos_to_line_col(pos: usize, lines: &[String]) -> (usize, usize) {

@@ -1,4 +1,5 @@
-use super::*;
+use super::arena::Arena;
+use super::term::{Term, Val};
 
 /// # Evaluation errors
 ///
@@ -187,37 +188,37 @@ impl<'a> std::convert::From<EvalError<'a>> for TypeError<'a> {
   }
 }
 
-// impl std::fmt::Display for EvalError<'_> {
-//   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//     match self {
-//       Self::EnvIndex { ix, len } => write!(f, "variable index {ix} out of bound, environment has size {len}"),
-//       Self::GenLevel { lvl, len } => write!(f, "generic variable level {lvl} out of bound, environment has size {len}"),
-//       Self::TupInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple has size {len}"),
-//       Self::TupLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple"),
-//       Self::SigImproper { head } => write!(f, "dependent tuple type must begin with unit, found {head}"),
-//       Self::TupImproper { head } => write!(f, "dependent tuple value must begin with unit, found {head}"),
-//     }
-//   }
-// }
+impl std::fmt::Display for EvalError<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::EnvIndex { ix, len } => write!(f, "variable index {ix} out of bound, environment has size {len}"),
+      Self::GenLevel { lvl, len } => write!(f, "generic variable level {lvl} out of bound, environment has size {len}"),
+      Self::TupInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple has size {len}"),
+      Self::TupLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple"),
+      Self::SigImproper { head } => write!(f, "dependent tuple type must begin with unit, found {head}"),
+      Self::TupImproper { head } => write!(f, "dependent tuple value must begin with unit, found {head}"),
+    }
+  }
+}
 
-// impl std::fmt::Display for TypeError<'_> {
-//   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//     match self {
-//       Self::Eval { err } => write!(f, "{err}"),
-//       Self::UnivForm { univ } => write!(f, "universe {univ} does not have a type"),
-//       Self::PiForm { from, to } => write!(f, "dependent functions from universe {from} to {to} are unspecified"),
-//       Self::SigForm { fst, snd } => write!(f, "dependent tuples in universes {fst} and {snd} are unspecified"),
-//       Self::CtxIndex { ix, len } => write!(f, "variable index {ix} out of bound, context has size {len}"),
-//       Self::SigInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple type has size {len}"),
-//       Self::SigLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple type"),
-//       Self::AnnExpected { term } => write!(f, "type annotation expected around term {term}"),
-//       Self::TypeExpected { term, ty } => write!(f, "type expected, term {term} has type {ty} but not universe type"),
-//       Self::PiExpected { term, ty } => write!(f, "function expected, term {term} has type {ty} but not function type"),
-//       Self::SigExpected { term, ty } => write!(f, "tuple expected, term {term} has type {ty} but not tuple type"),
-//       Self::PiAnnExpected { ty } => write!(f, "function found but type annotation {ty} is not function type"),
-//       Self::SigAnnExpected { ty } => write!(f, "tuple found but type annotation {ty} is not tuple type"),
-//       Self::TypeMismatch { term, ty, ety } => write!(f, "term {term} has type {ty}, but the expected type is {ety}"),
-//       Self::TupSizeMismatch { term, sz, esz } => write!(f, "term {term} has size {sz}, but the expected size is {esz}"),
-//     }
-//   }
-// }
+impl std::fmt::Display for TypeError<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Eval { err } => write!(f, "{err}"),
+      Self::UnivForm { univ } => write!(f, "universe {univ} does not have a type"),
+      Self::PiForm { from, to } => write!(f, "dependent functions from universe {from} to {to} are unspecified"),
+      Self::SigForm { fst, snd } => write!(f, "dependent tuples in universes {fst} and {snd} are unspecified"),
+      Self::CtxIndex { ix, len } => write!(f, "variable index {ix} out of bound, context has size {len}"),
+      Self::SigInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple type has size {len}"),
+      Self::SigLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple type"),
+      Self::AnnExpected { term } => write!(f, "type annotation expected around term {term}"),
+      Self::TypeExpected { term, ty } => write!(f, "type expected, term {term} has type {ty} but not universe type"),
+      Self::PiExpected { term, ty } => write!(f, "function expected, term {term} has type {ty} but not function type"),
+      Self::SigExpected { term, ty } => write!(f, "tuple expected, term {term} has type {ty} but not tuple type"),
+      Self::PiAnnExpected { ty } => write!(f, "function found but type annotation {ty} is not function type"),
+      Self::SigAnnExpected { ty } => write!(f, "tuple found but type annotation {ty} is not tuple type"),
+      Self::TypeMismatch { term, ty, ety } => write!(f, "term {term} has type {ty}, but the expected type is {ety}"),
+      Self::TupSizeMismatch { term, sz, esz } => write!(f, "term {term} has size {sz}, but the expected size is {esz}"),
+    }
+  }
+}
