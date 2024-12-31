@@ -1,4 +1,4 @@
-use super::parser::{Span, Token};
+use super::*;
 
 /// # Lexing errors
 ///

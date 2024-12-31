@@ -1,14 +1,16 @@
 #![feature(cell_update)]
 
-pub mod intermediate;
+pub mod arena;
+pub mod errors;
 pub mod io;
 pub mod kernel;
+pub mod term;
 
 use std::io::Write;
 use std::thread::Builder;
 
-use intermediate::arena::Arena;
-use intermediate::term::{Stack, Term, Val};
+use arena::Arena;
+use term::{Stack, Term, Val};
 
 /// Converts `pos` to line and column numbers.
 fn pos_to_line_col(pos: usize, lines: &[String]) -> (usize, usize) {
@@ -149,22 +151,23 @@ fn run_repl() -> std::io::Result<()> {
         continue;
       }
     };
+    println!("≡ {term}");
 
-    match Term::eval(term, &Stack::new(&ar), &ar) {
-      Ok(t) => match Val::quote(&t, 0, &ar) {
-        Ok(t) => println!("≡ {t}"),
-        Err(e) => println!("⨯ Error: {e}"),
-      },
-      Err(e) => println!("⨯ Error: {e}"),
-    };
+    // match Term::eval(term, &Stack::new(&ar), &ar) {
+    //   Ok(t) => match Val::quote(&t, 0, &ar) {
+    //     Ok(t) => println!("≡ {t}"),
+    //     Err(e) => println!("⨯ Error: {e}"),
+    //   },
+    //   Err(e) => println!("⨯ Error: {e}"),
+    // };
 
-    match Term::infer(term, &Stack::new(&ar), &Stack::new(&ar), &ar) {
-      Ok(t) => match Val::quote(&t, 0, &ar) {
-        Ok(t) => println!(": {t}"),
-        Err(e) => println!("⨯ Error: {e}"),
-      },
-      Err(e) => println!("⨯ Error: {e}"),
-    };
+    // match Term::infer(term, &Stack::new(&ar), &Stack::new(&ar), &ar) {
+    //   Ok(t) => match Val::quote(&t, 0, &ar) {
+    //     Ok(t) => println!(": {t}"),
+    //     Err(e) => println!("⨯ Error: {e}"),
+    //   },
+    //   Err(e) => println!("⨯ Error: {e}"),
+    // };
 
     println!();
     println!(

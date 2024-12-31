@@ -1,8 +1,8 @@
 use std::iter::Peekable;
 
-use super::errors::{LexError, ParseError};
-use crate::intermediate::arena::Arena;
-use crate::intermediate::term::Term;
+use super::*;
+use crate::arena::Arena;
+use crate::term::{Binder, Term};
 
 /// # Lexer tokens
 ///
@@ -16,6 +16,7 @@ pub enum Token {
   LeftBrace,
   RightBrace,
   Sep,
+  Dot,
   Env,
   Pi,
   Fun,
@@ -38,14 +39,7 @@ pub struct Span {
   pub end: usize,
 }
 
-/// Variable bindings.
-#[derive(Debug, Clone)]
-enum Binding {
-  Named(String),
-  Tuple(Vec<String>),
-}
-
-impl<'a> Term<'a> {
+impl<'a> Term<'a, Named<'a>> {
   /// Tokenises `input` into a list of [`Span`].
   pub fn lex(chars: impl Iterator<Item = char>) -> Result<Vec<Span>, LexError> {
     // The token grammar is almost LL(1).
@@ -61,6 +55,7 @@ impl<'a> Term<'a> {
         '{' => res.push(Span { tok: Token::LeftBrace, start: pos, end: pos + 1 }),
         '}' => res.push(Span { tok: Token::RightBrace, start: pos, end: pos + 1 }),
         ',' => res.push(Span { tok: Token::Sep, start: pos, end: pos + 1 }),
+        '.' => res.push(Span { tok: Token::Dot, start: pos, end: pos + 1 }),
         '^' => {
           let mut len = 1;
           let mut n = 0;
@@ -80,7 +75,7 @@ impl<'a> Term<'a> {
           let mut s = String::new();
           s.push(c);
           while let Some((_, d)) = it.peek().cloned() {
-            if d.is_whitespace() || "()[]{},^".chars().any(|x| x == d) {
+            if d.is_whitespace() || "()[]{},.^".chars().any(|x| x == d) {
               break;
             }
             it.next();
@@ -126,6 +121,7 @@ impl<'a> Term<'a> {
   /// <proj> ::=
   ///   | <atom>
   ///   | <proj> <index>
+  ///   | <proj> "." <atom>
   ///
   /// <atom> ::=
   ///   | "{" "}" | "Unit" | "Type" | "Kind" | "@" <index> | <id>
@@ -133,22 +129,7 @@ impl<'a> Term<'a> {
   ///   | "{" <id> ":" <term> ("," <id> ":" <term>)* "}"
   ///   | "{" <id> "≔" <term> ("," <id> "≔" <term>)* "}"
   /// ```
-  pub fn parse(spans: impl Iterator<Item = Span>, ar: &'a Arena) -> Result<&'a Term<'a>, ParseError> {
-    /// Resolves an identifier to a term.
-    fn resolve<'a>(x: &str, vars: &[Binding], ar: &'a Arena) -> Option<&'a Term<'a>> {
-      for (ix, b) in vars.iter().rev().enumerate() {
-        match b {
-          Binding::Named(y) if y == x => return Some(ar.term(Term::Var(ix))),
-          Binding::Tuple(ys) => {
-            if let Some(n) = ys.iter().rev().position(|y| y == x) {
-              return Some(ar.term(Term::Last(ar.term(Term::Init(n, ar.term(Term::Var(ix)))))));
-            }
-          }
-          _ => {}
-        }
-      }
-      None
-    }
+  pub fn parse(spans: impl Iterator<Item = Span>, ar: &'a Arena) -> Result<&'a Term<'a, Named<'a>>, ParseError> {
     /// Expects the next token to have the same kind as `tok`.
     fn expect(it: &mut impl Iterator<Item = Span>, tok: Token) -> Result<(), ParseError> {
       match it.next() {
@@ -173,21 +154,20 @@ impl<'a> Term<'a> {
     /// Parses a term.
     fn parse_term<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
-      vars: &mut Vec<Binding>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a>, ParseError> {
+    ) -> Result<&'a Term<'a, Named<'a>>, ParseError> {
       // Parsing a term body.
-      let res = parse_body(it, vars, ar)?;
+      let res = parse_body(it, ar)?;
       match it.peek() {
         // Parsing an optional type annotation.
         Some(Span { tok: Token::Ann(false), .. }) => {
           it.next();
-          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?, false)))
+          Ok(ar.term(Term::Ann(res, parse_term(it, ar)?, false)))
         }
         // Parsing an optional type annotation with double colons (indicating an arena boundary).
         Some(Span { tok: Token::Ann(true), .. }) => {
           it.next();
-          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?, true)))
+          Ok(ar.term(Term::Ann(res, parse_term(it, ar)?, true)))
         }
         _ => Ok(res),
       }
@@ -195,9 +175,8 @@ impl<'a> Term<'a> {
     /// Parses a term body.
     fn parse_body<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
-      vars: &mut Vec<Binding>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a>, ParseError> {
+    ) -> Result<&'a Term<'a, Named<'a>>, ParseError> {
       match it.peek() {
         // Parsing a binder group.
         Some(Span { tok: Token::LeftBracket, .. }) => {
@@ -208,60 +187,57 @@ impl<'a> Term<'a> {
             // Parsing a group of let binders.
             Some(Span { tok: Token::Def, .. }) => {
               it.next();
-              let mut vs = Vec::from([parse_term(it, vars, ar)?]);
-              vars.push(Binding::Named(x));
+              let mut is = Vec::from([Binder { name: ar.string(&x), attrs: &[] }]);
+              let mut vs = Vec::from([parse_term(it, ar)?]);
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Def)?;
-                vs.push(parse_term(it, vars, ar)?);
-                vars.push(Binding::Named(x));
+                is.push(Binder { name: ar.string(&x), attrs: &[] });
+                vs.push(parse_term(it, ar)?);
               }
               expect(it, Token::RightBracket)?;
-              let mut body = parse_body(it, vars, ar)?;
-              for v in vs.into_iter().rev() {
-                body = ar.term(Term::Let(v, body));
-                vars.pop();
+              let mut body = parse_body(it, ar)?;
+              for (i, v) in is.into_iter().rev().zip(vs.into_iter().rev()) {
+                body = ar.term(Term::Let(i, v, body));
               }
               Ok(body)
             }
             // Parsing a group of Pi binders.
             Some(Span { tok: Token::Ann(_), .. }) => {
               it.next();
-              let mut ts = Vec::from([parse_term(it, vars, ar)?]);
-              vars.push(Binding::Named(x));
+              let mut is = Vec::from([Binder { name: ar.string(&x), attrs: &[] }]);
+              let mut ts = Vec::from([parse_term(it, ar)?]);
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Ann(false))?;
-                ts.push(parse_term(it, vars, ar)?);
-                vars.push(Binding::Named(x));
+                is.push(Binder { name: ar.string(&x), attrs: &[] });
+                ts.push(parse_term(it, ar)?);
               }
               expect(it, Token::RightBracket)?;
               expect(it, Token::Pi)?;
-              let mut body = parse_body(it, vars, ar)?;
-              for t in ts.into_iter().rev() {
-                body = ar.term(Term::Pi(t, body));
-                vars.pop();
+              let mut body = parse_body(it, ar)?;
+              for (i, t) in is.into_iter().rev().zip(ts.into_iter().rev()) {
+                body = ar.term(Term::Pi(i, t, body));
               }
               Ok(body)
             }
             // Parsing a group of function binders.
             _ => {
+              let mut is = Vec::from([Binder { name: ar.string(&x), attrs: &[] }]);
               let mut ts = Vec::from([()]);
-              vars.push(Binding::Named(x));
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
+                is.push(Binder { name: ar.string(&x), attrs: &[] });
                 ts.push(());
-                vars.push(Binding::Named(x));
               }
               expect(it, Token::RightBracket)?;
               expect(it, Token::Fun)?;
-              let mut body = parse_body(it, vars, ar)?;
-              for _ in ts.into_iter().rev() {
-                body = ar.term(Term::Fun(body));
-                vars.pop();
+              let mut body = parse_body(it, ar)?;
+              for (i, _) in is.into_iter().rev().zip(ts.into_iter().rev()) {
+                body = ar.term(Term::Fun(i, body));
               }
               Ok(body)
             }
@@ -270,7 +246,7 @@ impl<'a> Term<'a> {
         // Parsing a sequence of atomic terms, each followed by a sequence of projections.
         _ => {
           // Parsing the first atomic term.
-          let mut res = parse_proj(it, vars, ar)?;
+          let mut res = parse_proj(it, ar)?;
           loop {
             match it.peek() {
               // Parsing the next atomic term.
@@ -281,7 +257,7 @@ impl<'a> Term<'a> {
               | Some(Span { tok: Token::Id(_), .. })
               | Some(Span { tok: Token::LeftParen, .. })
               | Some(Span { tok: Token::LeftBrace, .. }) => {
-                res = ar.term(Term::App(res, parse_proj(it, vars, ar)?));
+                res = ar.term(Term::App(res, parse_proj(it, ar)?, false));
               }
               _ => break Ok(res),
             }
@@ -289,37 +265,41 @@ impl<'a> Term<'a> {
         }
       }
     }
-    /// Parses an atomic term followed by a sequence of projections.
+    /// Parses an atomic term followed by a sequence of projections and dot-applications.
     fn parse_proj<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
-      vars: &mut Vec<Binding>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a>, ParseError> {
-      let mut res = parse_atom(it, vars, ar)?;
-      while let Some(Span { tok: Token::Ix(_), .. }) = it.peek() {
-        res = ar.term(Term::Last(ar.term(Term::Init(expect_ix(it)?, res))));
+    ) -> Result<&'a Term<'a, Named<'a>>, ParseError> {
+      let mut res = parse_atom(it, ar)?;
+      loop {
+        match it.peek() {
+          Some(Span { tok: Token::Ix(_), .. }) => {
+            res = ar.term(Term::Last(ar.term(Term::Init(expect_ix(it)?, res))));
+          }
+          Some(Span { tok: Token::Dot, .. }) => {
+            it.next();
+            res = ar.term(Term::App(parse_atom(it, ar)?, res, true));
+          }
+          _ => break Ok(res),
+        }
       }
-      Ok(res)
     }
     /// Parses an atomic term.
     fn parse_atom<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
-      vars: &mut Vec<Binding>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a>, ParseError> {
+    ) -> Result<&'a Term<'a, Named<'a>>, ParseError> {
       // All atoms begin with a terminal token that can be taken unconditionally.
       match it.next() {
         // Parsing a single token.
         Some(Span { tok: Token::Unit, .. }) => Ok(ar.term(Term::Unit)),
         Some(Span { tok: Token::Type, .. }) => Ok(ar.term(Term::Univ(0))),
         Some(Span { tok: Token::Kind, .. }) => Ok(ar.term(Term::Univ(1))),
-        Some(Span { tok: Token::Env, .. }) => Ok(ar.term(Term::Var(expect_ix(it)?))),
-        Some(Span { tok: Token::Id(x), start, end }) => {
-          resolve(&x, vars, ar).ok_or_else(|| ParseError::undefined_id(x, start, end))
-        }
+        Some(Span { tok: Token::Env, .. }) => Ok(ar.term(Term::Var(Var::Ix(expect_ix(it)?)))),
+        Some(Span { tok: Token::Id(x), start, end }) => Ok(ar.term(Term::Var(Var::Name(ar.string(&x), start, end)))),
         // Parsing a parenthesised term.
         Some(Span { tok: Token::LeftParen, .. }) => {
-          let res = parse_term(it, vars, ar)?;
+          let res = parse_term(it, ar)?;
           expect(it, Token::RightParen)?;
           Ok(res)
         }
@@ -336,44 +316,28 @@ impl<'a> Term<'a> {
           match it.next() {
             // Parsing a tuple aggregate.
             Some(Span { tok: Token::Def, .. }) => {
-              vars.push(Binding::Tuple(Vec::new()));
               let mut init = ar.term(Term::Star);
-              init = ar.term(Term::Tup(init, parse_term(it, vars, ar)?));
-              if let Some(Binding::Tuple(var)) = vars.last_mut() {
-                var.push(x);
-              }
+              init = ar.term(Term::Tup(Binder { name: ar.string(&x), attrs: &[] }, init, parse_term(it, ar)?));
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Def)?;
-                init = ar.term(Term::Tup(init, parse_term(it, vars, ar)?));
-                if let Some(Binding::Tuple(var)) = vars.last_mut() {
-                  var.push(x);
-                }
+                init = ar.term(Term::Tup(Binder { name: ar.string(&x), attrs: &[] }, init, parse_term(it, ar)?));
               }
               expect(it, Token::RightBrace)?;
-              vars.pop();
               Ok(init)
             }
             // Parsing a tuple type aggregate.
             Some(Span { tok: Token::Ann(_), .. }) => {
-              vars.push(Binding::Tuple(Vec::new()));
               let mut init = ar.term(Term::Unit);
-              init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
-              if let Some(Binding::Tuple(var)) = vars.last_mut() {
-                var.push(x);
-              }
+              init = ar.term(Term::Sig(Binder { name: ar.string(&x), attrs: &[] }, init, parse_term(it, ar)?));
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Ann(false))?;
-                init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
-                if let Some(Binding::Tuple(var)) = vars.last_mut() {
-                  var.push(x);
-                }
+                init = ar.term(Term::Sig(Binder { name: ar.string(&x), attrs: &[] }, init, parse_term(it, ar)?));
               }
               expect(it, Token::RightBrace)?;
-              vars.pop();
               Ok(init)
             }
             other => Err(ParseError::unexpected(other)),
@@ -384,6 +348,6 @@ impl<'a> Term<'a> {
     }
     // The term grammar is LL(1).
     let mut it = spans.peekable();
-    parse_term(&mut it, &mut Vec::new(), ar)
+    parse_term(&mut it, ar)
   }
 }

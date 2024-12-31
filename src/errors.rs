@@ -1,5 +1,5 @@
 use super::arena::Arena;
-use super::term::{Term, Val};
+use super::term::{Core, Term, Val};
 
 /// # Evaluation errors
 ///
@@ -10,8 +10,8 @@ pub enum EvalError<'a> {
   GenLevel { lvl: usize, len: usize },
   TupInit { n: usize, len: usize },
   TupLast { n: usize, len: usize },
-  SigImproper { head: &'a Term<'a> },
-  TupImproper { head: &'a Term<'a> },
+  SigImproper { head: &'a Term<'a, Core> },
+  TupImproper { head: &'a Term<'a, Core> },
 }
 
 /// # Typing errors
@@ -26,14 +26,14 @@ pub enum TypeError<'a> {
   CtxIndex { ix: usize, len: usize },
   SigInit { n: usize, len: usize },
   SigLast { n: usize, len: usize },
-  AnnExpected { term: &'a Term<'a> },
-  TypeExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
-  PiExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
-  SigExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
-  PiAnnExpected { ty: &'a Term<'a> },
-  SigAnnExpected { ty: &'a Term<'a> },
-  TypeMismatch { term: &'a Term<'a>, ty: &'a Term<'a>, ety: &'a Term<'a> },
-  TupSizeMismatch { term: &'a Term<'a>, sz: usize, esz: usize },
+  AnnExpected { term: &'a Term<'a, Core> },
+  TypeExpected { term: &'a Term<'a, Core>, ty: &'a Term<'a, Core> },
+  PiExpected { term: &'a Term<'a, Core>, ty: &'a Term<'a, Core> },
+  SigExpected { term: &'a Term<'a, Core>, ty: &'a Term<'a, Core> },
+  PiAnnExpected { ty: &'a Term<'a, Core> },
+  SigAnnExpected { ty: &'a Term<'a, Core> },
+  TypeMismatch { term: &'a Term<'a, Core>, ty: &'a Term<'a, Core>, ety: &'a Term<'a, Core> },
+  TupSizeMismatch { term: &'a Term<'a, Core>, sz: usize, esz: usize },
 }
 
 impl<'a> EvalError<'a> {
@@ -53,11 +53,11 @@ impl<'a> EvalError<'a> {
     Self::TupLast { n, len }
   }
 
-  pub fn sig_improper(head: &'a Term<'a>) -> Self {
+  pub fn sig_improper(head: &'a Term<'a, Core>) -> Self {
     Self::SigImproper { head }
   }
 
-  pub fn tup_improper(head: &'a Term<'a>) -> Self {
+  pub fn tup_improper(head: &'a Term<'a, Core>) -> Self {
     Self::TupImproper { head }
   }
 
@@ -99,47 +99,47 @@ impl<'a> TypeError<'a> {
     Self::SigLast { n, len }
   }
 
-  pub fn ann_expected(term: &'a Term<'a>) -> Self {
+  pub fn ann_expected(term: &'a Term<'a, Core>) -> Self {
     Self::AnnExpected { term }
   }
 
-  pub fn type_expected<'b>(term: &'a Term<'a>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
+  pub fn type_expected<'b>(term: &'a Term<'a, Core>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::TypeExpected { term, ty: ar.term(ty) },
+      Ok(ty) => Self::TypeExpected { term, ty },
       Err(err) => err.into(),
     }
   }
 
-  pub fn pi_expected<'b>(term: &'a Term<'a>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
+  pub fn pi_expected<'b>(term: &'a Term<'a, Core>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::PiExpected { term, ty: ar.term(ty) },
+      Ok(ty) => Self::PiExpected { term, ty },
       Err(err) => err.into(),
     }
   }
 
-  pub fn sig_expected<'b>(term: &'a Term<'a>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
+  pub fn sig_expected<'b>(term: &'a Term<'a, Core>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::SigExpected { term, ty: ar.term(ty) },
+      Ok(ty) => Self::SigExpected { term, ty },
       Err(err) => err.into(),
     }
   }
 
   pub fn pi_ann_expected<'b>(ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::PiAnnExpected { ty: ar.term(ty) },
+      Ok(ty) => Self::PiAnnExpected { ty },
       Err(err) => err.into(),
     }
   }
 
   pub fn sig_ann_expected<'b>(ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::SigAnnExpected { ty: ar.term(ty) },
+      Ok(ty) => Self::SigAnnExpected { ty },
       Err(err) => err.into(),
     }
   }
 
   pub fn type_mismatch<'b>(
-    term: &'a Term<'a>,
+    term: &'a Term<'a, Core>,
     ty: Val<'b, 'a>,
     expect: Val<'b, 'a>,
     len: usize,
@@ -147,14 +147,14 @@ impl<'a> TypeError<'a> {
   ) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
       Ok(ty) => match Val::quote(ar.val(expect), len, ar) {
-        Ok(expect) => Self::TypeMismatch { term, ty: ar.term(ty), ety: ar.term(expect) },
+        Ok(ety) => Self::TypeMismatch { term, ty, ety },
         Err(err) => err.into(),
       },
       Err(err) => err.into(),
     }
   }
 
-  pub fn tup_size_mismatch(term: &'a Term<'a>, sz: usize, esz: usize) -> Self {
+  pub fn tup_size_mismatch(term: &'a Term<'a, Core>, sz: usize, esz: usize) -> Self {
     Self::TupSizeMismatch { term, sz, esz }
   }
 
@@ -195,8 +195,8 @@ impl std::fmt::Display for EvalError<'_> {
       Self::GenLevel { lvl, len } => write!(f, "generic variable level {lvl} out of bound, environment has size {len}"),
       Self::TupInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple has size {len}"),
       Self::TupLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple"),
-      Self::SigImproper { head } => write!(f, "dependent tuple type must begin with unit, found {head}"),
-      Self::TupImproper { head } => write!(f, "dependent tuple value must begin with unit, found {head}"),
+      Self::SigImproper { head } => write!(f, "dependent tuple type must begin with unit, found {head:?}"),
+      Self::TupImproper { head } => write!(f, "dependent tuple value must begin with unit, found {head:?}"),
     }
   }
 }
@@ -211,14 +211,22 @@ impl std::fmt::Display for TypeError<'_> {
       Self::CtxIndex { ix, len } => write!(f, "variable index {ix} out of bound, context has size {len}"),
       Self::SigInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple type has size {len}"),
       Self::SigLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple type"),
-      Self::AnnExpected { term } => write!(f, "type annotation expected around term {term}"),
-      Self::TypeExpected { term, ty } => write!(f, "type expected, term {term} has type {ty} but not universe type"),
-      Self::PiExpected { term, ty } => write!(f, "function expected, term {term} has type {ty} but not function type"),
-      Self::SigExpected { term, ty } => write!(f, "tuple expected, term {term} has type {ty} but not tuple type"),
-      Self::PiAnnExpected { ty } => write!(f, "function found but type annotation {ty} is not function type"),
-      Self::SigAnnExpected { ty } => write!(f, "tuple found but type annotation {ty} is not tuple type"),
-      Self::TypeMismatch { term, ty, ety } => write!(f, "term {term} has type {ty}, but the expected type is {ety}"),
-      Self::TupSizeMismatch { term, sz, esz } => write!(f, "term {term} has size {sz}, but the expected size is {esz}"),
+      Self::AnnExpected { term } => write!(f, "type annotation expected around term {term:?}"),
+      Self::TypeExpected { term, ty } => {
+        write!(f, "type expected, term {term:?} has type {ty:?} but not universe type")
+      }
+      Self::PiExpected { term, ty } => {
+        write!(f, "function expected, term {term:?} has type {ty:?} but not function type")
+      }
+      Self::SigExpected { term, ty } => write!(f, "tuple expected, term {term:?} has type {ty:?} but not tuple type"),
+      Self::PiAnnExpected { ty } => write!(f, "function found but type annotation {ty:?} is not function type"),
+      Self::SigAnnExpected { ty } => write!(f, "tuple found but type annotation {ty:?} is not tuple type"),
+      Self::TypeMismatch { term, ty, ety } => {
+        write!(f, "term {term:?} has type {ty:?}, but the expected type is {ety:?}")
+      }
+      Self::TupSizeMismatch { term, sz, esz } => {
+        write!(f, "term {term:?} has size {sz:?}, but the expected size is {esz}")
+      }
     }
   }
 }

@@ -1,13 +1,7 @@
 use std::fmt::Formatter;
 
-use crate::intermediate::term::Term;
-
-/// Variable bindings.
-#[derive(Debug, Clone)]
-enum Binding {
-  Named(String),
-  Tuple(Vec<String>),
-}
+use super::*;
+use crate::term::Term;
 
 /// Precedence levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -18,32 +12,11 @@ enum Prec {
   Atom,
 }
 
-impl Term<'_> {
+impl Term<'_, Named<'_>> {
   /// Pretty-prints a term.
   ///
   /// See documentation of [`Term::parse`] for the BNF grammar.
-  fn print(&self, f: &mut Formatter<'_>, count: &mut usize, vars: &mut Vec<Binding>, prec: Prec) -> std::fmt::Result {
-    /// Generates a unique lowercase variable name from a unique number.
-    fn generate_name(mut id: usize) -> String {
-      let mut len = 0;
-      let mut m = 1;
-      loop {
-        len += 1;
-        m *= 26;
-        if id >= m {
-          id -= m;
-        } else {
-          break;
-        }
-      }
-      let mut res = Vec::new();
-      for _ in 0..len {
-        res.push(((id % 26) as u8 + b'a') as char);
-        id /= 26;
-      }
-      res.reverse();
-      res.into_iter().collect()
-    }
+  fn print(&self, f: &mut Formatter<'_>, prec: Prec) -> std::fmt::Result {
     /// Prints a left parenthesis if the actual precedence level is lower than the expected.
     fn left_paren(f: &mut Formatter<'_>, actual: Prec, expected: Prec) -> std::fmt::Result {
       if actual < expected {
@@ -69,39 +42,33 @@ impl Term<'_> {
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Var(ix) => {
-        if let Some(i) = vars.len().checked_sub(ix + 1) {
-          if let Binding::Named(name) = &vars[i] {
-            left_paren(f, Prec::Atom, prec)?;
-            write!(f, "{}", name)?;
-            right_paren(f, Prec::Atom, prec)?;
-            return Ok(());
-          }
-        }
+      Term::Var(var) => {
         left_paren(f, Prec::Atom, prec)?;
-        write!(f, "@^{}", ix)?;
+        match var {
+          Var::Ix(ix) => write!(f, "@^{}", ix)?,
+          Var::Name(name, _, _) => write!(f, "{}", name)?,
+        }
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
       Term::Ann(x, t, b) => {
         left_paren(f, Prec::Term, prec)?;
-        x.print(f, count, vars, Prec::Body)?;
+        x.print(f, Prec::Body)?;
         match b {
           false => write!(f, " : ")?,
           true => write!(f, " :: ")?,
         }
-        t.print(f, count, vars, Prec::Term)?;
+        t.print(f, Prec::Term)?;
         right_paren(f, Prec::Term, prec)?;
         Ok(())
       }
-      Term::Let(_, _) => {
+      Term::Let(_, _, _) => {
         let mut body = self;
         let mut names = Vec::new();
         let mut vs = Vec::new();
-        while let Term::Let(v, x) = body {
+        while let Term::Let(i, v, x) = body {
           body = x;
-          names.push(generate_name(*count));
-          *count += 1;
+          names.push(i.name);
           vs.push(v);
         }
         left_paren(f, Prec::Body, prec)?;
@@ -111,23 +78,20 @@ impl Term<'_> {
             write!(f, ", ")?;
           }
           write!(f, "{} ≔ ", name)?;
-          t.print(f, count, vars, Prec::Term)?;
-          vars.push(Binding::Named(std::mem::take(name)));
+          t.print(f, Prec::Term)?;
         }
         write!(f, "] ")?;
-        body.print(f, count, vars, Prec::Body)?;
+        body.print(f, Prec::Body)?;
         right_paren(f, Prec::Body, prec)?;
-        vars.truncate(vars.len() - names.len());
         Ok(())
       }
-      Term::Pi(_, _) => {
+      Term::Pi(_, _, _) => {
         let mut body = self;
         let mut names = Vec::new();
         let mut ts = Vec::new();
-        while let Term::Pi(t, u) = body {
+        while let Term::Pi(i, t, u) = body {
           body = u;
-          names.push(generate_name(*count));
-          *count += 1;
+          names.push(i.name);
           ts.push(t);
         }
         left_paren(f, Prec::Body, prec)?;
@@ -137,22 +101,19 @@ impl Term<'_> {
             write!(f, ", ")?;
           }
           write!(f, "{} : ", name)?;
-          t.print(f, count, vars, Prec::Term)?;
-          vars.push(Binding::Named(std::mem::take(name)));
+          t.print(f, Prec::Term)?;
         }
         write!(f, "] → ")?;
-        body.print(f, count, vars, Prec::Body)?;
+        body.print(f, Prec::Body)?;
         right_paren(f, Prec::Body, prec)?;
-        vars.truncate(vars.len() - names.len());
         Ok(())
       }
-      Term::Fun(_) => {
+      Term::Fun(_, _) => {
         let mut body = self;
         let mut names = Vec::new();
-        while let Term::Fun(b) = body {
+        while let Term::Fun(i, b) = body {
           body = b;
-          names.push(generate_name(*count));
-          *count += 1;
+          names.push(i.name);
         }
         left_paren(f, Prec::Body, prec)?;
         write!(f, "[")?;
@@ -161,58 +122,49 @@ impl Term<'_> {
             write!(f, ", ")?;
           }
           write!(f, "{}", name)?;
-          vars.push(Binding::Named(std::mem::take(name)));
         }
         write!(f, "] ↦ ")?;
-        body.print(f, count, vars, Prec::Body)?;
+        body.print(f, Prec::Body)?;
         right_paren(f, Prec::Body, prec)?;
-        vars.truncate(vars.len() - names.len());
         Ok(())
       }
-      Term::App(_, _) => {
+      Term::App(_, _, _) => {
         let mut init = self;
         let mut xs = Vec::new();
-        while let Term::App(f, x) = init {
+        while let Term::App(f, x, _) = init {
           init = f;
           xs.push(x);
         }
         let g = init;
         xs.reverse();
         left_paren(f, Prec::Body, prec)?;
-        g.print(f, count, vars, Prec::Proj)?;
+        g.print(f, Prec::Proj)?;
         for x in xs.iter() {
           write!(f, " ")?;
-          x.print(f, count, vars, Prec::Proj)?;
+          x.print(f, Prec::Proj)?;
         }
         right_paren(f, Prec::Body, prec)?;
         Ok(())
       }
       Term::Unit => write!(f, "Unit"),
-      Term::Sig(_, _) => {
+      Term::Sig(_, _, _) => {
         let mut init = self;
         let mut us = Vec::new();
-        while let Term::Sig(t, u) = init {
+        while let Term::Sig(i, t, u) = init {
           init = t;
-          us.push(u);
+          us.push((i, u));
         }
         if let Term::Unit = init {
           us.reverse();
           left_paren(f, Prec::Atom, prec)?;
           write!(f, "{{")?;
-          vars.push(Binding::Tuple(Vec::new()));
-          for (i, t) in us.iter().enumerate() {
-            if i != 0 {
+          for (j, (i, u)) in us.iter().enumerate() {
+            if j != 0 {
               write!(f, ", ")?;
             }
-            let name = generate_name(*count);
-            *count += 1;
-            write!(f, "{} : ", name)?;
-            t.print(f, count, vars, Prec::Term)?;
-            if let Some(Binding::Tuple(var)) = vars.last_mut() {
-              var.push(name);
-            }
+            write!(f, "{} : ", i.name)?;
+            u.print(f, Prec::Term)?;
           }
-          vars.pop();
           write!(f, "}}")?;
           right_paren(f, Prec::Atom, prec)?;
         } else {
@@ -220,31 +172,24 @@ impl Term<'_> {
         }
         Ok(())
       }
-      Term::Star | Term::Tup(_, _) => {
+      Term::Star | Term::Tup(_, _, _) => {
         let mut init = self;
         let mut bs = Vec::new();
-        while let Term::Tup(a, b) = init {
+        while let Term::Tup(i, a, b) = init {
           init = a;
-          bs.push(b);
+          bs.push((i, b));
         }
         if let Term::Star = init {
           bs.reverse();
           left_paren(f, Prec::Atom, prec)?;
           write!(f, "{{")?;
-          vars.push(Binding::Tuple(Vec::new()));
-          for (i, b) in bs.iter().enumerate() {
-            if i != 0 {
+          for (j, (i, b)) in bs.iter().enumerate() {
+            if j != 0 {
               write!(f, ", ")?;
             }
-            let name = generate_name(*count);
-            *count += 1;
-            write!(f, "{} ≔ ", name)?;
-            b.print(f, count, vars, Prec::Term)?;
-            if let Some(Binding::Tuple(var)) = vars.last_mut() {
-              var.push(name);
-            }
+            write!(f, "{} ≔ ", i.name)?;
+            b.print(f, Prec::Term)?;
           }
-          vars.pop();
           write!(f, "}}")?;
           right_paren(f, Prec::Atom, prec)?;
         } else {
@@ -253,20 +198,8 @@ impl Term<'_> {
         Ok(())
       }
       Term::Last(Term::Init(n, x)) => {
-        if let Term::Var(ix) = x {
-          if let Some(i) = vars.len().checked_sub(ix + 1) {
-            if let Binding::Tuple(var) = &vars[i] {
-              if let Some(n) = var.len().checked_sub(n + 1) {
-                left_paren(f, Prec::Atom, prec)?;
-                write!(f, "{}", var[n])?;
-                right_paren(f, Prec::Atom, prec)?;
-                return Ok(());
-              }
-            }
-          }
-        }
         left_paren(f, Prec::Proj, prec)?;
-        x.print(f, count, vars, Prec::Proj)?;
+        x.print(f, Prec::Proj)?;
         write!(f, "^{}", n)?;
         right_paren(f, Prec::Proj, prec)?;
         Ok(())
@@ -277,8 +210,8 @@ impl Term<'_> {
   }
 }
 
-impl std::fmt::Display for Term<'_> {
+impl std::fmt::Display for Term<'_, Named<'_>> {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    self.print(f, &mut 0, &mut Vec::new(), Prec::Term)
+    self.print(f, Prec::Term)
   }
 }

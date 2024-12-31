@@ -4,35 +4,61 @@ use std::slice::from_raw_parts;
 use super::arena::Arena;
 use super::errors::{EvalError, TypeError};
 
+/// # Binder information
+///
+/// Auxiliary information for bound variables or fields (e.g. names, attributes).
+#[derive(Debug, Clone, Copy)]
+pub struct Binder<'a> {
+  pub name: &'a str,
+  pub attrs: &'a [&'a str],
+}
+
+/// # Term decoration
+///
+/// Type index of [`Term`], used for extensions.
+pub trait Decoration {
+  type Var;
+}
+
+/// # Core term decoration
+///
+/// The default term decoration for the core calculus.
+#[derive(Debug, Clone, Copy)]
+pub struct Core;
+
+impl Decoration for Core {
+  type Var = usize;
+}
+
 /// # Terms
 ///
 /// Terms of the core calculus.
 ///
 /// Can be understood as the "source code" given to the evaluator.
 #[derive(Debug, Clone, Copy)]
-pub enum Term<'a> {
+pub enum Term<'a, D: Decoration> {
   /// Universe in levels.
   Univ(usize),
-  /// Variables in de Bruijn indices.
-  Var(usize),
+  /// Variables in parameterised representations.
+  Var(D::Var),
   /// Type annotations (value, type, arena boundary flag).
-  Ann(&'a Term<'a>, &'a Term<'a>, bool),
-  /// Let expressions (value, *body*).
-  Let(&'a Term<'a>, &'a Term<'a>),
-  /// Function types (parameter type, *return type*).
-  Pi(&'a Term<'a>, &'a Term<'a>),
-  /// Function abstractions (*body*).
-  Fun(&'a Term<'a>),
-  /// Function applications (function, argument).
-  App(&'a Term<'a>, &'a Term<'a>),
-  /// Tuple types (initial types, *last type*).
-  Sig(&'a Term<'a>, &'a Term<'a>),
-  /// Tuple constructors (initial values, *last value*).
-  Tup(&'a Term<'a>, &'a Term<'a>),
+  Ann(&'a Term<'a, D>, &'a Term<'a, D>, bool),
+  /// Let expressions (binder info, value, *body*).
+  Let(Binder<'a>, &'a Term<'a, D>, &'a Term<'a, D>),
+  /// Function types (binder info, parameter type, *return type*).
+  Pi(Binder<'a>, &'a Term<'a, D>, &'a Term<'a, D>),
+  /// Function abstractions (binder info, *body*).
+  Fun(Binder<'a>, &'a Term<'a, D>),
+  /// Function applications (function, argument, dot-syntax flag).
+  App(&'a Term<'a, D>, &'a Term<'a, D>, bool),
+  /// Tuple types (field info, initial types, *last type*).
+  Sig(Binder<'a>, &'a Term<'a, D>, &'a Term<'a, D>),
+  /// Tuple constructors (field info, initial values, *last value*).
+  Tup(Binder<'a>, &'a Term<'a, D>, &'a Term<'a, D>),
   /// Tuple initial segments (truncation, tuple).
-  Init(usize, &'a Term<'a>),
+  Init(usize, &'a Term<'a, D>),
   /// Tuple last element (tuple).
-  Last(&'a Term<'a>),
+  Last(&'a Term<'a, D>),
   /// Empty tuple types.
   Unit,
   /// Empty tuple constructors.
@@ -75,7 +101,7 @@ pub enum Val<'a, 'b> {
 #[derive(Debug, Clone, Copy)]
 pub struct Clos<'a, 'b> {
   pub env: Stack<'a, 'b>,
-  pub body: &'b Term<'b>,
+  pub body: &'b Term<'b, Core>,
 }
 
 /// # Linked list stacks
@@ -86,7 +112,7 @@ pub struct Clos<'a, 'b> {
 #[derive(Debug, Clone, Copy)]
 pub enum Stack<'a, 'b> {
   Nil,
-  Cons { prev: &'a Stack<'a, 'b>, value: &'a Val<'a, 'b> },
+  Cons { prev: &'a Stack<'a, 'b>, value: Val<'a, 'b> },
 }
 
 impl<'a, 'b> Stack<'a, 'b> {
@@ -122,7 +148,7 @@ impl<'a, 'b> Stack<'a, 'b> {
     while let Stack::Cons { prev, value } = curr {
       ar.inc_link_count();
       if index == 0 {
-        return Some(**value);
+        return Some(*value);
       }
       index -= 1;
       curr = prev;
@@ -132,23 +158,30 @@ impl<'a, 'b> Stack<'a, 'b> {
 
   /// Extends the stack with a new value.
   pub fn extend(&self, value: Val<'a, 'b>, ar: &'a Arena) -> Self {
-    Stack::Cons { prev: ar.frame(*self), value: ar.val(value) }
+    Stack::Cons { prev: ar.frame(*self), value }
   }
 }
 
-impl Term<'_> {
-  /// Clones `self` to given arena, expected to be used for outputs and error reporting.
-  pub fn relocate<'b>(&self, ar: &'b Arena) -> &'b Term<'b> {
+impl Binder<'_> {
+  /// Clones `self` to given arena.
+  pub fn relocate<'b>(&self, ar: &'b Arena) -> Binder<'b> {
+    Binder { name: ar.string(self.name), attrs: ar.strings(self.attrs) }
+  }
+}
+
+impl Term<'_, Core> {
+  /// Clones `self` to given arena.
+  pub fn relocate<'b>(&self, ar: &'b Arena) -> &'b Term<'b, Core> {
     match self {
       Term::Univ(v) => ar.term(Term::Univ(*v)),
       Term::Var(ix) => ar.term(Term::Var(*ix)),
       Term::Ann(x, t, b) => ar.term(Term::Ann(x.relocate(ar), t.relocate(ar), *b)),
-      Term::Let(v, x) => ar.term(Term::Let(v.relocate(ar), x.relocate(ar))),
-      Term::Pi(t, u) => ar.term(Term::Pi(t.relocate(ar), u.relocate(ar))),
-      Term::Fun(b) => ar.term(Term::Fun(b.relocate(ar))),
-      Term::App(f, x) => ar.term(Term::App(f.relocate(ar), x.relocate(ar))),
-      Term::Sig(t, u) => ar.term(Term::Sig(t.relocate(ar), u.relocate(ar))),
-      Term::Tup(a, b) => ar.term(Term::Tup(a.relocate(ar), b.relocate(ar))),
+      Term::Let(i, v, x) => ar.term(Term::Let(i.relocate(ar), v.relocate(ar), x.relocate(ar))),
+      Term::Pi(i, t, u) => ar.term(Term::Pi(i.relocate(ar), t.relocate(ar), u.relocate(ar))),
+      Term::Fun(i, b) => ar.term(Term::Fun(i.relocate(ar), b.relocate(ar))),
+      Term::App(f, x, b) => ar.term(Term::App(f.relocate(ar), x.relocate(ar), *b)),
+      Term::Sig(i, t, u) => ar.term(Term::Sig(i.relocate(ar), t.relocate(ar), u.relocate(ar))),
+      Term::Tup(i, a, b) => ar.term(Term::Tup(i.relocate(ar), a.relocate(ar), b.relocate(ar))),
       Term::Init(n, x) => ar.term(Term::Init(*n, x.relocate(ar))),
       Term::Last(x) => ar.term(Term::Last(x.relocate(ar))),
       Term::Unit => ar.term(Term::Unit),
@@ -157,7 +190,7 @@ impl Term<'_> {
   }
 }
 
-impl<'b> Term<'b> {
+impl<'b> Term<'b, Core> {
   /// Reduces `self` so that all `let`s are collected into the environment and then frozen at
   /// binders. This is mutually recursive with [`Clos::apply`], forming an eval-apply loop.
   ///
@@ -174,21 +207,21 @@ impl<'b> Term<'b> {
       // The (τ) rule is always applied.
       Term::Ann(x, _, _) => x.eval(env, ar),
       // For `let`s, we reduce the value, collect it into the environment to reduce the body.
-      Term::Let(v, x) => x.eval(&env.extend(v.eval(env, ar)?, ar), ar),
+      Term::Let(_, v, x) => x.eval(&env.extend(v.eval(env, ar)?, ar), ar),
       // For binders, we freeze the whole environment and store the body as a closure.
-      Term::Pi(t, u) => Ok(Val::Pi(ar.val(t.eval(env, ar)?), ar.clos(Clos { env: *env, body: u }))),
-      Term::Fun(b) => Ok(Val::Fun(ar.clos(Clos { env: *env, body: b }))),
+      Term::Pi(_, t, u) => Ok(Val::Pi(ar.val(t.eval(env, ar)?), ar.clos(Clos { env: *env, body: u }))),
+      Term::Fun(_, b) => Ok(Val::Fun(ar.clos(Clos { env: *env, body: b }))),
       // For applications, we reduce both operands and combine them back.
       // In the case of a redex, the (β) rule is applied.
-      Term::App(f, x) => match (f.eval(env, ar)?, x.eval(env, ar)?) {
+      Term::App(f, x, _) => match (f.eval(env, ar)?, x.eval(env, ar)?) {
         (Val::Fun(b), x) => b.apply(x, ar),
         (f, x) => Ok(Val::App(ar.val(f), ar.val(x))),
       },
       // For binders, we freeze the whole environment and store the body as a closure.
-      Term::Unit | Term::Sig(_, _) => {
+      Term::Unit | Term::Sig(_, _, _) => {
         let mut init = self;
         let mut us = Vec::new();
-        while let Term::Sig(t, u) = init {
+        while let Term::Sig(_, t, u) = init {
           init = t;
           us.push(Clos { env: *env, body: u });
         }
@@ -199,10 +232,10 @@ impl<'b> Term<'b> {
           Err(EvalError::sig_improper(ar.term(*self)))
         }
       }
-      Term::Star | Term::Tup(_, _) => {
+      Term::Star | Term::Tup(_, _, _) => {
         let mut init = self;
         let mut bs = Vec::new();
-        while let Term::Tup(a, b) = init {
+        while let Term::Tup(_, a, b) = init {
           init = a;
           bs.push(b);
         }
@@ -255,36 +288,37 @@ impl<'a, 'b> Clos<'a, 'b> {
 
 impl<'a, 'b> Val<'a, 'b> {
   /// Reduces well-typed `self` to eliminate `let`s and convert it back into a [`Term`].
-  /// Can be an expensive operation. Expected to be used for outputs and error reporting.
+  /// Can be an expensive operation.
   ///
   /// Pre-conditions:
   ///
   /// - `self` is well-typed under a context with size `len` (to ensure termination).
-  pub fn quote(&self, len: usize, ar: &'b Arena) -> Result<Term<'b>, EvalError<'b>> {
+  pub fn quote(&self, len: usize, ar: &'b Arena) -> Result<&'b Term<'b, Core>, EvalError<'b>> {
+    let binder = Binder { name: "_", attrs: &[] }; // TODO: implement binder info
     match self {
-      Val::Univ(v) => Ok(Term::Univ(*v)),
-      Val::Gen(i) => Ok(Term::Var(len.checked_sub(i + 1).ok_or_else(|| EvalError::gen_level(*i, len))?)),
+      Val::Univ(v) => Ok(ar.term(Term::Univ(*v))),
+      Val::Gen(i) => Ok(ar.term(Term::Var(len.checked_sub(i + 1).ok_or_else(|| EvalError::gen_level(*i, len))?))),
       Val::Pi(t, u) => {
-        Ok(Term::Pi(ar.term(t.quote(len, ar)?), ar.term(u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
+        Ok(ar.term(Term::Pi(binder, t.quote(len, ar)?, u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
       }
-      Val::Fun(b) => Ok(Term::Fun(ar.term(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?))),
-      Val::App(f, x) => Ok(Term::App(ar.term(f.quote(len, ar)?), ar.term(x.quote(len, ar)?))),
+      Val::Fun(b) => Ok(ar.term(Term::Fun(binder, b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?))),
+      Val::App(f, x) => Ok(ar.term(Term::App(f.quote(len, ar)?, x.quote(len, ar)?, false))),
       Val::Sig(us) => {
-        let mut init = Term::Unit;
+        let mut init = ar.term(Term::Unit);
         for u in us.iter() {
-          init = Term::Sig(ar.term(init), ar.term(u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?));
+          init = ar.term(Term::Sig(binder, init, u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?));
         }
         Ok(init)
       }
       Val::Tup(bs) => {
-        let mut init = Term::Star;
+        let mut init = ar.term(Term::Star);
         for b in bs.iter() {
-          init = Term::Tup(ar.term(init), ar.term(b.quote(len + 1, ar)?));
+          init = ar.term(Term::Tup(binder, init, b.quote(len + 1, ar)?));
         }
         Ok(init)
       }
-      Val::Init(n, x) => Ok(Term::Init(*n, ar.term(x.quote(len, ar)?))),
-      Val::Last(x) => Ok(Term::Last(ar.term(x.quote(len, ar)?))),
+      Val::Init(n, x) => Ok(ar.term(Term::Init(*n, x.quote(len, ar)?))),
+      Val::Last(x) => Ok(ar.term(Term::Last(x.quote(len, ar)?))),
     }
   }
 
@@ -329,7 +363,7 @@ impl<'a, 'b> Val<'a, 'b> {
   }
 
   /// Given `self`, eliminates as [`Val::Univ`].
-  pub fn as_univ(self, term: &'b Term<'b>, len: usize, ar: &'b Arena) -> Result<usize, TypeError<'b>> {
+  pub fn as_univ(self, term: &'b Term<'b, Core>, len: usize, ar: &'b Arena) -> Result<usize, TypeError<'b>> {
     match self {
       Val::Univ(v) => Ok(v),
       ty => Err(TypeError::type_expected(term, ty, len, ar)),
@@ -339,7 +373,7 @@ impl<'a, 'b> Val<'a, 'b> {
   /// Given `self`, eliminates as [`Val::Pi`].
   pub fn as_pi(
     self,
-    term: Option<&'b Term<'b>>,
+    term: Option<&'b Term<'b, Core>>,
     len: usize,
     ar: &'b Arena,
   ) -> Result<(&'a Val<'a, 'b>, &'a Clos<'a, 'b>), TypeError<'b>> {
@@ -355,7 +389,7 @@ impl<'a, 'b> Val<'a, 'b> {
   /// Given `self`, eliminates as [`Val::Sig`].
   pub fn as_sig(
     self,
-    term: Option<&'b Term<'b>>,
+    term: Option<&'b Term<'b, Core>>,
     len: usize,
     ar: &'b Arena,
   ) -> Result<&'a [Clos<'a, 'b>], TypeError<'b>> {
@@ -369,7 +403,7 @@ impl<'a, 'b> Val<'a, 'b> {
   }
 }
 
-impl<'b> Term<'b> {
+impl<'b> Term<'b, Core> {
   /// Given universe `u`, returns the universe of its type.
   pub fn univ_univ(u: usize) -> Result<usize, TypeError<'static>> {
     match u {
@@ -432,13 +466,13 @@ impl<'b> Term<'b> {
       }
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly used on the value (in normal form) from the recursive call.
-      Term::Let(v, x) => {
+      Term::Let(_, v, x) => {
         let vt = v.infer(ctx, env, ar)?;
         let v = v.eval(env, ar)?;
         x.infer(&ctx.extend(vt, ar), &env.extend(v, ar), ar)
       }
       // The (Π form) and (extend) rules are used.
-      Term::Pi(t, u) => {
+      Term::Pi(_, t, u) => {
         let tt = t.infer(ctx, env, ar)?;
         let v = tt.as_univ(t, ctx.len(), ar)?;
         let ut = u.infer(&ctx.extend(t.eval(env, ar)?, ar), &env.extend(Val::Gen(env.len()), ar), ar)?;
@@ -446,19 +480,19 @@ impl<'b> Term<'b> {
         Ok(Val::Univ(Term::pi_univ(v, w)?))
       }
       // Function abstractions must be enclosed in type annotations, or appear as an argument.
-      Term::Fun(_) => Err(TypeError::ann_expected(ar.term(*self))),
+      Term::Fun(_, _) => Err(TypeError::ann_expected(ar.term(*self))),
       // The (Π elim) rule is used.
-      Term::App(f, x) => {
+      Term::App(f, x, _) => {
         let ft = f.infer(ctx, env, ar)?;
         let (t, u) = ft.as_pi(Some(f), ctx.len(), ar)?;
         x.check(*t, ctx, env, ar)?;
         Ok(u.apply(x.eval(env, ar)?, ar)?)
       }
       // The (Σ form), (⊤ form) and (extend) rules are used.
-      Term::Unit | Term::Sig(_, _) => {
+      Term::Unit | Term::Sig(_, _, _) => {
         let mut init = self;
         let mut us = Vec::new();
-        while let Term::Sig(t, u) = init {
+        while let Term::Sig(_, t, u) = init {
           init = t;
           us.push(u);
         }
@@ -478,7 +512,7 @@ impl<'b> Term<'b> {
         }
       }
       // Tuple constructors must be enclosed in type annotations, or appear as an argument.
-      Term::Star | Term::Tup(_, _) => Err(TypeError::ann_expected(ar.term(*self))),
+      Term::Star | Term::Tup(_, _, _) => Err(TypeError::ann_expected(ar.term(*self))),
       // The (Σ init) rule is used.
       Term::Init(n, x) => {
         let xt = x.infer(ctx, env, ar)?;
@@ -515,25 +549,25 @@ impl<'b> Term<'b> {
     match self {
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly inversely used on the `t` passed into the recursive call.
-      Term::Let(v, x) => {
+      Term::Let(_, v, x) => {
         let vt = v.infer(ctx, env, ar)?;
         let v = v.eval(env, ar)?;
         x.check(t, &ctx.extend(vt, ar), &env.extend(v, ar), ar)
       }
       // The (Π intro) and (extend) rules is used.
       // By pre-conditions, `t` is already known to have universe type.
-      Term::Fun(b) => {
+      Term::Fun(_, b) => {
         let x = Val::Gen(env.len());
         let (t, u) = t.as_pi(None, ctx.len(), ar)?;
         b.check(u.apply(x, ar)?, &ctx.extend(*t, ar), &env.extend(x, ar), ar)
       }
       // The (∑ intro) and (extend) rules are used.
       // By pre-conditions, `t` is already known to have universe type.
-      Term::Star | Term::Tup(_, _) => {
+      Term::Star | Term::Tup(_, _, _) => {
         let us = t.as_sig(None, ctx.len(), ar)?;
         let mut init = self;
         let mut bs = Vec::new();
-        while let Term::Tup(a, b) = init {
+        while let Term::Tup(_, a, b) = init {
           init = a;
           bs.push(b);
         }

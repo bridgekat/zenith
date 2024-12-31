@@ -1,7 +1,7 @@
 use bumpalo::Bump;
 use std::cell::Cell;
 
-use super::term::{Clos, Stack, Term, Val};
+use super::term::{Clos, Decoration, Stack, Term, Val};
 
 /// # Arena allocators
 ///
@@ -15,6 +15,7 @@ pub struct Arena {
   val_count: Cell<usize>,
   clos_count: Cell<usize>,
   frame_count: Cell<usize>,
+  char_count: Cell<usize>,
   lookup_count: Cell<usize>,
   link_count: Cell<usize>,
 }
@@ -26,7 +27,7 @@ impl Arena {
   }
 
   /// Allocates a new term.
-  pub fn term<'a>(&'a self, term: Term<'a>) -> &'a Term<'a> {
+  pub fn term<'a, D: Decoration>(&'a self, term: Term<'a, D>) -> &'a Term<'a, D> {
     self.term_count.update(|x| x + 1);
     self.data.alloc(term)
   }
@@ -59,6 +60,17 @@ impl Arena {
   pub fn frame<'a, 'b>(&'a self, stack: Stack<'a, 'b>) -> &'a Stack<'a, 'b> {
     self.frame_count.update(|x| x + 1);
     self.data.alloc(stack)
+  }
+
+  /// Allocates a new string.
+  pub fn string<'a>(&'a self, string: &str) -> &'a str {
+    self.char_count.update(|x| x + string.len());
+    self.data.alloc_str(string)
+  }
+
+  /// Allocates a new array of strings.
+  pub fn strings<'a>(&'a self, strings: &[&str]) -> &'a [&'a str] {
+    self.data.alloc_slice_copy(&strings.iter().map(|s| self.string(s)).collect::<Vec<_>>())
   }
 
   /// Increments the stack lookup counter for profiling.
