@@ -124,35 +124,35 @@ impl<'a> TypeError<'a> {
 
   pub fn type_expected<'b>(term: &'a Term<'a>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::TypeExpected { term, ty: ar.term(ty) },
+      Ok(ty) => Self::TypeExpected { term, ty },
       Err(err) => err.into(),
     }
   }
 
   pub fn pi_expected<'b>(term: &'a Term<'a>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::PiExpected { term, ty: ar.term(ty) },
+      Ok(ty) => Self::PiExpected { term, ty },
       Err(err) => err.into(),
     }
   }
 
   pub fn sig_expected<'b>(term: &'a Term<'a>, ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::SigExpected { term, ty: ar.term(ty) },
+      Ok(ty) => Self::SigExpected { term, ty },
       Err(err) => err.into(),
     }
   }
 
   pub fn pi_ann_expected<'b>(ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::PiAnnExpected { ty: ar.term(ty) },
+      Ok(ty) => Self::PiAnnExpected { ty },
       Err(err) => err.into(),
     }
   }
 
   pub fn sig_ann_expected<'b>(ty: Val<'b, 'a>, len: usize, ar: &'a Arena) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
-      Ok(ty) => Self::SigAnnExpected { ty: ar.term(ty) },
+      Ok(ty) => Self::SigAnnExpected { ty },
       Err(err) => err.into(),
     }
   }
@@ -166,7 +166,7 @@ impl<'a> TypeError<'a> {
   ) -> Self {
     match Val::quote(ar.val(ty), len, ar) {
       Ok(ty) => match Val::quote(ar.val(expect), len, ar) {
-        Ok(expect) => Self::TypeMismatch { term, ty: ar.term(ty), ety: ar.term(expect) },
+        Ok(ety) => Self::TypeMismatch { term, ty, ety },
         Err(err) => err.into(),
       },
       Err(err) => err.into(),

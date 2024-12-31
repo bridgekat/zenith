@@ -85,7 +85,7 @@ pub struct Clos<'a, 'b> {
 #[derive(Debug, Clone, Copy)]
 pub enum Stack<'a, 'b> {
   Nil,
-  Cons { prev: &'a Stack<'a, 'b>, value: &'a Val<'a, 'b> },
+  Cons { prev: &'a Stack<'a, 'b>, value: Val<'a, 'b> },
 }
 
 impl<'a, 'b> Stack<'a, 'b> {
@@ -121,7 +121,7 @@ impl<'a, 'b> Stack<'a, 'b> {
     while let Stack::Cons { prev, value } = curr {
       ar.inc_link_count();
       if index == 0 {
-        return Some(**value);
+        return Some(*value);
       }
       index -= 1;
       curr = prev;
@@ -131,7 +131,7 @@ impl<'a, 'b> Stack<'a, 'b> {
 
   /// Extends the stack with a new value.
   pub fn extend(&self, value: Val<'a, 'b>, ar: &'a Arena) -> Self {
-    Stack::Cons { prev: ar.frame(*self), value: ar.val(value) }
+    Stack::Cons { prev: ar.frame(*self), value }
   }
 }
 
@@ -259,31 +259,29 @@ impl<'a, 'b> Val<'a, 'b> {
   /// Pre-conditions:
   ///
   /// - `self` is well-typed under a context with size `len` (to ensure termination).
-  pub fn quote(&self, len: usize, ar: &'b Arena) -> Result<Term<'b>, EvalError<'b>> {
+  pub fn quote(&self, len: usize, ar: &'b Arena) -> Result<&'b Term<'b>, EvalError<'b>> {
     match self {
-      Val::Univ(v) => Ok(Term::Univ(*v)),
-      Val::Gen(i) => Ok(Term::Var(len.checked_sub(i + 1).ok_or_else(|| EvalError::gen_level(*i, len))?)),
-      Val::Pi(t, u) => {
-        Ok(Term::Pi(ar.term(t.quote(len, ar)?), ar.term(u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?)))
-      }
-      Val::Fun(b) => Ok(Term::Fun(ar.term(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?))),
-      Val::App(f, x) => Ok(Term::App(ar.term(f.quote(len, ar)?), ar.term(x.quote(len, ar)?))),
+      Val::Univ(v) => Ok(ar.term(Term::Univ(*v))),
+      Val::Gen(i) => Ok(ar.term(Term::Var(len.checked_sub(i + 1).ok_or_else(|| EvalError::gen_level(*i, len))?))),
+      Val::Pi(t, u) => Ok(ar.term(Term::Pi(t.quote(len, ar)?, u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?))),
+      Val::Fun(b) => Ok(ar.term(Term::Fun(b.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?))),
+      Val::App(f, x) => Ok(ar.term(Term::App(f.quote(len, ar)?, x.quote(len, ar)?))),
       Val::Sig(us) => {
-        let mut init = Term::Unit;
+        let mut init = ar.term(Term::Unit);
         for u in us.iter() {
-          init = Term::Sig(ar.term(init), ar.term(u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?));
+          init = ar.term(Term::Sig(init, u.apply(Val::Gen(len), ar)?.quote(len + 1, ar)?));
         }
         Ok(init)
       }
       Val::Tup(bs) => {
-        let mut init = Term::Star;
+        let mut init = ar.term(Term::Star);
         for b in bs.iter() {
-          init = Term::Tup(ar.term(init), ar.term(b.quote(len + 1, ar)?));
+          init = ar.term(Term::Tup(init, b.quote(len + 1, ar)?));
         }
         Ok(init)
       }
-      Val::Init(n, x) => Ok(Term::Init(*n, ar.term(x.quote(len, ar)?))),
-      Val::Last(x) => Ok(Term::Last(ar.term(x.quote(len, ar)?))),
+      Val::Init(n, x) => Ok(ar.term(Term::Init(*n, x.quote(len, ar)?))),
+      Val::Last(x) => Ok(ar.term(Term::Last(x.quote(len, ar)?))),
     }
   }
 
