@@ -1,7 +1,8 @@
 use bumpalo::Bump;
 use std::cell::Cell;
 
-use super::term::{Clos, Decoration, Stack, Term, Val};
+use crate::elab;
+use crate::ir;
 
 /// # Arena allocators
 ///
@@ -27,37 +28,43 @@ impl Arena {
   }
 
   /// Allocates a new term.
-  pub fn term<'a, D: Decoration>(&'a self, term: Term<'a, D>) -> &'a Term<'a, D> {
+  pub fn term<'a>(&'a self, term: ir::Term<'a>) -> &'a ir::Term<'a> {
+    self.term_count.update(|x| x + 1);
+    self.data.alloc(term)
+  }
+
+  /// Allocates a new named term.
+  pub fn named<'a>(&'a self, term: elab::Term<'a>) -> &'a elab::Term<'a> {
     self.term_count.update(|x| x + 1);
     self.data.alloc(term)
   }
 
   /// Allocates a new value.
-  pub fn val<'a, 'b>(&'a self, val: Val<'a, 'b>) -> &'a Val<'a, 'b> {
+  pub fn val<'a, 'b>(&'a self, val: ir::Val<'a, 'b>) -> &'a ir::Val<'a, 'b> {
     self.val_count.update(|x| x + 1);
     self.data.alloc(val)
   }
 
   /// Allocates a new array of values for writing.
-  pub fn values<'a, 'b>(&'a self, len: usize, nil: Val<'a, 'b>) -> &'a mut [Val<'a, 'b>] {
+  pub fn values<'a, 'b>(&'a self, len: usize, nil: ir::Val<'a, 'b>) -> &'a mut [ir::Val<'a, 'b>] {
     self.val_count.update(|x| x + len);
     self.data.alloc_slice_fill_copy(len, nil)
   }
 
   /// Allocates a new closure.
-  pub fn clos<'a, 'b>(&'a self, clos: Clos<'a, 'b>) -> &'a Clos<'a, 'b> {
+  pub fn clos<'a, 'b>(&'a self, clos: ir::Clos<'a, 'b>) -> &'a ir::Clos<'a, 'b> {
     self.clos_count.update(|x| x + 1);
     self.data.alloc(clos)
   }
 
   /// Allocates a new array of closures.
-  pub fn closures<'a, 'b>(&'a self, closures: &[Clos<'a, 'b>]) -> &'a [Clos<'a, 'b>] {
+  pub fn closures<'a, 'b>(&'a self, closures: &[ir::Clos<'a, 'b>]) -> &'a [ir::Clos<'a, 'b>] {
     self.clos_count.update(|x| x + closures.len());
     self.data.alloc_slice_copy(closures)
   }
 
   /// Allocates a new stack item.
-  pub fn frame<'a, 'b>(&'a self, stack: Stack<'a, 'b>) -> &'a Stack<'a, 'b> {
+  pub fn frame<'a, 'b>(&'a self, stack: ir::Stack<'a, 'b>) -> &'a ir::Stack<'a, 'b> {
     self.frame_count.update(|x| x + 1);
     self.data.alloc(stack)
   }

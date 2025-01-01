@@ -1,7 +1,6 @@
 use std::fmt::Formatter;
 
-use super::*;
-use crate::term::Term;
+use crate::elab::{Term, Var};
 
 /// Precedence levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -12,7 +11,7 @@ enum Prec {
   Atom,
 }
 
-impl Term<'_, Named<'_>> {
+impl Term<'_> {
   /// Pretty-prints a term.
   ///
   /// See documentation of [`Term::parse`] for the BNF grammar.
@@ -206,11 +205,12 @@ impl Term<'_, Named<'_>> {
       }
       Term::Init(_, _) => write!(f, "<improper init projection>"),
       Term::Last(_) => write!(f, "<improper last projection>"),
+      Term::Meta(_) => todo!(),
     }
   }
 }
 
-impl std::fmt::Display for Term<'_, Named<'_>> {
+impl std::fmt::Display for Term<'_> {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     self.print(f, Prec::Term)
   }

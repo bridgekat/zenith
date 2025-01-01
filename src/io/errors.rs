@@ -83,3 +83,6 @@ impl std::fmt::Display for ParseError {
     }
   }
 }
+
+impl std::error::Error for LexError {}
+impl std::error::Error for ParseError {}
