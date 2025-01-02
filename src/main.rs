@@ -1,4 +1,5 @@
 #![feature(cell_update)]
+#![warn(clippy::all)]
 
 pub mod arena;
 pub mod elab;
@@ -31,14 +32,14 @@ fn print_location_indicator(start: usize, end: usize, lines: &[String]) {
   let end = end.max(start);
   let (start_line, start_col) = pos_to_line_col(start, lines);
   let (end_line, end_col) = pos_to_line_col(end, lines);
-  let line = lines.get(start_line).map(|s| s.as_ref()).unwrap_or("");
+  let line = lines.get(start_line).map_or("", |s| s.as_ref());
   if start_line == end_line {
     println!("|");
-    println!("| {}", line);
+    println!("| {line}");
     println!("| {}{}", " ".repeat(start_col), "~".repeat((end_col - start_col).max(1)));
   } else {
     println!("|");
-    println!("| {}", line);
+    println!("| {line}");
     println!("| {}{}", " ".repeat(start_col), "~".repeat(line.chars().count() - start_col));
   }
 }
@@ -150,11 +151,19 @@ fn run_repl() -> std::io::Result<()> {
         continue;
       }
     };
-    println!("≡ {term}");
 
     match term.infer(&ir::Stack::new(&ar), &ir::Stack::new(&ar), &ar) {
-      Ok((_, t)) => match t.quote(0, &ar) {
-        Ok(t) => println!(": {t}"),
+      Ok((term, ty)) => match ty.quote(0, &ar) {
+        Ok(ty) => match term.eval(&ir::Stack::new(&ar), &ar) {
+          Ok(term) => match term.quote(0, &ar) {
+            Ok(t) => {
+              println!("≡ {t}");
+              println!(": {ty}");
+            }
+            Err(e) => println!("⨯ Error: {e}"),
+          },
+          Err(e) => println!("⨯ Error: {e}"),
+        },
         Err(e) => println!("⨯ Error: {e}"),
       },
       Err(e) => println!("⨯ Error: {e}"),

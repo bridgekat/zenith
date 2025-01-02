@@ -1,6 +1,6 @@
 use std::fmt::Formatter;
 
-use crate::elab::{Term, Var};
+use crate::elab::Term;
 
 /// Precedence levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -30,6 +30,14 @@ impl Term<'_> {
       }
       Ok(())
     }
+    /// Converts an empty string to "_".
+    fn present_name(x: &str) -> &str {
+      if x.is_empty() {
+        "_"
+      } else {
+        x
+      }
+    }
     match self {
       Term::Univ(v) => {
         left_paren(f, Prec::Atom, prec)?;
@@ -41,12 +49,9 @@ impl Term<'_> {
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Var(var) => {
+      Term::Var(ix) => {
         left_paren(f, Prec::Atom, prec)?;
-        match var {
-          Var::Ix(ix) => write!(f, "@^{}", ix)?,
-          Var::Name(name, _, _) => write!(f, "{}", name)?,
-        }
+        write!(f, "@^{}", ix)?;
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
@@ -63,20 +68,18 @@ impl Term<'_> {
       }
       Term::Let(_, _, _) => {
         let mut body = self;
-        let mut names = Vec::new();
         let mut vs = Vec::new();
         while let Term::Let(i, v, x) = body {
           body = x;
-          names.push(i.name);
-          vs.push(v);
+          vs.push((i, v));
         }
         left_paren(f, Prec::Body, prec)?;
         write!(f, "[")?;
-        for (i, (name, t)) in names.iter_mut().zip(vs.iter()).enumerate() {
-          if i != 0 {
+        for (j, (i, t)) in vs.iter().enumerate() {
+          if j != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{} ≔ ", name)?;
+          write!(f, "{} ≔ ", present_name(i.name))?;
           t.print(f, Prec::Term)?;
         }
         write!(f, "] ")?;
@@ -86,20 +89,18 @@ impl Term<'_> {
       }
       Term::Pi(_, _, _) => {
         let mut body = self;
-        let mut names = Vec::new();
         let mut ts = Vec::new();
         while let Term::Pi(i, t, u) = body {
           body = u;
-          names.push(i.name);
-          ts.push(t);
+          ts.push((i, t));
         }
         left_paren(f, Prec::Body, prec)?;
         write!(f, "[")?;
-        for (i, (name, t)) in names.iter_mut().zip(ts.iter()).enumerate() {
-          if i != 0 {
+        for (j, (i, t)) in ts.iter().enumerate() {
+          if j != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{} : ", name)?;
+          write!(f, "{} : ", present_name(i.name))?;
           t.print(f, Prec::Term)?;
         }
         write!(f, "] → ")?;
@@ -109,18 +110,18 @@ impl Term<'_> {
       }
       Term::Fun(_, _) => {
         let mut body = self;
-        let mut names = Vec::new();
+        let mut is = Vec::new();
         while let Term::Fun(i, b) = body {
           body = b;
-          names.push(i.name);
+          is.push(i);
         }
         left_paren(f, Prec::Body, prec)?;
         write!(f, "[")?;
-        for (i, name) in names.iter_mut().enumerate() {
-          if i != 0 {
+        for (j, i) in is.iter().enumerate() {
+          if j != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{}", name)?;
+          write!(f, "{}", present_name(i.name))?;
         }
         write!(f, "] ↦ ")?;
         body.print(f, Prec::Body)?;
@@ -161,7 +162,7 @@ impl Term<'_> {
             if j != 0 {
               write!(f, ", ")?;
             }
-            write!(f, "{} : ", i.name)?;
+            write!(f, "{} : ", present_name(i.name))?;
             u.print(f, Prec::Term)?;
           }
           write!(f, "}}")?;
@@ -186,7 +187,7 @@ impl Term<'_> {
             if j != 0 {
               write!(f, ", ")?;
             }
-            write!(f, "{} ≔ ", i.name)?;
+            write!(f, "{} ≔ ", present_name(i.name))?;
             b.print(f, Prec::Term)?;
           }
           write!(f, "}}")?;
@@ -206,6 +207,12 @@ impl Term<'_> {
       Term::Init(_, _) => write!(f, "<improper init projection>"),
       Term::Last(_) => write!(f, "<improper last projection>"),
       Term::Meta(_) => todo!(),
+      Term::Name(name) => {
+        left_paren(f, Prec::Atom, prec)?;
+        write!(f, "{}", name.segments.join("::"))?;
+        right_paren(f, Prec::Atom, prec)?;
+        Ok(())
+      }
     }
   }
 }

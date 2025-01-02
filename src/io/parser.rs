@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use super::*;
 use crate::arena::Arena;
-use crate::elab::{Bound, Field, Term, Var};
+use crate::elab::{Bound, Field, Name, Term};
 
 /// # Lexer tokens
 ///
@@ -151,6 +151,14 @@ impl<'a> Term<'a> {
         other => Err(ParseError::unexpected(other)),
       }
     }
+    /// Converts "_" to an empty string.
+    fn normalize_name(x: String) -> String {
+      if x == "_" {
+        "".to_owned()
+      } else {
+        x
+      }
+    }
     /// Parses a term.
     fn parse_term<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
@@ -187,57 +195,57 @@ impl<'a> Term<'a> {
             // Parsing a group of let binders.
             Some(Span { tok: Token::Def, .. }) => {
               it.next();
-              let mut is = Vec::from([Bound { name: ar.string(&x), attrs: &[] }]);
+              let mut is = Vec::from([Bound::new(&normalize_name(x), &[], ar)]);
               let mut vs = Vec::from([parse_term(it, ar)?]);
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Def)?;
-                is.push(Bound { name: ar.string(&x), attrs: &[] });
+                is.push(Bound::new(&normalize_name(x), &[], ar));
                 vs.push(parse_term(it, ar)?);
               }
               expect(it, Token::RightBracket)?;
               let mut body = parse_body(it, ar)?;
               for (i, v) in is.into_iter().rev().zip(vs.into_iter().rev()) {
-                body = ar.named(Term::Let(i, v, body));
+                body = ar.named(Term::Let(ar.bound(i), v, body));
               }
               Ok(body)
             }
             // Parsing a group of Pi binders.
             Some(Span { tok: Token::Ann(_), .. }) => {
               it.next();
-              let mut is = Vec::from([Bound { name: ar.string(&x), attrs: &[] }]);
+              let mut is = Vec::from([Bound::new(&normalize_name(x), &[], ar)]);
               let mut ts = Vec::from([parse_term(it, ar)?]);
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Ann(false))?;
-                is.push(Bound { name: ar.string(&x), attrs: &[] });
+                is.push(Bound::new(&normalize_name(x), &[], ar));
                 ts.push(parse_term(it, ar)?);
               }
               expect(it, Token::RightBracket)?;
               expect(it, Token::Pi)?;
               let mut body = parse_body(it, ar)?;
               for (i, t) in is.into_iter().rev().zip(ts.into_iter().rev()) {
-                body = ar.named(Term::Pi(i, t, body));
+                body = ar.named(Term::Pi(ar.bound(i), t, body));
               }
               Ok(body)
             }
             // Parsing a group of function binders.
             _ => {
-              let mut is = Vec::from([Bound { name: ar.string(&x), attrs: &[] }]);
+              let mut is = Vec::from([Bound::new(&normalize_name(x), &[], ar)]);
               let mut ts = Vec::from([()]);
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
-                is.push(Bound { name: ar.string(&x), attrs: &[] });
+                is.push(Bound::new(&normalize_name(x), &[], ar));
                 ts.push(());
               }
               expect(it, Token::RightBracket)?;
               expect(it, Token::Fun)?;
               let mut body = parse_body(it, ar)?;
               for (i, _) in is.into_iter().rev().zip(ts.into_iter().rev()) {
-                body = ar.named(Term::Fun(i, body));
+                body = ar.named(Term::Fun(ar.bound(i), body));
               }
               Ok(body)
             }
@@ -295,8 +303,8 @@ impl<'a> Term<'a> {
         Some(Span { tok: Token::Unit, .. }) => Ok(ar.named(Term::Unit)),
         Some(Span { tok: Token::Type, .. }) => Ok(ar.named(Term::Univ(0))),
         Some(Span { tok: Token::Kind, .. }) => Ok(ar.named(Term::Univ(1))),
-        Some(Span { tok: Token::Env, .. }) => Ok(ar.named(Term::Var(Var::Ix(expect_ix(it)?)))),
-        Some(Span { tok: Token::Id(x), start, end }) => Ok(ar.named(Term::Var(Var::Name(ar.string(&x), start, end)))),
+        Some(Span { tok: Token::Env, .. }) => Ok(ar.named(Term::Var(expect_ix(it)?))),
+        Some(Span { tok: Token::Id(x), .. }) => Ok(ar.named(Term::Name(Name::new(&x, ar)))),
         // Parsing a parenthesised term.
         Some(Span { tok: Token::LeftParen, .. }) => {
           let res = parse_term(it, ar)?;
@@ -317,12 +325,13 @@ impl<'a> Term<'a> {
             // Parsing a tuple aggregate.
             Some(Span { tok: Token::Def, .. }) => {
               let mut init = ar.named(Term::Star);
-              init = ar.named(Term::Tup(Field { name: ar.string(&x), attrs: &[] }, init, parse_term(it, ar)?));
+              init = ar.named(Term::Tup(ar.field(Field::new(&normalize_name(x), &[], ar)), init, parse_term(it, ar)?));
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Def)?;
-                init = ar.named(Term::Tup(Field { name: ar.string(&x), attrs: &[] }, init, parse_term(it, ar)?));
+                init =
+                  ar.named(Term::Tup(ar.field(Field::new(&normalize_name(x), &[], ar)), init, parse_term(it, ar)?));
               }
               expect(it, Token::RightBrace)?;
               Ok(init)
@@ -330,12 +339,13 @@ impl<'a> Term<'a> {
             // Parsing a tuple type aggregate.
             Some(Span { tok: Token::Ann(_), .. }) => {
               let mut init = ar.named(Term::Unit);
-              init = ar.named(Term::Sig(Field { name: ar.string(&x), attrs: &[] }, init, parse_term(it, ar)?));
+              init = ar.named(Term::Sig(ar.field(Field::new(&normalize_name(x), &[], ar)), init, parse_term(it, ar)?));
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Ann(false))?;
-                init = ar.named(Term::Sig(Field { name: ar.string(&x), attrs: &[] }, init, parse_term(it, ar)?));
+                init =
+                  ar.named(Term::Sig(ar.field(Field::new(&normalize_name(x), &[], ar)), init, parse_term(it, ar)?));
               }
               expect(it, Token::RightBrace)?;
               Ok(init)

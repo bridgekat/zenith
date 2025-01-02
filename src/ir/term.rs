@@ -34,18 +34,18 @@ pub enum Term<'a> {
   Var(usize),
   /// Type annotations (value, type, arena boundary flag).
   Ann(&'a Term<'a>, &'a Term<'a>, bool),
-  /// Let expressions (binder info, value, *body*).
-  Let(Bound<'a>, &'a Term<'a>, &'a Term<'a>),
-  /// Function types (binder info, parameter type, *return type*).
-  Pi(Bound<'a>, &'a Term<'a>, &'a Term<'a>),
-  /// Function abstractions (binder info, *body*).
-  Fun(Bound<'a>, &'a Term<'a>),
+  /// Let expressions (bound variable info, value, *body*).
+  Let(&'a Bound<'a>, &'a Term<'a>, &'a Term<'a>),
+  /// Function types (bound variable info, parameter type, *return type*).
+  Pi(&'a Bound<'a>, &'a Term<'a>, &'a Term<'a>),
+  /// Function abstractions (bound variable info, *body*).
+  Fun(&'a Bound<'a>, &'a Term<'a>),
   /// Function applications (function, argument, dot-syntax flag).
   App(&'a Term<'a>, &'a Term<'a>, bool),
-  /// Tuple types (field info, initial types, *last type*).
-  Sig(Field<'a>, &'a Term<'a>, &'a Term<'a>),
-  /// Tuple constructors (field info, initial values, *last value*).
-  Tup(Field<'a>, &'a Term<'a>, &'a Term<'a>),
+  /// Tuple types (field variable info, initial types, *last type*).
+  Sig(&'a Field<'a>, &'a Term<'a>, &'a Term<'a>),
+  /// Tuple constructors (field variable info, initial values, *last value*).
+  Tup(&'a Field<'a>, &'a Term<'a>, &'a Term<'a>),
   /// Tuple initial segments (truncation, tuple).
   Init(usize, &'a Term<'a>),
   /// Tuple last element (tuple).
@@ -73,12 +73,12 @@ pub enum Val<'a, 'b> {
   Pi(&'a Val<'a, 'b>, &'a Clos<'a, 'b>),
   /// Function abstractions (*body*).
   Fun(&'a Clos<'a, 'b>),
-  /// Function applications (function, argument).
-  App(&'a Val<'a, 'b>, &'a Val<'a, 'b>),
-  /// Tuple types (*element types*).
-  Sig(&'a [Clos<'a, 'b>]),
-  /// Tuple constructors (element values).
-  Tup(&'a [Val<'a, 'b>]),
+  /// Function applications (function, argument, dot-syntax flag).
+  App(&'a Val<'a, 'b>, &'a Val<'a, 'b>, bool),
+  /// Tuple types (field variable info, *element types*).
+  Sig(&'a [(&'b Field<'b>, Clos<'a, 'b>)]),
+  /// Tuple constructors (field variable info, element values).
+  Tup(&'a [(&'b Field<'b>, Val<'a, 'b>)]),
   /// Tuple initial segments (truncation, tuple).
   Init(usize, &'a Val<'a, 'b>),
   /// Tuple last element (tuple).
@@ -95,6 +95,7 @@ pub enum Val<'a, 'b> {
 /// and fast random access (in most cases). For more details, see the documentation for [`Stack`].
 #[derive(Debug, Clone, Copy)]
 pub struct Clos<'a, 'b> {
+  pub info: &'b Bound<'b>,
   pub env: Stack<'a, 'b>,
   pub body: &'b Term<'b>,
 }
@@ -107,67 +108,40 @@ pub struct Clos<'a, 'b> {
 #[derive(Debug, Clone, Copy)]
 pub enum Stack<'a, 'b> {
   Nil,
-  Cons { prev: &'a Stack<'a, 'b>, value: Val<'a, 'b> },
+  Cons { prev: &'a Stack<'a, 'b>, info: &'b Bound<'b>, value: Val<'a, 'b> },
 }
 
-impl<'a, 'b> Stack<'a, 'b> {
-  /// Creates an empty stack.
-  pub fn new(_: &'a Arena) -> Self {
-    Stack::Nil
+impl<'a> Bound<'a> {
+  /// Creates a new bound variable info with empty name (i.e. transparent).
+  pub fn empty() -> &'a Self {
+    &Self { name: "", attrs: &[] }
   }
 
-  /// Returns if the stack is empty.
-  pub fn is_empty(&self) -> bool {
-    match self {
-      Stack::Nil => true,
-      Stack::Cons { prev: _, value: _ } => false,
-    }
+  /// Creates a new bound variable info in the given arena.
+  pub fn new(name: &str, attrs: &[&str], ar: &'a Arena) -> Self {
+    Self { name: ar.string(name), attrs: ar.strings(attrs) }
   }
 
-  /// Returns the length of the stack.
-  pub fn len(&self) -> usize {
-    let mut curr = self;
-    let mut len = 0;
-    while let Stack::Cons { prev, value: _ } = curr {
-      len += 1;
-      curr = prev;
-    }
-    len
-  }
-
-  /// Returns the value at the given de Bruijn index, if it exists.
-  pub fn get(&self, index: usize, ar: &'a Arena) -> Option<Val<'a, 'b>> {
-    let mut curr = self;
-    let mut index = index;
-    ar.inc_lookup_count();
-    while let Stack::Cons { prev, value } = curr {
-      ar.inc_link_count();
-      if index == 0 {
-        return Some(*value);
-      }
-      index -= 1;
-      curr = prev;
-    }
-    None
-  }
-
-  /// Extends the stack with a new value.
-  pub fn extend(&self, value: Val<'a, 'b>, ar: &'a Arena) -> Self {
-    Stack::Cons { prev: ar.frame(*self), value }
-  }
-}
-
-impl Bound<'_> {
   /// Clones `self` to given arena.
-  pub fn relocate<'b>(&self, ar: &'b Arena) -> Bound<'b> {
-    Bound { name: ar.string(self.name), attrs: ar.strings(self.attrs) }
+  pub fn relocate<'b>(&self, ar: &'b Arena) -> &'b Bound<'b> {
+    ar.bound(Bound { name: ar.string(self.name), attrs: ar.strings(self.attrs) })
   }
 }
 
-impl Field<'_> {
+impl<'a> Field<'a> {
+  /// Creates a new field variable info with empty name (i.e. transparent).
+  pub fn empty() -> &'a Self {
+    &Self { name: "", attrs: &[] }
+  }
+
+  /// Creates a new field variable info in the given arena.
+  pub fn new(name: &str, attrs: &[&str], ar: &'a Arena) -> Self {
+    Self { name: ar.string(name), attrs: ar.strings(attrs) }
+  }
+
   /// Clones `self` to given arena.
-  pub fn relocate<'b>(&self, ar: &'b Arena) -> Field<'b> {
-    Field { name: ar.string(self.name), attrs: ar.strings(self.attrs) }
+  pub fn relocate<'b>(&self, ar: &'b Arena) -> &'b Field<'b> {
+    ar.field(Field { name: ar.string(self.name), attrs: ar.strings(self.attrs) })
   }
 }
 
@@ -193,6 +167,53 @@ impl Term<'_> {
   }
 }
 
+impl<'a, 'b> Stack<'a, 'b> {
+  /// Creates an empty stack.
+  pub fn new(_: &'a Arena) -> Self {
+    Stack::Nil
+  }
+
+  /// Returns if the stack is empty.
+  pub fn is_empty(&self) -> bool {
+    match self {
+      Stack::Nil => true,
+      Stack::Cons { prev: _, info: _, value: _ } => false,
+    }
+  }
+
+  /// Returns the length of the stack.
+  pub fn len(&self) -> usize {
+    let mut curr = self;
+    let mut len = 0;
+    while let Stack::Cons { prev, info: _, value: _ } = curr {
+      len += 1;
+      curr = prev;
+    }
+    len
+  }
+
+  /// Returns the value at the given de Bruijn index, if it exists.
+  pub fn get(&self, index: usize, ar: &'a Arena) -> Option<Val<'a, 'b>> {
+    let mut curr = self;
+    let mut index = index;
+    ar.inc_lookup_count();
+    while let Stack::Cons { prev, info: _, value } = curr {
+      ar.inc_link_count();
+      if index == 0 {
+        return Some(*value);
+      }
+      index -= 1;
+      curr = prev;
+    }
+    None
+  }
+
+  /// Extends the stack with a new value.
+  pub fn extend(&self, info: &'b Bound<'b>, value: Val<'a, 'b>, ar: &'a Arena) -> Self {
+    Stack::Cons { prev: ar.frame(*self), info, value }
+  }
+}
+
 impl<'b> Term<'b> {
   /// Reduces `self` so that all `let`s are collected into the environment and then frozen at
   /// binders. This is mutually recursive with [`Clos::apply`], forming an eval-apply loop.
@@ -210,23 +231,23 @@ impl<'b> Term<'b> {
       // The (τ) rule is always applied.
       Term::Ann(x, _, _) => x.eval(env, ar),
       // For `let`s, we reduce the value, collect it into the environment to reduce the body.
-      Term::Let(_, v, x) => x.eval(&env.extend(v.eval(env, ar)?, ar), ar),
+      Term::Let(i, v, x) => x.eval(&env.extend(i, v.eval(env, ar)?, ar), ar),
       // For binders, we freeze the whole environment and store the body as a closure.
-      Term::Pi(_, t, u) => Ok(Val::Pi(ar.val(t.eval(env, ar)?), ar.clos(Clos { env: *env, body: u }))),
-      Term::Fun(_, b) => Ok(Val::Fun(ar.clos(Clos { env: *env, body: b }))),
+      Term::Pi(i, t, u) => Ok(Val::Pi(ar.val(t.eval(env, ar)?), ar.clos(Clos { info: i, env: *env, body: u }))),
+      Term::Fun(i, b) => Ok(Val::Fun(ar.clos(Clos { info: i, env: *env, body: b }))),
       // For applications, we reduce both operands and combine them back.
       // In the case of a redex, the (β) rule is applied.
-      Term::App(f, x, _) => match (f.eval(env, ar)?, x.eval(env, ar)?) {
+      Term::App(f, x, b) => match (f.eval(env, ar)?, x.eval(env, ar)?) {
         (Val::Fun(b), x) => b.apply(x, ar),
-        (f, x) => Ok(Val::App(ar.val(f), ar.val(x))),
+        (f, x) => Ok(Val::App(ar.val(f), ar.val(x), *b)),
       },
       // For binders, we freeze the whole environment and store the body as a closure.
       Term::Unit | Term::Sig(_, _, _) => {
         let mut init = self;
         let mut us = Vec::new();
-        while let Term::Sig(_, t, u) = init {
+        while let Term::Sig(i, t, u) = init {
           init = t;
-          us.push(Clos { env: *env, body: u });
+          us.push((*i, Clos { info: Bound::empty(), env: *env, body: u }));
         }
         if let Term::Unit = init {
           us.reverse();
@@ -238,18 +259,18 @@ impl<'b> Term<'b> {
       Term::Star | Term::Tup(_, _, _) => {
         let mut init = self;
         let mut bs = Vec::new();
-        while let Term::Tup(_, a, b) = init {
+        while let Term::Tup(i, a, b) = init {
           init = a;
-          bs.push(b);
+          bs.push((*i, b));
         }
         if let Term::Star = init {
           bs.reverse();
           // Eagerly evaluate tuple elements.
-          let vs = ar.values(bs.len(), Val::Gen(0));
-          for (i, b) in bs.iter().enumerate() {
+          let vs = ar.values(bs.len());
+          for (j, (i, b)) in bs.into_iter().enumerate() {
             // SAFETY: the borrowed range `&vs[..i]` is no longer modified.
-            let a = Val::Tup(unsafe { from_raw_parts(vs.as_ptr(), i) });
-            vs[i] = b.eval(&env.extend(a, ar), ar)?;
+            let a = Val::Tup(unsafe { from_raw_parts(vs.as_ptr(), j) });
+            vs[j] = (i, b.eval(&env.extend(Bound::empty(), a, ar), ar)?);
           }
           Ok(Val::Tup(vs))
         } else {
@@ -264,16 +285,16 @@ impl<'b> Term<'b> {
           let m = bs.len().checked_sub(*n).ok_or_else(|| EvalError::tup_init(*n, bs.len()))?;
           Ok(Val::Tup(&bs[..m]))
         }
-        a => Ok(Val::Init(*n, ar.val(a))),
+        x => Ok(Val::Init(*n, ar.val(x))),
       },
       // For lasts (i.e. second projections), we reduce the operand and combine it back.
       // In the case of a redex, the (π last) rule is applied.
       Term::Last(x) => match x.eval(env, ar)? {
         Val::Tup(bs) => {
           let i = bs.len().checked_sub(1).ok_or_else(|| EvalError::tup_last(1, bs.len()))?;
-          Ok(bs[i])
+          Ok(bs[i].1)
         }
-        a => Ok(Val::Last(ar.val(a))),
+        x => Ok(Val::Last(ar.val(x))),
       },
       // For holes, we freeze the whole environment around it.
       Term::Meta(m) => Ok(Val::Meta(ar.frame(*env), *m)),
@@ -286,8 +307,8 @@ impl<'a, 'b> Clos<'a, 'b> {
   /// empty environment populated with all `let`s. This is mutually recursive with [`Term::eval`],
   /// forming an eval-apply loop.
   pub fn apply(&self, x: Val<'a, 'b>, ar: &'b Arena) -> Result<Val<'a, 'b>, EvalError<'b>> {
-    let Self { env, body } = self;
-    body.eval(&env.extend(x, ar), ar)
+    let Self { env, info, body } = self;
+    body.eval(&env.extend(info, x, ar), ar)
   }
 }
 
@@ -309,9 +330,12 @@ impl<'b> Val<'_, 'b> {
       (Val::Fun(b), Val::Fun(c)) => {
         Ok(Val::conv(&b.apply(Val::Gen(len), ar)?, &c.apply(Val::Gen(len), ar)?, len + 1, ar)?)
       }
-      (Val::App(f, x), Val::App(g, y)) => Ok(Val::conv(f, g, len, ar)? && Val::conv(x, y, len, ar)?),
+      (Val::App(f, x, _), Val::App(g, y, _)) => Ok(Val::conv(f, g, len, ar)? && Val::conv(x, y, len, ar)?),
       (Val::Sig(us), Val::Sig(vs)) if us.len() == vs.len() => {
-        for (u, v) in us.iter().zip(vs.iter()) {
+        for ((i, u), (j, v)) in us.iter().zip(vs.iter()) {
+          if i.name != j.name {
+            return Ok(false);
+          }
           if !Val::conv(&u.apply(Val::Gen(len), ar)?, &v.apply(Val::Gen(len), ar)?, len + 1, ar)? {
             return Ok(false);
           }
@@ -319,7 +343,10 @@ impl<'b> Val<'_, 'b> {
         Ok(true)
       }
       (Val::Tup(bs), Val::Tup(cs)) if bs.len() == cs.len() => {
-        for (b, c) in bs.iter().zip(cs.iter()) {
+        for ((i, b), (j, c)) in bs.iter().zip(cs.iter()) {
+          if i.name != j.name {
+            return Ok(false);
+          }
           if !Val::conv(b, c, len, ar)? {
             return Ok(false);
           }

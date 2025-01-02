@@ -1,20 +1,21 @@
-# Zenith theorem prover
-
-![Zenith](docs/title.png)
+![Zenith theorem prover](docs/title.png)
 
 This project is my personal attempt at making a theorem prover with an optimised interactive UI logic. It is based on a bare-bones type theory with only dependent functions (`Π`-types), dependent pairs (`Σ`-types), the `Unit` type, and two universes `Type : Kind`. All other types are to be expressed as postulates.
 
 The `Σ` and `Unit` types are presented as "dependent tuples" which follow the usual rules of snoc-lists of nested `Σ`-types, and are implemented using contiguous arrays in the small kernel (\~400 LOC without I/O and errors) for fast random access to element values and types.
 
-Example proof terms in the core syntax:
+Example proof terms in the surface syntax:
 
-- Some basic first-order logic theorems: [`examples/first_order_logic.term`](examples/first_order_logic.term).
-- Some [`smalltt`](https://github.com/AndrasKovacs/smalltt) eval benchmarks: [`examples/tree_eval.term`](examples/tree_eval.term).
+- Some basic first-order logic theorems: [`examples/first_order_logic.zt`](examples/first_order_logic.zt).
+
+Example proof terms in the kernel syntax:
+
+- Some [`smalltt`](https://github.com/AndrasKovacs/smalltt) eval benchmarks: [`examples/tree_eval.zkt`](examples/tree_eval.zkt).
   - Type checking this term requires compiling with `cargo build --features type_in_type`.
-- Linear-time environment lookup: [`examples/long_env_eval.term`](examples/long_env_eval.term).
+- Linear-time environment lookup: [`examples/long_env_eval.zkt`](examples/long_env_eval.zkt).
   - Should be acceptable if deeply nested lambdas/lets are uncommon, or can be uncurried using dependent tuples.
   - Linked frames with greedy extend did not seem to worth the complication. Even if lookup path lengths are reduced to nearly 1, the additional constant overhead seemed more significant, except on intentionally crafted benchmarks like this one.
-- Constant-time dependent tuple lookup: [`examples/long_tuple_eval.term`](examples/long_tuple_eval.term).
+- Constant-time dependent tuple lookup: [`examples/long_tuple_eval.zkt`](examples/long_tuple_eval.zkt).
 
 ## Scope
 

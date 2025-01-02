@@ -45,10 +45,10 @@ impl Arena {
     self.data.alloc(val)
   }
 
-  /// Allocates a new array of values for writing.
-  pub fn values<'a, 'b>(&'a self, len: usize, nil: ir::Val<'a, 'b>) -> &'a mut [ir::Val<'a, 'b>] {
+  /// Allocates a new array of values with field info for writing.
+  pub fn values<'b>(&self, len: usize) -> &mut [(&'b ir::Field<'b>, ir::Val<'_, 'b>)] {
     self.val_count.update(|x| x + len);
-    self.data.alloc_slice_fill_copy(len, nil)
+    self.data.alloc_slice_fill_copy(len, (ir::Field::empty(), ir::Val::Gen(0)))
   }
 
   /// Allocates a new closure.
@@ -57,8 +57,11 @@ impl Arena {
     self.data.alloc(clos)
   }
 
-  /// Allocates a new array of closures.
-  pub fn closures<'a, 'b>(&'a self, closures: &[ir::Clos<'a, 'b>]) -> &'a [ir::Clos<'a, 'b>] {
+  /// Allocates a new array of closures with field info.
+  pub fn closures<'a, 'b>(
+    &'a self,
+    closures: &[(&'b ir::Field<'b>, ir::Clos<'a, 'b>)],
+  ) -> &'a [(&'b ir::Field<'b>, ir::Clos<'a, 'b>)] {
     self.clos_count.update(|x| x + closures.len());
     self.data.alloc_slice_copy(closures)
   }
@@ -78,6 +81,16 @@ impl Arena {
   /// Allocates a new array of strings.
   pub fn strings<'a>(&'a self, strings: &[&str]) -> &'a [&'a str] {
     self.data.alloc_slice_copy(&strings.iter().map(|s| self.string(s)).collect::<Vec<_>>())
+  }
+
+  /// Allocates a new bound variable info.
+  pub fn bound<'a, 'b>(&'a self, bound: ir::Bound<'b>) -> &'a ir::Bound<'b> {
+    self.data.alloc(bound)
+  }
+
+  /// Allocates a new field variable info.
+  pub fn field<'a, 'b>(&'a self, field: ir::Field<'b>) -> &'a ir::Field<'b> {
+    self.data.alloc(field)
   }
 
   /// Increments the stack lookup counter for profiling.
