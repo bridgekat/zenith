@@ -1,4 +1,3 @@
-#![feature(cell_update)]
 #![warn(clippy::all)]
 
 pub mod arena;

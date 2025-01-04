@@ -27,54 +27,54 @@ impl Arena {
 
   /// Allocates a new term.
   pub fn term<'a>(&'a self, term: Term<'a>) -> &'a Term<'a> {
-    self.term_count.update(|x| x + 1);
+    self.term_count.set(self.term_count.get() + 1);
     self.data.alloc(term)
   }
 
   /// Allocates a new array of terms for writing.
   pub fn terms(&self, len: usize) -> &mut [Term<'_>] {
-    self.term_count.update(|x| x + len);
+    self.term_count.set(self.term_count.get() + len);
     self.data.alloc_slice_fill_copy(len, Term::Univ(0))
   }
 
   /// Allocates a new value.
   pub fn val<'a>(&'a self, val: Val<'a>) -> &'a Val<'a> {
-    self.val_count.update(|x| x + 1);
+    self.val_count.set(self.val_count.get() + 1);
     self.data.alloc(val)
   }
 
   /// Allocates a new array of values for writing.
   pub fn values(&self, len: usize) -> &mut [Val<'_>] {
-    self.val_count.update(|x| x + len);
+    self.val_count.set(self.val_count.get() + len);
     self.data.alloc_slice_fill_copy(len, Val::Univ(0))
   }
 
   /// Allocates a new closure.
   pub fn clos<'a>(&'a self, clos: Clos<'a>) -> &'a Clos<'a> {
-    self.clos_count.update(|x| x + 1);
+    self.clos_count.set(self.clos_count.get() + 1);
     self.data.alloc(clos)
   }
 
   /// Allocates a new array of closures for writing.
   pub fn closures(&self, len: usize) -> &mut [Clos<'_>] {
-    self.clos_count.update(|x| x + len);
+    self.clos_count.set(self.clos_count.get() + len);
     self.data.alloc_slice_fill_copy(len, Clos { env: Stack::Nil, body: &Term::Univ(0) })
   }
 
   /// Allocates a new stack item.
   pub fn frame<'a>(&'a self, stack: Stack<'a>) -> &'a Stack<'a> {
-    self.frame_count.update(|x| x + 1);
+    self.frame_count.set(self.frame_count.get() + 1);
     self.data.alloc(stack)
   }
 
   /// Increments the stack lookup counter for profiling.
   pub fn inc_lookup_count(&self) {
-    self.lookup_count.update(|x| x + 1);
+    self.lookup_count.set(self.lookup_count.get() + 1);
   }
 
   /// Increments the stack lookup length counter for profiling.
   pub fn inc_link_count(&self) {
-    self.link_count.update(|x| x + 1);
+    self.link_count.set(self.link_count.get() + 1);
   }
 
   /// Returns the number of terms in the arena.

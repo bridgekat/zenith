@@ -15,7 +15,6 @@ pub struct Arena {
   val_count: Cell<usize>,
   clos_count: Cell<usize>,
   frame_count: Cell<usize>,
-  char_count: Cell<usize>,
   lookup_count: Cell<usize>,
   link_count: Cell<usize>,
 }
@@ -28,7 +27,6 @@ impl Arena {
 
   /// Allocates a new string.
   pub fn string<'b>(&'b self, string: &str) -> &'b str {
-    self.char_count.update(|x| x + string.len());
     self.data.alloc_str(string)
   }
 
@@ -49,55 +47,55 @@ impl Arena {
 
   /// Allocates a new term.
   pub fn term<'a, 'b, T: Decoration<'b>>(&'a self, term: Term<'a, 'b, T>) -> &'a Term<'a, 'b, T> {
-    self.term_count.update(|x| x + 1);
+    self.term_count.set(self.term_count.get() + 1);
     self.data.alloc(term)
   }
 
   /// Allocates a new array of terms with field info for writing.
   pub fn terms<'b, T: Decoration<'b>>(&self, len: usize) -> &mut [(&'b Field<'b>, Term<'_, 'b, T>)] {
-    self.term_count.update(|x| x + len);
+    self.term_count.set(self.term_count.get() + len);
     self.data.alloc_slice_fill_copy(len, (Field::empty(), Term::Univ(0)))
   }
 
   /// Allocates a new value.
   pub fn val<'a, 'b>(&'a self, val: Val<'a, 'b>) -> &'a Val<'a, 'b> {
-    self.val_count.update(|x| x + 1);
+    self.val_count.set(self.val_count.get() + 1);
     self.data.alloc(val)
   }
 
   /// Allocates a new array of values with field info for writing.
   pub fn values<'b>(&self, len: usize) -> &mut [(&'b Field<'b>, Val<'_, 'b>)] {
-    self.val_count.update(|x| x + len);
+    self.val_count.set(self.val_count.get() + len);
     self.data.alloc_slice_fill_copy(len, (Field::empty(), Val::Univ(0)))
   }
 
   /// Allocates a new closure.
   pub fn clos<'a, 'b>(&'a self, clos: Clos<'a, 'b>) -> &'a Clos<'a, 'b> {
-    self.clos_count.update(|x| x + 1);
+    self.clos_count.set(self.clos_count.get() + 1);
     self.data.alloc(clos)
   }
 
   /// Allocates a new array of closures with field info for writing.
   pub fn closures<'b>(&self, len: usize) -> &mut [(&'b Field<'b>, Clos<'_, 'b>)] {
     let empty = Clos { info: Bound::empty(), env: Stack::Nil, body: &Term::Univ(0) };
-    self.clos_count.update(|x| x + len);
+    self.clos_count.set(self.clos_count.get() + len);
     self.data.alloc_slice_fill_copy(len, (Field::empty(), empty))
   }
 
   /// Allocates a new stack item.
   pub fn frame<'a, 'b>(&'a self, stack: Stack<'a, 'b>) -> &'a Stack<'a, 'b> {
-    self.frame_count.update(|x| x + 1);
+    self.frame_count.set(self.frame_count.get() + 1);
     self.data.alloc(stack)
   }
 
   /// Increments the stack lookup counter for profiling.
   pub fn inc_lookup_count(&self) {
-    self.lookup_count.update(|x| x + 1);
+    self.lookup_count.set(self.lookup_count.get() + 1);
   }
 
   /// Increments the stack lookup length counter for profiling.
   pub fn inc_link_count(&self) {
-    self.link_count.update(|x| x + 1);
+    self.link_count.set(self.link_count.get() + 1);
   }
 
   /// Returns the number of terms in the arena.
