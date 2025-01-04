@@ -202,15 +202,14 @@ where
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Last(Term::Init(n, x)) => {
+      Term::Init(_, _) => write!(f, "<improper init projection>"),
+      Term::Proj(n, x) => {
         left_paren(f, Prec::Proj, prec)?;
         x.print(f, Prec::Proj)?;
         write!(f, "^{}", n)?;
         right_paren(f, Prec::Proj, prec)?;
         Ok(())
       }
-      Term::Init(_, _) => write!(f, "<improper init projection>"),
-      Term::Last(_) => write!(f, "<improper last projection>"),
       Term::Meta(_) => todo!(),
     }
   }

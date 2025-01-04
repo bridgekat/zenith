@@ -9,7 +9,7 @@ pub enum EvalError {
   EnvIndex { ix: usize, len: usize },
   GenLevel { lvl: usize, len: usize },
   TupInit { n: usize, len: usize },
-  TupLast { n: usize, len: usize },
+  TupProj { n: usize, len: usize },
 }
 
 /// # Typing errors
@@ -23,7 +23,7 @@ pub enum TypeError<'b, 'c, T: Decoration<'c>> {
   SigForm { fst: usize, snd: usize },
   CtxIndex { ix: usize, len: usize },
   SigInit { n: usize, len: usize },
-  SigLast { n: usize, len: usize },
+  SigProj { n: usize, len: usize },
   AnnExpected { term: &'b Term<'b, 'c, T> },
   TypeExpected { term: &'b Term<'b, 'c, T>, ty: &'b Term<'b, 'c, Core<'c>> },
   PiExpected { term: &'b Term<'b, 'c, T>, ty: &'b Term<'b, 'c, Core<'c>> },
@@ -48,8 +48,8 @@ impl EvalError {
     Self::TupInit { n, len }
   }
 
-  pub fn tup_last(n: usize, len: usize) -> Self {
-    Self::TupLast { n, len }
+  pub fn tup_proj(n: usize, len: usize) -> Self {
+    Self::TupProj { n, len }
   }
 
   /// Clones `self` to given arena.
@@ -58,7 +58,7 @@ impl EvalError {
       Self::EnvIndex { ix, len } => EvalError::EnvIndex { ix, len },
       Self::GenLevel { lvl, len } => EvalError::GenLevel { lvl, len },
       Self::TupInit { n, len } => EvalError::TupInit { n, len },
-      Self::TupLast { n, len } => EvalError::TupLast { n, len },
+      Self::TupProj { n, len } => EvalError::TupProj { n, len },
     }
   }
 }
@@ -84,8 +84,8 @@ impl<'b, 'c, T: Decoration<'c>> TypeError<'b, 'c, T> {
     Self::SigInit { n, len }
   }
 
-  pub fn sig_last(n: usize, len: usize) -> Self {
-    Self::SigLast { n, len }
+  pub fn sig_proj(n: usize, len: usize) -> Self {
+    Self::SigProj { n, len }
   }
 
   pub fn ann_expected(term: &'b Term<'b, 'c, T>) -> Self {
@@ -179,7 +179,7 @@ impl<'b, 'c, T: Decoration<'c>> TypeError<'b, 'c, T> {
       Self::SigForm { fst, snd } => TypeError::SigForm { fst, snd },
       Self::CtxIndex { ix, len } => TypeError::CtxIndex { ix, len },
       Self::SigInit { n, len } => TypeError::SigInit { n, len },
-      Self::SigLast { n, len } => TypeError::SigLast { n, len },
+      Self::SigProj { n, len } => TypeError::SigProj { n, len },
       Self::AnnExpected { term } => TypeError::AnnExpected { term: term.relocate(ar) },
       Self::TypeExpected { term, ty } => TypeError::TypeExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
       Self::PiExpected { term, ty } => TypeError::PiExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
@@ -209,7 +209,7 @@ impl std::fmt::Display for EvalError {
       Self::EnvIndex { ix, len } => write!(f, "variable index {ix} out of bound, environment has size {len}"),
       Self::GenLevel { lvl, len } => write!(f, "generic variable level {lvl} out of bound, environment has size {len}"),
       Self::TupInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple has size {len}"),
-      Self::TupLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple"),
+      Self::TupProj { n, len } => write!(f, "tuple index {n} out of bound, tuple has size {len}"),
     }
   }
 }
@@ -226,7 +226,7 @@ where
       Self::SigForm { fst, snd } => write!(f, "dependent tuples in universes {fst} and {snd} are unspecified"),
       Self::CtxIndex { ix, len } => write!(f, "variable index {ix} out of bound, context has size {len}"),
       Self::SigInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple type has size {len}"),
-      Self::SigLast { n: _, len: _ } => write!(f, "obtaining last element of empty tuple type"),
+      Self::SigProj { n, len } => write!(f, "tuple index {n} out of bound, tuple type has size {len}"),
       Self::AnnExpected { term } => write!(f, "type annotation expected around term {term}"),
       Self::TypeExpected { term, ty } => {
         write!(f, "type expected, term {term} has type {ty} but not universe type")

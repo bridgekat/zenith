@@ -87,8 +87,8 @@ pub enum Term<'a, 'b, T: Decoration<'b>> {
   Tup(&'a [(&'b Field<'b>, Term<'a, 'b, T>)]),
   /// Tuple initial segments (truncation, tuple).
   Init(usize, &'a Term<'a, 'b, T>),
-  /// Tuple last element (tuple).
-  Last(&'a Term<'a, 'b, T>),
+  /// Tuple projections (index, tuple).
+  Proj(usize, &'a Term<'a, 'b, T>),
   /// Holes in unique identifiers.
   Meta(usize),
 }
@@ -116,8 +116,8 @@ pub enum Val<'a, 'b> {
   Tup(&'a [(&'b Field<'b>, Val<'a, 'b>)]),
   /// Tuple initial segments (truncation, tuple).
   Init(usize, &'a Val<'a, 'b>),
-  /// Tuple last element (tuple).
-  Last(&'a Val<'a, 'b>),
+  /// Tuple projections (index, tuple).
+  Proj(usize, &'a Val<'a, 'b>),
   /// Holes (environment, id).
   Meta(&'a Stack<'a, 'b>, usize),
 }
@@ -203,7 +203,7 @@ impl<'b, T: Decoration<'b>> Term<'_, 'b, T> {
         ar.term(Term::Tup(terms))
       }
       Term::Init(n, x) => ar.term(Term::Init(*n, x.relocate(ar))),
-      Term::Last(x) => ar.term(Term::Last(x.relocate(ar))),
+      Term::Proj(n, x) => ar.term(Term::Proj(*n, x.relocate(ar))),
       Term::Meta(m) => ar.term(Term::Meta(*m)),
     }
   }
@@ -292,13 +292,15 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
         Ok(Val::Sig(cs))
       }
       Term::Tup(bs) => {
-        let vs = ar.values(bs.len());
+        let vs = ar.values(bs.len()).as_mut_ptr();
         for (j, (i, b)) in bs.iter().enumerate() {
-          // SAFETY: the borrowed range `&vs[..i]` is no longer modified.
-          let a = Val::Tup(unsafe { from_raw_parts(vs.as_ptr(), j) });
-          vs[j] = (i, b.eval(&env.extend(Bound::empty(), a, ar), ar)?);
+          // SAFETY: the borrowed range `&vs[..j]` is no longer modified.
+          let a = Val::Tup(unsafe { from_raw_parts(vs, j) });
+          // SAFETY: `i < bs.len()` which is the valid size of `vs`.
+          unsafe { *vs.add(j) = (i, b.eval(&env.extend(Bound::empty(), a, ar), ar)?) };
         }
-        Ok(Val::Tup(vs))
+        // SAFETY: the borrowed slice `&vs` has valid size `bs.len()` and is no longer modified.
+        Ok(Val::Tup(unsafe { from_raw_parts(vs, bs.len()) }))
       }
       // For initials (i.e. iterated first projections), we reduce the operand and combine it back.
       // In the case of a redex, the (π init) rule is applied.
@@ -310,14 +312,16 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
         }
         x => Ok(Val::Init(*n, ar.val(x))),
       },
-      // For lasts (i.e. second projections), we reduce the operand and combine it back.
-      // In the case of a redex, the (π last) rule is applied.
-      Term::Last(x) => match x.eval(env, ar)? {
+      // For projections (i.e. second projections after iterated first projections), we reduce the
+      // operand and combine it back.
+      // In the case of a redex, the (π proj) rule is applied.
+      Term::Proj(n, x) => match x.eval(env, ar)? {
+        Val::Init(m, y) => Ok(Val::Proj(n + m, y)),
         Val::Tup(bs) => {
-          let i = bs.len().checked_sub(1).ok_or_else(|| EvalError::tup_last(1, bs.len()))?;
+          let i = bs.len().checked_sub(n + 1).ok_or_else(|| EvalError::tup_proj(*n, bs.len()))?;
           Ok(bs[i].1)
         }
-        x => Ok(Val::Last(ar.val(x))),
+        x => Ok(Val::Proj(*n, ar.val(x))),
       },
       // For holes, we freeze the whole environment around it.
       Term::Meta(m) => Ok(Val::Meta(ar.frame(*env), *m)),
@@ -369,7 +373,7 @@ impl<'a, 'b> Val<'a, 'b> {
         Ok(ar.term(Term::Tup(terms)))
       }
       Val::Init(n, x) => Ok(ar.term(Term::Init(*n, x.quote(len, ar)?))),
-      Val::Last(x) => Ok(ar.term(Term::Last(x.quote(len, ar)?))),
+      Val::Proj(n, x) => Ok(ar.term(Term::Proj(*n, x.quote(len, ar)?))),
       Val::Meta(_, _) => todo!(),
     }
   }
@@ -415,7 +419,7 @@ impl<'a, 'b> Val<'a, 'b> {
         Ok(true)
       }
       (Val::Init(n, x), Val::Init(m, y)) => Ok(n == m && Val::conv(x, y, len, ar)?),
-      (Val::Last(x), Val::Last(y)) => Ok(Val::conv(x, y, len, ar)?),
+      (Val::Proj(n, x), Val::Proj(m, y)) => Ok(n == m && Val::conv(x, y, len, ar)?),
       (Val::Meta(_, _), Val::Meta(_, _)) => todo!(),
       _ => Ok(false),
     }
@@ -553,10 +557,10 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
       Term::Sig(us_old) => {
         let mut lvl = Term::unit_univ()?;
         let us_new = ar.terms(us_old.len());
-        let us_val = ar.closures(us_old.len());
+        let us_val = ar.closures(us_old.len()).as_mut_ptr();
         for (i, (info, u_old)) in us_old.iter().enumerate() {
           // SAFETY: the borrowed range `&us_val[..i]` is no longer modified.
-          let t_val = Val::Sig(unsafe { from_raw_parts(us_val.as_ptr(), i) });
+          let t_val = Val::Sig(unsafe { from_raw_parts(us_val, i) });
           let x_val = Val::Free(env.len());
           let ctx_ext = ctx.extend(Bound::empty(), t_val, ar);
           let env_ext = env.extend(Bound::empty(), x_val, ar);
@@ -564,7 +568,8 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
           let u_lvl = u_type.as_univ(|u_type| TypeError::type_expected(u_old, u_type, ctx, env, ar))?;
           lvl = Term::sig_univ(lvl, u_lvl)?;
           us_new[i] = (*info, *u_new);
-          us_val[i] = (info, Clos { info: Bound::empty(), env: *env, body: u_old });
+          // SAFETY: `i < us_old.len()` which is the valid size of `us_val`.
+          unsafe { *us_val.add(i) = (info, Clos { info: Bound::empty(), env: *env, body: u_old }) };
         }
         Ok((ar.term(Term::Sig(us_new)), Val::Univ(lvl)))
       }
@@ -577,12 +582,12 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
         let m = us_val.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, us_val.len()))?;
         Ok((ar.term(Term::Init(*n, x_new)), Val::Sig(&us_val[..m])))
       }
-      // The (Σ last) rule is used.
-      Term::Last(x_old) => {
+      // The (Σ proj) rule is used.
+      Term::Proj(n, x_old) => {
         let (x_new, x_type) = x_old.infer(ctx, env, ar)?;
         let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
-        let i = us_val.len().checked_sub(1).ok_or_else(|| TypeError::sig_last(1, us_val.len()))?;
-        Ok((ar.term(Term::Last(x_new)), us_val[i].1.apply(Term::Init(1, x_old).eval(env, ar)?, ar)?))
+        let i = us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, us_val.len()))?;
+        Ok((ar.term(Term::Proj(*n, x_new)), us_val[i].1.apply(Term::Init(n + 1, x_old).eval(env, ar)?, ar)?))
       }
       // Holes must be enclosed in type annotations, or appear as an argument.
       Term::Meta(_) => Err(TypeError::ann_expected(ar.term(*self))),
@@ -632,20 +637,21 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
         let us_val = t.as_sig(|t| TypeError::sig_ann_expected(t, ctx, env, ar))?;
         if bs_old.len() == us_val.len() {
           let bs_new = ar.terms(bs_old.len());
-          let bs_val = ar.values(bs_old.len());
+          let bs_val = ar.values(bs_old.len()).as_mut_ptr();
           for (i, (info, b_old)) in bs_old.iter().enumerate() {
             let (u_info, u_val) = us_val[i];
             if info.name != u_info.name {
-              return Err(TypeError::tup_field_mismatch(ar.term(*self), info.name, us_val[i].0.name));
+              return Err(TypeError::tup_field_mismatch(ar.term(*self), info.name, u_info.name));
             }
             let t_val = Val::Sig(&us_val[..i]);
             // SAFETY: the borrowed range `&bs_val[..i]` is no longer modified.
-            let a_val = Val::Tup(unsafe { from_raw_parts(bs_val.as_ptr(), i) });
+            let a_val = Val::Tup(unsafe { from_raw_parts(bs_val, i) });
             let ctx_ext = ctx.extend(Bound::empty(), t_val, ar);
             let env_ext = env.extend(Bound::empty(), a_val, ar);
             let b_new = b_old.check(u_val.apply(a_val, ar)?, &ctx_ext, &env_ext, ar)?;
             bs_new[i] = (info, *b_new);
-            bs_val[i] = (info, b_old.eval(&env_ext, ar)?);
+            // SAFETY: `i < bs_old.len()` which is the valid size of `bs_val`.
+            unsafe { *bs_val.add(i) = (info, b_old.eval(&env_ext, ar)?) };
           }
           Ok(ar.term(Term::Tup(bs_new)))
         } else {

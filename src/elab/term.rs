@@ -30,7 +30,7 @@ impl<'b> Name<'b> {
           for (ix, (i, u)) in us.iter().rev().enumerate() {
             if i.name == first {
               let t = u.apply(Term::Init(ix + 1, x).eval(env, ar)?, ar)?;
-              return rest.resolve_rest(env, ar.term(Term::Last(ar.term(Term::Init(ix, x)))), t, ar);
+              return rest.resolve_rest(env, ar.term(Term::Proj(ix, x)), t, ar);
             }
           }
         }
@@ -153,10 +153,10 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
       Term::Sig(us_old) => {
         let mut lvl = Term::unit_univ()?;
         let us_new = ar.terms(us_old.len());
-        let us_val = ar.closures(us_old.len());
+        let us_val = ar.closures(us_old.len()).as_mut_ptr();
         for (i, (info, u_old)) in us_old.iter().enumerate() {
           // SAFETY: the borrowed range `&us_val[..i]` is no longer modified.
-          let t_val = Val::Sig(unsafe { from_raw_parts(us_val.as_ptr(), i) });
+          let t_val = Val::Sig(unsafe { from_raw_parts(us_val, i) });
           let x_val = Val::Free(env.len());
           let ctx_ext = ctx.extend(Bound::empty(), t_val, ar);
           let env_ext = env.extend(Bound::empty(), x_val, ar);
@@ -164,7 +164,8 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
           let u_lvl = u_type.as_univ(|u_type| TypeError::type_expected(u_old, u_type, ctx, env, ar))?;
           lvl = Term::sig_univ(lvl, u_lvl)?;
           us_new[i] = (*info, *u_new);
-          us_val[i] = (info, Clos { info: Bound::empty(), env: *env, body: u_new });
+          // SAFETY: `i < us_old.len()` which is the valid size of `us_val`.
+          unsafe { *us_val.add(i) = (info, Clos { info: Bound::empty(), env: *env, body: u_new }) };
         }
         Ok((ar.term(Term::Sig(us_new)), Val::Univ(lvl)))
       }
@@ -177,12 +178,12 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
         let m = us_val.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, us_val.len()))?;
         Ok((ar.term(Term::Init(*n, x_new)), Val::Sig(&us_val[..m])))
       }
-      // The (Σ last) rule is used.
-      Term::Last(x_old) => {
+      // The (Σ proj) rule is used.
+      Term::Proj(n, x_old) => {
         let (x_new, x_type) = x_old.infer(ctx, env, ar)?;
         let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
-        let i = us_val.len().checked_sub(1).ok_or_else(|| TypeError::sig_last(1, us_val.len()))?;
-        Ok((ar.term(Term::Last(x_new)), us_val[i].1.apply(Term::Init(1, x_new).eval(env, ar)?, ar)?))
+        let i = us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, us_val.len()))?;
+        Ok((ar.term(Term::Proj(*n, x_new)), us_val[i].1.apply(Term::Init(n + 1, x_new).eval(env, ar)?, ar)?))
       }
       // Holes must be enclosed in type annotations, or appear as an argument.
       Term::Meta(_) => Err(TypeError::ann_expected(ar.term(*self)).into()),
@@ -232,20 +233,21 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
         let us_val = t.as_sig(|t| TypeError::sig_ann_expected(t, ctx, env, ar))?;
         if bs_old.len() == us_val.len() {
           let bs_new = ar.terms(bs_old.len());
-          let bs_val = ar.values(bs_old.len());
+          let bs_val = ar.values(bs_old.len()).as_mut_ptr();
           for (i, (info, b_old)) in bs_old.iter().enumerate() {
             let (u_info, u_val) = us_val[i];
             if info.name != u_info.name {
-              return Err(TypeError::tup_field_mismatch(ar.term(*self), info.name, us_val[i].0.name).into());
+              return Err(TypeError::tup_field_mismatch(ar.term(*self), info.name, u_info.name).into());
             }
             let t_val = Val::Sig(&us_val[..i]);
             // SAFETY: the borrowed range `&bs_val[..i]` is no longer modified.
-            let a_val = Val::Tup(unsafe { from_raw_parts(bs_val.as_ptr(), i) });
+            let a_val = Val::Tup(unsafe { from_raw_parts(bs_val, i) });
             let ctx_ext = ctx.extend(Bound::empty(), t_val, ar);
             let env_ext = env.extend(Bound::empty(), a_val, ar);
             let b_new = b_old.check(u_val.apply(a_val, ar)?, &ctx_ext, &env_ext, ar)?;
             bs_new[i] = (info, *b_new);
-            bs_val[i] = (info, b_new.eval(&env_ext, ar)?);
+            // SAFETY: `i < bs_old.len()` which is the valid size of `bs_val`.
+            unsafe { *bs_val.add(i) = (info, b_new.eval(&env_ext, ar)?) };
           }
           Ok(ar.term(Term::Tup(bs_new)))
         } else {

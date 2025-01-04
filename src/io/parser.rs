@@ -282,7 +282,7 @@ impl<'a> Term<'a, 'a, Named<'a>> {
       loop {
         match it.peek() {
           Some(Span { tok: Token::Ix(_), .. }) => {
-            res = ar.term(Term::Last(ar.term(Term::Init(expect_ix(it)?, res))));
+            res = ar.term(Term::Proj(expect_ix(it)?, res));
           }
           Some(Span { tok: Token::Dot, .. }) => {
             it.next();
