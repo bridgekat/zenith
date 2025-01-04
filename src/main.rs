@@ -1,17 +1,8 @@
-#![feature(cell_update)]
-#![warn(clippy::all)]
-
-pub mod arena;
-pub mod elab;
-pub mod io;
-pub mod ir;
-pub mod kernel;
-
 use std::io::Write;
 use std::thread::Builder;
 
-use arena::Arena;
-use ir::{Stack, Term};
+use zenith::arena::Arena;
+use zenith::ir::{Stack, Term};
 
 /// Converts `pos` to line and column numbers.
 fn pos_to_line_col(pos: usize, lines: &[String]) -> (usize, usize) {

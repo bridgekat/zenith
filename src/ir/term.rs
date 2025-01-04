@@ -296,7 +296,7 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
         for (j, (i, b)) in bs.iter().enumerate() {
           // SAFETY: the borrowed range `&vs[..j]` is no longer modified.
           let a = Val::Tup(unsafe { from_raw_parts(vs, j) });
-          // SAFETY: `i < bs.len()` which is the valid size of `vs`.
+          // SAFETY: `j < bs.len()` which is the valid size of `vs`.
           unsafe { *vs.add(j) = (i, b.eval(&env.extend(Bound::empty(), a, ar), ar)?) };
         }
         // SAFETY: the borrowed slice `&vs` has valid size `bs.len()` and is no longer modified.

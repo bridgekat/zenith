@@ -149,7 +149,7 @@ impl<'a> Term<'a> {
           Binding::Named(y) if y == x => return Some(ar.term(Term::Var(ix))),
           Binding::Tuple(ys) => {
             if let Some(n) = ys.iter().rev().position(|y| y == x) {
-              return Some(ar.term(Term::Last(ar.term(Term::Init(n, ar.term(Term::Var(ix)))))));
+              return Some(ar.term(Term::Proj(n, ar.term(Term::Var(ix)))));
             }
           }
           _ => {}
@@ -305,7 +305,7 @@ impl<'a> Term<'a> {
     ) -> Result<&'a Term<'a>, ParseError> {
       let mut res = parse_atom(it, vars, ar)?;
       while let Some(Span { tok: Token::Ix(_), .. }) = it.peek() {
-        res = ar.term(Term::Last(ar.term(Term::Init(expect_ix(it)?, res))));
+        res = ar.term(Term::Proj(expect_ix(it)?, res));
       }
       Ok(res)
     }
@@ -318,7 +318,7 @@ impl<'a> Term<'a> {
       // All atoms begin with a terminal token that can be taken unconditionally.
       match it.next() {
         // Parsing a single token.
-        Some(Span { tok: Token::Unit, .. }) => Ok(ar.term(Term::Unit)),
+        Some(Span { tok: Token::Unit, .. }) => Ok(ar.term(Term::Sig(&[]))),
         Some(Span { tok: Token::Type, .. }) => Ok(ar.term(Term::Univ(0))),
         Some(Span { tok: Token::Kind, .. }) => Ok(ar.term(Term::Univ(1))),
         Some(Span { tok: Token::Env, .. }) => Ok(ar.term(Term::Var(expect_ix(it)?))),
@@ -336,7 +336,7 @@ impl<'a> Term<'a> {
           // Parsing an empty aggregate.
           if let Some(Span { tok: Token::RightBrace, .. }) = it.peek() {
             it.next();
-            return Ok(ar.term(Term::Star));
+            return Ok(ar.term(Term::Tup(&[])));
           }
           // Parsing a non-empty aggregate.
           let (x, _, _) = expect_id(it)?;
@@ -345,8 +345,8 @@ impl<'a> Term<'a> {
             // Parsing a tuple aggregate.
             Some(Span { tok: Token::Def, .. }) => {
               vars.push(Binding::Tuple(Vec::new()));
-              let mut init = ar.term(Term::Star);
-              init = ar.term(Term::Tup(init, parse_term(it, vars, ar)?));
+              let mut vec = Vec::new();
+              vec.push(*parse_term(it, vars, ar)?);
               if let Some(Binding::Tuple(var)) = vars.last_mut() {
                 var.push(x);
               }
@@ -354,20 +354,22 @@ impl<'a> Term<'a> {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Def)?;
-                init = ar.term(Term::Tup(init, parse_term(it, vars, ar)?));
+                vec.push(*parse_term(it, vars, ar)?);
                 if let Some(Binding::Tuple(var)) = vars.last_mut() {
                   var.push(x);
                 }
               }
               expect(it, Token::RightBrace)?;
               vars.pop();
-              Ok(init)
+              let terms = ar.terms(vec.len());
+              terms.copy_from_slice(&vec);
+              Ok(ar.term(Term::Tup(terms)))
             }
             // Parsing a tuple type aggregate.
             Some(Span { tok: Token::Ann(_), .. }) => {
               vars.push(Binding::Tuple(Vec::new()));
-              let mut init = ar.term(Term::Unit);
-              init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
+              let mut vec = Vec::new();
+              vec.push(*parse_term(it, vars, ar)?);
               if let Some(Binding::Tuple(var)) = vars.last_mut() {
                 var.push(x);
               }
@@ -375,14 +377,16 @@ impl<'a> Term<'a> {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
                 expect(it, Token::Ann(false))?;
-                init = ar.term(Term::Sig(init, parse_term(it, vars, ar)?));
+                vec.push(*parse_term(it, vars, ar)?);
                 if let Some(Binding::Tuple(var)) = vars.last_mut() {
                   var.push(x);
                 }
               }
               expect(it, Token::RightBrace)?;
               vars.pop();
-              Ok(init)
+              let terms = ar.terms(vec.len());
+              terms.copy_from_slice(&vec);
+              Ok(ar.term(Term::Sig(terms)))
             }
             other => Err(ParseError::unexpected(other)),
           }
@@ -565,72 +569,53 @@ impl Term<'_> {
         right_paren(f, Prec::Body, prec)?;
         Ok(())
       }
-      Term::Unit => write!(f, "Unit"),
-      Term::Sig(_, _) => {
-        let mut init = self;
-        let mut us = Vec::new();
-        while let Term::Sig(t, u) = init {
-          init = t;
-          us.push(u);
-        }
-        if let Term::Unit = init {
-          us.reverse();
-          left_paren(f, Prec::Atom, prec)?;
+      Term::Sig(us) => {
+        left_paren(f, Prec::Atom, prec)?;
+        if us.is_empty() {
+          write!(f, "Unit")?;
+        } else {
           write!(f, "{{")?;
           vars.push(Binding::Tuple(Vec::new()));
-          for (i, t) in us.iter().enumerate() {
+          for (i, u) in us.iter().enumerate() {
             if i != 0 {
               write!(f, ", ")?;
             }
             let name = generate_name(*count);
             *count += 1;
             write!(f, "{} : ", name)?;
-            t.print(f, count, vars, Prec::Term)?;
+            u.print(f, count, vars, Prec::Term)?;
             if let Some(Binding::Tuple(var)) = vars.last_mut() {
               var.push(name);
             }
           }
           vars.pop();
           write!(f, "}}")?;
-          right_paren(f, Prec::Atom, prec)?;
-        } else {
-          write!(f, "<improper tuple type>")?;
         }
+        right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Star | Term::Tup(_, _) => {
-        let mut init = self;
-        let mut bs = Vec::new();
-        while let Term::Tup(a, b) = init {
-          init = a;
-          bs.push(b);
-        }
-        if let Term::Star = init {
-          bs.reverse();
-          left_paren(f, Prec::Atom, prec)?;
-          write!(f, "{{")?;
-          vars.push(Binding::Tuple(Vec::new()));
-          for (i, b) in bs.iter().enumerate() {
-            if i != 0 {
-              write!(f, ", ")?;
-            }
-            let name = generate_name(*count);
-            *count += 1;
-            write!(f, "{} ≔ ", name)?;
-            b.print(f, count, vars, Prec::Term)?;
-            if let Some(Binding::Tuple(var)) = vars.last_mut() {
-              var.push(name);
-            }
+      Term::Tup(bs) => {
+        left_paren(f, Prec::Atom, prec)?;
+        write!(f, "{{")?;
+        vars.push(Binding::Tuple(Vec::new()));
+        for (i, b) in bs.iter().enumerate() {
+          if i != 0 {
+            write!(f, ", ")?;
           }
-          vars.pop();
-          write!(f, "}}")?;
-          right_paren(f, Prec::Atom, prec)?;
-        } else {
-          write!(f, "<improper tuple constructor>")?;
+          let name = generate_name(*count);
+          *count += 1;
+          write!(f, "{} ≔ ", name)?;
+          b.print(f, count, vars, Prec::Term)?;
+          if let Some(Binding::Tuple(var)) = vars.last_mut() {
+            var.push(name);
+          }
         }
+        vars.pop();
+        write!(f, "}}")?;
+        right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Last(Term::Init(n, x)) => {
+      Term::Proj(n, x) => {
         if let Term::Var(ix) = x {
           if let Some(i) = vars.len().checked_sub(ix + 1) {
             if let Binding::Tuple(var) = &vars[i] {
@@ -650,7 +635,6 @@ impl Term<'_> {
         Ok(())
       }
       Term::Init(_, _) => write!(f, "<improper init projection>"),
-      Term::Last(_) => write!(f, "<improper last projection>"),
     }
   }
 }

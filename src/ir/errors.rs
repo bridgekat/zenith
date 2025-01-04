@@ -148,13 +148,13 @@ impl<'b, 'c, T: Decoration<'c>> TypeError<'b, 'c, T> {
   pub fn type_mismatch(
     term: &'b Term<'b, 'c, T>,
     ty: Val<'b, 'c>,
-    expect: Val<'b, 'c>,
+    ety: Val<'b, 'c>,
     ctx: &Stack<'b, 'c>,
     _env: &Stack<'b, 'c>,
     ar: &'b Arena,
   ) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => match ar.val(expect).quote(ctx.len(), ar) {
+      Ok(ty) => match ar.val(ety).quote(ctx.len(), ar) {
         Ok(ety) => Self::TypeMismatch { term, ty, ety },
         Err(err) => err.into(),
       },
@@ -228,21 +228,13 @@ where
       Self::SigInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple type has size {len}"),
       Self::SigProj { n, len } => write!(f, "tuple index {n} out of bound, tuple type has size {len}"),
       Self::AnnExpected { term } => write!(f, "type annotation expected around term {term}"),
-      Self::TypeExpected { term, ty } => {
-        write!(f, "type expected, term {term} has type {ty} but not universe type")
-      }
-      Self::PiExpected { term, ty } => {
-        write!(f, "function expected, term {term} has type {ty} but not function type")
-      }
+      Self::TypeExpected { term, ty } => write!(f, "type expected, term {term} has type {ty} but not universe type"),
+      Self::PiExpected { term, ty } => write!(f, "function expected, term {term} has type {ty} but not function type"),
       Self::SigExpected { term, ty } => write!(f, "tuple expected, term {term} has type {ty} but not tuple type"),
       Self::PiAnnExpected { ty } => write!(f, "function found but type annotation {ty} is not function type"),
       Self::SigAnnExpected { ty } => write!(f, "tuple found but type annotation {ty} is not tuple type"),
-      Self::TypeMismatch { term, ty, ety } => {
-        write!(f, "term {term} has type {ty}, but the expected type is {ety}")
-      }
-      Self::TupSizeMismatch { term, sz, esz } => {
-        write!(f, "term {term} has size {sz}, but the expected size is {esz}")
-      }
+      Self::TypeMismatch { term, ty, ety } => write!(f, "term {term} has type {ty}, but the expected type is {ety}"),
+      Self::TupSizeMismatch { term, sz, esz } => write!(f, "term {term} has size {sz}, but the expected size is {esz}"),
       Self::TupFieldMismatch { term, name, ename } => {
         write!(f, "term {term} has field with name {name}, but the expected name is {ename}")
       }

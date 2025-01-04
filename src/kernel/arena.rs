@@ -31,32 +31,38 @@ impl Arena {
     self.data.alloc(term)
   }
 
+  /// Allocates a new array of terms for writing.
+  pub fn terms(&self, len: usize) -> &mut [Term<'_>] {
+    self.term_count.update(|x| x + len);
+    self.data.alloc_slice_fill_copy(len, Term::Univ(0))
+  }
+
   /// Allocates a new value.
-  pub fn val<'a, 'b>(&'a self, val: Val<'a, 'b>) -> &'a Val<'a, 'b> {
+  pub fn val<'a>(&'a self, val: Val<'a>) -> &'a Val<'a> {
     self.val_count.update(|x| x + 1);
     self.data.alloc(val)
   }
 
   /// Allocates a new array of values for writing.
-  pub fn values<'a, 'b>(&'a self, len: usize, nil: Val<'a, 'b>) -> &'a mut [Val<'a, 'b>] {
+  pub fn values(&self, len: usize) -> &mut [Val<'_>] {
     self.val_count.update(|x| x + len);
-    self.data.alloc_slice_fill_copy(len, nil)
+    self.data.alloc_slice_fill_copy(len, Val::Univ(0))
   }
 
   /// Allocates a new closure.
-  pub fn clos<'a, 'b>(&'a self, clos: Clos<'a, 'b>) -> &'a Clos<'a, 'b> {
+  pub fn clos<'a>(&'a self, clos: Clos<'a>) -> &'a Clos<'a> {
     self.clos_count.update(|x| x + 1);
     self.data.alloc(clos)
   }
 
-  /// Allocates a new array of closures.
-  pub fn closures<'a, 'b>(&'a self, closures: &[Clos<'a, 'b>]) -> &'a [Clos<'a, 'b>] {
-    self.clos_count.update(|x| x + closures.len());
-    self.data.alloc_slice_copy(closures)
+  /// Allocates a new array of closures for writing.
+  pub fn closures(&self, len: usize) -> &mut [Clos<'_>] {
+    self.clos_count.update(|x| x + len);
+    self.data.alloc_slice_fill_copy(len, Clos { env: Stack::Nil, body: &Term::Univ(0) })
   }
 
   /// Allocates a new stack item.
-  pub fn frame<'a, 'b>(&'a self, stack: Stack<'a, 'b>) -> &'a Stack<'a, 'b> {
+  pub fn frame<'a>(&'a self, stack: Stack<'a>) -> &'a Stack<'a> {
     self.frame_count.update(|x| x + 1);
     self.data.alloc(stack)
   }
