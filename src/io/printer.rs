@@ -1,6 +1,6 @@
 use std::fmt::Formatter;
 
-use crate::elab::Term;
+use crate::ir::{Decoration, Ix, Name, Term, Var};
 
 /// Precedence levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -11,7 +11,31 @@ enum Prec {
   Atom,
 }
 
-impl Term<'_> {
+impl std::fmt::Display for Ix {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "@^{}", self.ix)
+  }
+}
+
+impl std::fmt::Display for Name<'_> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.segments.join("::"))
+  }
+}
+
+impl std::fmt::Display for Var<'_> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Var::Ix(ix) => write!(f, "{}", ix),
+      Var::Name(name) => write!(f, "{}", name),
+    }
+  }
+}
+
+impl<'b, T: Decoration<'b>> Term<'_, 'b, T>
+where
+  T::Var: std::fmt::Display,
+{
   /// Pretty-prints a term.
   ///
   /// See documentation of [`Term::parse`] for the BNF grammar.
@@ -49,9 +73,9 @@ impl Term<'_> {
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Var(ix) => {
+      Term::Var(x) => {
         left_paren(f, Prec::Atom, prec)?;
-        write!(f, "@^{}", ix)?;
+        write!(f, "{}", x)?;
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
@@ -146,17 +170,11 @@ impl Term<'_> {
         right_paren(f, Prec::Body, prec)?;
         Ok(())
       }
-      Term::Unit => write!(f, "Unit"),
-      Term::Sig(_, _, _) => {
-        let mut init = self;
-        let mut us = Vec::new();
-        while let Term::Sig(i, t, u) = init {
-          init = t;
-          us.push((i, u));
-        }
-        if let Term::Unit = init {
-          us.reverse();
-          left_paren(f, Prec::Atom, prec)?;
+      Term::Sig(us) => {
+        left_paren(f, Prec::Atom, prec)?;
+        if us.is_empty() {
+          write!(f, "Unit")?;
+        } else {
           write!(f, "{{")?;
           for (j, (i, u)) in us.iter().enumerate() {
             if j != 0 {
@@ -166,35 +184,22 @@ impl Term<'_> {
             u.print(f, Prec::Term)?;
           }
           write!(f, "}}")?;
-          right_paren(f, Prec::Atom, prec)?;
-        } else {
-          write!(f, "<improper tuple type>")?;
         }
+        right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Star | Term::Tup(_, _, _) => {
-        let mut init = self;
-        let mut bs = Vec::new();
-        while let Term::Tup(i, a, b) = init {
-          init = a;
-          bs.push((i, b));
-        }
-        if let Term::Star = init {
-          bs.reverse();
-          left_paren(f, Prec::Atom, prec)?;
-          write!(f, "{{")?;
-          for (j, (i, b)) in bs.iter().enumerate() {
-            if j != 0 {
-              write!(f, ", ")?;
-            }
-            write!(f, "{} ≔ ", present_name(i.name))?;
-            b.print(f, Prec::Term)?;
+      Term::Tup(bs) => {
+        left_paren(f, Prec::Atom, prec)?;
+        write!(f, "{{")?;
+        for (j, (i, b)) in bs.iter().enumerate() {
+          if j != 0 {
+            write!(f, ", ")?;
           }
-          write!(f, "}}")?;
-          right_paren(f, Prec::Atom, prec)?;
-        } else {
-          write!(f, "<improper tuple constructor>")?;
+          write!(f, "{} ≔ ", present_name(i.name))?;
+          b.print(f, Prec::Term)?;
         }
+        write!(f, "}}")?;
+        right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
       Term::Last(Term::Init(n, x)) => {
@@ -207,17 +212,14 @@ impl Term<'_> {
       Term::Init(_, _) => write!(f, "<improper init projection>"),
       Term::Last(_) => write!(f, "<improper last projection>"),
       Term::Meta(_) => todo!(),
-      Term::Name(name) => {
-        left_paren(f, Prec::Atom, prec)?;
-        write!(f, "{}", name.segments.join("::"))?;
-        right_paren(f, Prec::Atom, prec)?;
-        Ok(())
-      }
     }
   }
 }
 
-impl std::fmt::Display for Term<'_> {
+impl<'b, T: Decoration<'b>> std::fmt::Display for Term<'_, 'b, T>
+where
+  T::Var: std::fmt::Display,
+{
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     self.print(f, Prec::Term)
   }

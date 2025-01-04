@@ -11,6 +11,7 @@ use std::io::Write;
 use std::thread::Builder;
 
 use arena::Arena;
+use ir::{Stack, Term};
 
 /// Converts `pos` to line and column numbers.
 fn pos_to_line_col(pos: usize, lines: &[String]) -> (usize, usize) {
@@ -130,7 +131,7 @@ fn run_repl() -> std::io::Result<()> {
       continue;
     }
 
-    let spans = match elab::Term::lex(input.chars()) {
+    let spans = match Term::lex(input.chars()) {
       Ok(t) => t,
       Err(e) => {
         let (start, end) = e.position(input.chars().count());
@@ -141,7 +142,7 @@ fn run_repl() -> std::io::Result<()> {
       }
     };
 
-    let term = match elab::Term::parse(spans.into_iter(), &ar) {
+    let term = match Term::parse(spans.into_iter(), &ar) {
       Ok(t) => t,
       Err(e) => {
         let (start, end) = e.position(input.chars().count());
@@ -152,9 +153,9 @@ fn run_repl() -> std::io::Result<()> {
       }
     };
 
-    match term.infer(&ir::Stack::new(&ar), &ir::Stack::new(&ar), &ar) {
+    match term.infer(&Stack::new(&ar), &Stack::new(&ar), &ar) {
       Ok((term, ty)) => match ty.quote(0, &ar) {
-        Ok(ty) => match term.eval(&ir::Stack::new(&ar), &ar) {
+        Ok(ty) => match term.eval(&Stack::new(&ar), &ar) {
           Ok(term) => match term.quote(0, &ar) {
             Ok(t) => {
               println!("≡ {t}");

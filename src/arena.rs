@@ -1,8 +1,7 @@
 use bumpalo::Bump;
 use std::cell::Cell;
 
-use crate::elab;
-use crate::ir;
+use crate::ir::{Bound, Clos, Decoration, Field, Stack, Term, Val};
 
 /// # Arena allocators
 ///
@@ -27,70 +26,68 @@ impl Arena {
     Self::default()
   }
 
-  /// Allocates a new term.
-  pub fn term<'a>(&'a self, term: ir::Term<'a>) -> &'a ir::Term<'a> {
-    self.term_count.update(|x| x + 1);
-    self.data.alloc(term)
-  }
-
-  /// Allocates a new named term.
-  pub fn named<'a>(&'a self, term: elab::Term<'a>) -> &'a elab::Term<'a> {
-    self.term_count.update(|x| x + 1);
-    self.data.alloc(term)
-  }
-
-  /// Allocates a new value.
-  pub fn val<'a, 'b>(&'a self, val: ir::Val<'a, 'b>) -> &'a ir::Val<'a, 'b> {
-    self.val_count.update(|x| x + 1);
-    self.data.alloc(val)
-  }
-
-  /// Allocates a new array of values with field info for writing.
-  pub fn values<'b>(&self, len: usize) -> &mut [(&'b ir::Field<'b>, ir::Val<'_, 'b>)] {
-    self.val_count.update(|x| x + len);
-    self.data.alloc_slice_fill_copy(len, (ir::Field::empty(), ir::Val::Gen(0)))
-  }
-
-  /// Allocates a new closure.
-  pub fn clos<'a, 'b>(&'a self, clos: ir::Clos<'a, 'b>) -> &'a ir::Clos<'a, 'b> {
-    self.clos_count.update(|x| x + 1);
-    self.data.alloc(clos)
-  }
-
-  /// Allocates a new array of closures with field info.
-  pub fn closures<'a, 'b>(
-    &'a self,
-    closures: &[(&'b ir::Field<'b>, ir::Clos<'a, 'b>)],
-  ) -> &'a [(&'b ir::Field<'b>, ir::Clos<'a, 'b>)] {
-    self.clos_count.update(|x| x + closures.len());
-    self.data.alloc_slice_copy(closures)
-  }
-
-  /// Allocates a new stack item.
-  pub fn frame<'a, 'b>(&'a self, stack: ir::Stack<'a, 'b>) -> &'a ir::Stack<'a, 'b> {
-    self.frame_count.update(|x| x + 1);
-    self.data.alloc(stack)
-  }
-
   /// Allocates a new string.
-  pub fn string<'a>(&'a self, string: &str) -> &'a str {
+  pub fn string<'b>(&'b self, string: &str) -> &'b str {
     self.char_count.update(|x| x + string.len());
     self.data.alloc_str(string)
   }
 
   /// Allocates a new array of strings.
-  pub fn strings<'a>(&'a self, strings: &[&str]) -> &'a [&'a str] {
+  pub fn strings<'b>(&'b self, strings: &[&str]) -> &'b [&'b str] {
     self.data.alloc_slice_copy(&strings.iter().map(|s| self.string(s)).collect::<Vec<_>>())
   }
 
   /// Allocates a new bound variable info.
-  pub fn bound<'a, 'b>(&'a self, bound: ir::Bound<'b>) -> &'a ir::Bound<'b> {
+  pub fn bound<'b>(&'b self, bound: Bound<'b>) -> &'b Bound<'b> {
     self.data.alloc(bound)
   }
 
   /// Allocates a new field variable info.
-  pub fn field<'a, 'b>(&'a self, field: ir::Field<'b>) -> &'a ir::Field<'b> {
+  pub fn field<'b>(&'b self, field: Field<'b>) -> &'b Field<'b> {
     self.data.alloc(field)
+  }
+
+  /// Allocates a new term.
+  pub fn term<'a, 'b, T: Decoration<'b>>(&'a self, term: Term<'a, 'b, T>) -> &'a Term<'a, 'b, T> {
+    self.term_count.update(|x| x + 1);
+    self.data.alloc(term)
+  }
+
+  /// Allocates a new array of terms with field info for writing.
+  pub fn terms<'b, T: Decoration<'b>>(&self, len: usize) -> &mut [(&'b Field<'b>, Term<'_, 'b, T>)] {
+    self.term_count.update(|x| x + len);
+    self.data.alloc_slice_fill_copy(len, (Field::empty(), Term::Univ(0)))
+  }
+
+  /// Allocates a new value.
+  pub fn val<'a, 'b>(&'a self, val: Val<'a, 'b>) -> &'a Val<'a, 'b> {
+    self.val_count.update(|x| x + 1);
+    self.data.alloc(val)
+  }
+
+  /// Allocates a new array of values with field info for writing.
+  pub fn values<'b>(&self, len: usize) -> &mut [(&'b Field<'b>, Val<'_, 'b>)] {
+    self.val_count.update(|x| x + len);
+    self.data.alloc_slice_fill_copy(len, (Field::empty(), Val::Univ(0)))
+  }
+
+  /// Allocates a new closure.
+  pub fn clos<'a, 'b>(&'a self, clos: Clos<'a, 'b>) -> &'a Clos<'a, 'b> {
+    self.clos_count.update(|x| x + 1);
+    self.data.alloc(clos)
+  }
+
+  /// Allocates a new array of closures with field info for writing.
+  pub fn closures<'b>(&self, len: usize) -> &mut [(&'b Field<'b>, Clos<'_, 'b>)] {
+    let empty = Clos { info: Bound::empty(), env: Stack::Nil, body: &Term::Univ(0) };
+    self.clos_count.update(|x| x + len);
+    self.data.alloc_slice_fill_copy(len, (Field::empty(), empty))
+  }
+
+  /// Allocates a new stack item.
+  pub fn frame<'a, 'b>(&'a self, stack: Stack<'a, 'b>) -> &'a Stack<'a, 'b> {
+    self.frame_count.update(|x| x + 1);
+    self.data.alloc(stack)
   }
 
   /// Increments the stack lookup counter for profiling.
