@@ -1,8 +1,9 @@
 use std::io::Write;
 use std::thread::Builder;
 
-use zenith::arena::Arena;
-use zenith::ir::{Stack, Term};
+// use zenith::arena::Arena;
+// use zenith::ir::{Stack, Term};
+use zenith::kernel::*;
 
 /// Converts `pos` to line and column numbers.
 fn pos_to_line_col(pos: usize, lines: &[String]) -> (usize, usize) {
@@ -95,9 +96,9 @@ fn print_location_indicator(start: usize, end: usize, lines: &[String]) {
 ///   + 2 3
 /// ```
 fn run_repl() -> std::io::Result<()> {
-  let mut ar = Arena::new();
+  // let mut ar = Arena::new();
   loop {
-    ar.reset();
+    // ar.reset();
 
     let mut lines = Vec::new();
     let mut line = String::new();
@@ -133,7 +134,7 @@ fn run_repl() -> std::io::Result<()> {
       }
     };
 
-    let term = match Term::parse(spans.into_iter(), &ar) {
+    let term = match Term::parse(spans.into_iter()) {
       Ok(t) => t,
       Err(e) => {
         let (start, end) = e.position(input.chars().count());
@@ -144,10 +145,10 @@ fn run_repl() -> std::io::Result<()> {
       }
     };
 
-    match term.infer(&Stack::new(&ar), &Stack::new(&ar), &ar) {
-      Ok((term, ty)) => match ty.quote(0, &ar) {
-        Ok(ty) => match term.eval(&Stack::new(&ar), &ar) {
-          Ok(term) => match term.quote(0, &ar) {
+    match term.infer(Stack::new(), Stack::new()) {
+      Ok(ty) => match ty.quote(0) {
+        Ok(ty) => match term.eval(Stack::new()) {
+          Ok(term) => match term.quote(0) {
             Ok(t) => {
               println!("≡ {t}");
               println!(": {ty}");
@@ -161,16 +162,16 @@ fn run_repl() -> std::io::Result<()> {
       Err(e) => println!("⨯ Error: {e}"),
     };
 
-    println!();
-    println!(
-      "  Heap: {} terms, {} frames, {} values, {} closures",
-      ar.term_count(),
-      ar.frame_count(),
-      ar.val_count(),
-      ar.clos_count()
-    );
-    println!("  Stack: {} lookups, {} average lookup length", ar.lookup_count(), ar.average_link_count());
-    println!();
+    // println!();
+    // println!(
+    //   "  Heap: {} terms, {} frames, {} values, {} closures",
+    //   ar.term_count(),
+    //   ar.frame_count(),
+    //   ar.val_count(),
+    //   ar.clos_count()
+    // );
+    // println!("  Stack: {} lookups, {} average lookup length", ar.lookup_count(), ar.average_link_count());
+    // println!();
   }
 }
 

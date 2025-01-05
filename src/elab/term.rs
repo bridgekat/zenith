@@ -75,10 +75,44 @@ impl<'b> Name<'b> {
     }
   }
 
-  // /// Presents a projection as a named variable.
-  // pub fn present<'a>(ix: usize, proj: &[usize], ctx: &Stack<'a, 'b>, ar: &'b Arena) -> Option<&'b Term<'b>> {
-  //   todo!()
-  // }
+  /// Presents a projection suffix given core and named terms and their type.
+  pub fn present_rest<'a>(
+    proj: &[usize],
+    ctx: &Stack<'a, 'b>,
+    env: &Stack<'a, 'b>,
+    x_old: &'a Term<'a, 'b, Core<'b>>,
+    x_new: &'a Term<'a, 'b, Named<'b>>,
+    x_type: Val<'a, 'b>,
+    ar: &'a Arena,
+  ) -> Result<(&'a Term<'a, 'b, Named<'b>>, Val<'a, 'b>), TypeError<'a, 'b, Core<'b>>> {
+    match proj.split_first() {
+      None => Ok((x_new, x_type)),
+      Some((n, rest)) => {
+        // The (Σ proj) rule is used.
+        let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
+        let i = us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, us_val.len()))?;
+        let (u_info, u_val) = us_val[i];
+        let x_old = ar.term(Term::Init(*n, x_old));
+        let x_new = match us_val.iter().rev().take(*n).any(|(info, _)| info.name == u_info.name) {
+          true => ar.term(Term::Init(*n, x_new)),
+          false => todo!(),
+        };
+        let x_type = u_val.apply(Term::Init(n + 1, x_old).eval(env, ar)?, ar)?;
+        Self::present_rest(rest, ctx, env, x_old, x_new, x_type, ar)
+      }
+    }
+  }
+
+  /// Presents a projection as a named variable and resolves its type.
+  pub fn present<'a>(
+    ix: usize,
+    proj: &[usize],
+    ctx: &Stack<'a, 'b>,
+    env: &Stack<'a, 'b>,
+    ar: &'a Arena,
+  ) -> Result<(&'a Term<'a, 'b, Named<'b>>, Val<'a, 'b>), TypeError<'a, 'b, Core<'b>>> {
+    todo!()
+  }
 }
 
 impl<'a, 'b> Term<'a, 'b, Named<'b>> {

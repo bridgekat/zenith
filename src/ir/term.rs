@@ -506,6 +506,19 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
     env: &Stack<'a, 'b>,
     ar: &'a Arena,
   ) -> Result<(&'a Term<'a, 'b, Named<'b>>, Val<'a, 'b>), TypeError<'a, 'b, Core<'b>>> {
+    // Special case for projections on a variable.
+    if let Term::Var(_) | Term::Proj(_, _) = self {
+      let mut projs = Vec::new();
+      let mut term = self;
+      while let Term::Proj(n, x) = term {
+        projs.push(*n);
+        term = x;
+      }
+      if let Term::Var(ix) = term {
+        projs.reverse();
+        return Name::present(ix.ix, &projs, ctx, env, ar);
+      }
+    }
     match self {
       // The (univ) rule is used.
       Term::Univ(lvl) => Ok((ar.term(Term::Univ(*lvl)), Val::Univ(Term::univ_univ(*lvl)?))),
