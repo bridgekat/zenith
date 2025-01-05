@@ -1,5 +1,5 @@
 use super::*;
-use crate::arena::Arena;
+use crate::arena::{Arena, Relocate};
 
 /// # Evaluation errors
 ///
@@ -46,27 +46,17 @@ impl<'a, 'b> EvalError<'a, 'b> {
 
   pub fn tup_init(n: usize, val: Val<'a, 'b>, env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
     match ar.val(val).quote(env.len(), ar) {
-      Ok(val) => Self::TupInit { n, val },
+      Ok(val) => Self::TupInit { n, val: ar.term(val) },
       Err(err) => err,
     }
   }
 
   pub fn tup_proj(n: usize, val: Val<'a, 'b>, env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
     match ar.val(val).quote(env.len(), ar) {
-      Ok(val) => Self::TupProj { n, val },
+      Ok(val) => Self::TupProj { n, val: ar.term(val) },
       Err(err) => err,
     }
   }
-
-  // /// Clones `self` to given arena.
-  // pub fn relocate(self, ar: &Arena) -> EvalError<'_, 'b> {
-  //   match self {
-  //     Self::EnvIndex { ix, len } => EvalError::EnvIndex { ix, len },
-  //     Self::GenLevel { lvl, len } => EvalError::GenLevel { lvl, len },
-  //     Self::TupInit { n, val } => EvalError::TupInit { n, val: val.relocate(ar) },
-  //     Self::TupProj { n, val } => EvalError::TupProj { n, val: val.relocate(ar) },
-  //   }
-  // }
 }
 
 impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
@@ -88,14 +78,14 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
 
   pub fn sig_init(n: usize, ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::SigInit { n, ty },
+      Ok(ty) => Self::SigInit { n, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
   pub fn sig_proj(n: usize, ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::SigProj { n, ty },
+      Ok(ty) => Self::SigProj { n, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
@@ -112,7 +102,7 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
     ar: &'a Arena,
   ) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::TypeExpected { term, ty },
+      Ok(ty) => Self::TypeExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
@@ -125,7 +115,7 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
     ar: &'a Arena,
   ) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::PiExpected { term, ty },
+      Ok(ty) => Self::PiExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
@@ -138,21 +128,21 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
     ar: &'a Arena,
   ) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::SigExpected { term, ty },
+      Ok(ty) => Self::SigExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
   pub fn pi_ann_expected(ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::PiAnnExpected { ty },
+      Ok(ty) => Self::PiAnnExpected { ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
   pub fn sig_ann_expected(ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::SigAnnExpected { ty },
+      Ok(ty) => Self::SigAnnExpected { ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
@@ -167,7 +157,7 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
   ) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
       Ok(ty) => match ar.val(ety).quote(ctx.len(), ar) {
-        Ok(ety) => Self::TypeMismatch { term, ty, ety },
+        Ok(ety) => Self::TypeMismatch { term, ty: ar.term(ty), ety: ar.term(ety) },
         Err(err) => err.into(),
       },
       Err(err) => err.into(),
@@ -181,37 +171,59 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
   pub fn tup_field_mismatch(term: &'a Term<'a, 'b, T>, name: &'b str, ename: &'b str) -> Self {
     Self::TupFieldMismatch { term, name, ename }
   }
-
-  // /// Clones `self` to given arena.
-  // pub fn relocate(self, ar: &Arena) -> TypeError<'_, 'b, T> {
-  //   match self {
-  //     Self::EvalError { err } => TypeError::EvalError { err: err.relocate(ar) },
-  //     Self::UnivForm { univ } => TypeError::UnivForm { univ },
-  //     Self::PiForm { from, to } => TypeError::PiForm { from, to },
-  //     Self::SigForm { fst, snd } => TypeError::SigForm { fst, snd },
-  //     Self::CtxIndex { ix, len } => TypeError::CtxIndex { ix, len },
-  //     Self::SigInit { n, ty } => TypeError::SigInit { n, ty: ty.relocate(ar) },
-  //     Self::SigProj { n, ty } => TypeError::SigProj { n, ty: ty.relocate(ar) },
-  //     Self::AnnExpected { term } => TypeError::AnnExpected { term: term.relocate(ar) },
-  //     Self::TypeExpected { term, ty } => TypeError::TypeExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
-  //     Self::PiExpected { term, ty } => TypeError::PiExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
-  //     Self::SigExpected { term, ty } => TypeError::SigExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
-  //     Self::PiAnnExpected { ty } => TypeError::PiAnnExpected { ty: ty.relocate(ar) },
-  //     Self::SigAnnExpected { ty } => TypeError::SigAnnExpected { ty: ty.relocate(ar) },
-  //     Self::TypeMismatch { term, ty, ety } => {
-  //       TypeError::TypeMismatch { term: term.relocate(ar), ty: ty.relocate(ar), ety: ety.relocate(ar) }
-  //     }
-  //     Self::TupSizeMismatch { term, sz, esz } => TypeError::TupSizeMismatch { term: term.relocate(ar), sz, esz },
-  //     Self::TupFieldMismatch { term, name, ename } => {
-  //       TypeError::TupFieldMismatch { term: term.relocate(ar), name, ename }
-  //     }
-  //   }
-  // }
 }
 
 impl<'a, 'b, T: Decoration> std::convert::From<EvalError<'a, 'b>> for TypeError<'a, 'b, T> {
   fn from(err: EvalError<'a, 'b>) -> Self {
     Self::EvalError { err }
+  }
+}
+
+impl<'a, 'b> Relocate<'a, EvalError<'a, 'b>> for EvalError<'_, 'b> {
+  fn relocate(&self, ar: &'a Arena) -> EvalError<'a, 'b> {
+    match self {
+      Self::EnvIndex { ix, len } => EvalError::EnvIndex { ix: *ix, len: *len },
+      Self::GenLevel { lvl, len } => EvalError::GenLevel { lvl: *lvl, len: *len },
+      Self::TupInit { n, val } => EvalError::TupInit { n: *n, val: ar.term(val.relocate(ar)) },
+      Self::TupProj { n, val } => EvalError::TupProj { n: *n, val: ar.term(val.relocate(ar)) },
+    }
+  }
+}
+
+impl<'a, 'b, T: Decoration> Relocate<'a, TypeError<'a, 'b, T>> for TypeError<'_, 'b, T> {
+  fn relocate(&self, ar: &'a Arena) -> TypeError<'a, 'b, T> {
+    match self {
+      Self::EvalError { err } => TypeError::EvalError { err: err.relocate(ar) },
+      Self::UnivForm { univ } => TypeError::UnivForm { univ: *univ },
+      Self::PiForm { from, to } => TypeError::PiForm { from: *from, to: *to },
+      Self::SigForm { fst, snd } => TypeError::SigForm { fst: *fst, snd: *snd },
+      Self::CtxIndex { ix, len } => TypeError::CtxIndex { ix: *ix, len: *len },
+      Self::SigInit { n, ty } => TypeError::SigInit { n: *n, ty: ar.term(ty.relocate(ar)) },
+      Self::SigProj { n, ty } => TypeError::SigProj { n: *n, ty: ar.term(ty.relocate(ar)) },
+      Self::AnnExpected { term } => TypeError::AnnExpected { term: ar.term(term.relocate(ar)) },
+      Self::TypeExpected { term, ty } => {
+        TypeError::TypeExpected { term: ar.term(term.relocate(ar)), ty: ar.term(ty.relocate(ar)) }
+      }
+      Self::PiExpected { term, ty } => {
+        TypeError::PiExpected { term: ar.term(term.relocate(ar)), ty: ar.term(ty.relocate(ar)) }
+      }
+      Self::SigExpected { term, ty } => {
+        TypeError::SigExpected { term: ar.term(term.relocate(ar)), ty: ar.term(ty.relocate(ar)) }
+      }
+      Self::PiAnnExpected { ty } => TypeError::PiAnnExpected { ty: ar.term(ty.relocate(ar)) },
+      Self::SigAnnExpected { ty } => TypeError::SigAnnExpected { ty: ar.term(ty.relocate(ar)) },
+      Self::TypeMismatch { term, ty, ety } => TypeError::TypeMismatch {
+        term: ar.term(term.relocate(ar)),
+        ty: ar.term(ty.relocate(ar)),
+        ety: ar.term(ety.relocate(ar)),
+      },
+      Self::TupSizeMismatch { term, sz, esz } => {
+        TypeError::TupSizeMismatch { term: ar.term(term.relocate(ar)), sz: *sz, esz: *esz }
+      }
+      Self::TupFieldMismatch { term, name, ename } => {
+        TypeError::TupFieldMismatch { term: ar.term(term.relocate(ar)), name, ename }
+      }
+    }
   }
 }
 

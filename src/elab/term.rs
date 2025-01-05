@@ -1,7 +1,7 @@
 use std::slice::from_raw_parts;
 
 use super::*;
-use crate::arena::Arena;
+use crate::arena::{Arena, Relocate};
 use crate::ir::{Bound, Clos, Core, Named, Stack, Term, TypeError, Val};
 
 impl Named {
@@ -20,7 +20,7 @@ impl Named {
   //         for (ix, (i, u)) in us.iter().rev().enumerate() {
   //           if i.name == first {
   //             let t = u.apply(Term::Init(ix + 1, x).eval(env, ar)?, ar)?;
-  //             return rest.resolve_rest(env, ar.term(Term::Proj(ix, x)), t, ar);
+  //             return rest.resolve_rest(env, (Term::Proj(ix, x)), t, ar);
   //           }
   //         }
   //       }
@@ -47,13 +47,13 @@ impl Named {
   //         ar.inc_link_count();
   //         if info.name == first {
   //           // Resolve the rest of the name in the type.
-  //           return rest.resolve_rest(env, ar.term(Term::Var(Ix::new(ix))), *t, ar);
+  //           return rest.resolve_rest(env, (Term::Var(Ix::new(ix))), *t, ar);
   //         }
   //         if info.name.is_empty() {
   //           if let Val::Sig(us) = t {
   //             if us.iter().any(|(i, _)| i.name == first) {
   //               // Resolve the whole name in the type.
-  //               return self.resolve_rest(env, ar.term(Term::Var(Ix::new(ix))), *t, ar);
+  //               return self.resolve_rest(env, (Term::Var(Ix::new(ix))), *t, ar);
   //             }
   //           }
   //         }
@@ -83,9 +83,9 @@ impl Named {
   //       let i =
   //         us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, Val::Sig(us_val), ctx, env, ar))?;
   //       let (u_info, u_val) = &us_val[i];
-  //       let x_old = ar.term(Term::Init(*n, x_old));
+  //       let x_old = (Term::Init(*n, x_old));
   //       let x_new = match us_val.iter().rev().take(*n).any(|(info, _)| info.name == u_info.name) {
-  //         true => ar.term(Term::Init(*n, x_new)),
+  //         true =>(Term::Init(*n, x_new)),
   //         false => todo!(),
   //       };
   //       let x_type = u_val.apply(Term::Init(n + 1, x_old).eval(env, ar)?, ar)?;
@@ -122,16 +122,20 @@ impl<'a, 'b> Term<'a, 'b, Named> {
     ctx: &Stack<'a, 'b>,
     env: &Stack<'a, 'b>,
     ar: &'a Arena,
-  ) -> Result<(&'a Term<'a, 'b, Core>, Val<'a, 'b>), ElabError<'a, 'b>> {
+  ) -> Result<(Term<'a, 'b, Core>, Val<'a, 'b>), ElabError<'a, 'b>> {
     match self {
+      // The garbage collection mark forces the subterm to be inferred inside a new arena.
+      Term::Gc(x) => {
+        x.infer(ctx, env, &Arena::new()).map(|(x, v)| (x.relocate(ar), v.relocate(ar))).map_err(|e| e.relocate(ar))
+      }
       // The (univ) rule is used.
-      Term::Univ(v) => Ok((ar.term(Term::Univ(*v)), Val::Univ(Term::univ_univ(*v)?))),
+      Term::Univ(v) => Ok(((Term::Univ(*v)), Val::Univ(Term::univ_univ(*v)?))),
       // The (var) rule is used.
       // Variables of values are in de Bruijn levels, so weakening is no-op.
       // Unresolved names are resolved.
       Term::Var(ix) => {
         let t_val = ctx.get(*ix, ar).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len()))?;
-        Ok((ar.term(Term::Var(*ix)), t_val))
+        Ok(((Term::Var(*ix)), t_val))
       }
       // The (ann) rule is used.
       // To establish pre-conditions for `eval()` and `check()`, the type of `t` is checked first.
@@ -140,7 +144,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
         let _ = t_type.as_univ(|t_type| TypeError::type_expected(t_old, t_type, ctx, env, ar))?;
         let t_val = t_new.eval(env, ar)?;
         let x_new = x_old.check(t_val, ctx, env, ar)?;
-        Ok((ar.term(Term::Ann(x_new, t_new)), t_val))
+        Ok(((Term::Ann(ar.term(x_new), ar.term(t_new))), t_val))
       }
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly used on the value (in normal form) from the recursive call.
@@ -150,7 +154,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
         let ctx_ext = ctx.extend(info, v_type, ar);
         let env_ext = env.extend(info, v_val, ar);
         let (x_new, x_type) = x_old.infer(&ctx_ext, &env_ext, ar)?;
-        Ok((ar.term(Term::Let(info, v_new, x_new)), x_type))
+        Ok(((Term::Let(info, ar.term(v_new), ar.term(x_new))), x_type))
       }
       // The (Π form) and (extend) rules are used.
       Term::Pi(info, t_old, u_old) => {
@@ -160,7 +164,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
         let env_ext = env.extend(info, Val::Free(env.len()), ar);
         let (u_new, u_type) = u_old.infer(&ctx_ext, &env_ext, ar)?;
         let u_lvl = u_type.as_univ(|u_type| TypeError::type_expected(u_old, u_type, ctx, env, ar))?;
-        Ok((ar.term(Term::Pi(info, t_new, u_new)), Val::Univ(Term::pi_univ(t_lvl, u_lvl)?)))
+        Ok(((Term::Pi(info, ar.term(t_new), ar.term(u_new))), Val::Univ(Term::pi_univ(t_lvl, u_lvl)?)))
       }
       // Function abstractions must be enclosed in type annotations, or appear as an argument.
       Term::Fun(_, _) => Err(TypeError::ann_expected(ar.term(*self)).into()),
@@ -169,27 +173,28 @@ impl<'a, 'b> Term<'a, 'b, Named> {
         let (f_new, f_type) = f_old.infer(ctx, env, ar)?;
         let (t_val, u_val) = f_type.as_pi(|f_type| TypeError::pi_expected(f_old, f_type, ctx, env, ar))?;
         let x_new = x_old.check(*t_val, ctx, env, ar)?;
-        Ok((ar.term(Term::App(f_new, x_new, *dot)), u_val.apply(x_new.eval(env, ar)?, ar)?))
+        Ok(((Term::App(ar.term(f_new), ar.term(x_new), *dot)), u_val.apply(x_new.eval(env, ar)?, ar)?))
       }
       // The (Σ form), (⊤ form) and (extend) rules are used.
       Term::Sig(us_old) => {
         let mut lvl = Term::unit_univ()?;
         let us_new = ar.terms(us_old.len());
-        let cs = ar.closures(us_old.len()).as_mut_ptr();
+        let us_val = ar.closures(us_old.len()).as_mut_ptr();
         for (i, (info, u_old)) in us_old.iter().enumerate() {
-          // SAFETY: the borrowed range `&cs[..i]` is no longer modified.
-          let t_val = Val::Sig(unsafe { from_raw_parts(cs, i) });
+          // SAFETY: the borrowed range `&us_val[..i]` is no longer modified.
+          let t_val = Val::Sig(unsafe { from_raw_parts(us_val, i) });
           let x_val = Val::Free(env.len());
           let ctx_ext = ctx.extend(Bound::empty(), t_val, ar);
           let env_ext = env.extend(Bound::empty(), x_val, ar);
           let (u_new, u_type) = u_old.infer(&ctx_ext, &env_ext, ar)?;
           let u_lvl = u_type.as_univ(|u_type| TypeError::type_expected(u_old, u_type, ctx, env, ar))?;
           lvl = Term::sig_univ(lvl, u_lvl)?;
-          us_new[i] = (*info, *u_new);
-          // SAFETY: `i < us_old.len()` which is the valid size of `cs`.
-          unsafe { *cs.add(i) = (info, Clos { info: Bound::empty(), env: env.clone(), body: u_new }) };
+          us_new[i] = (*info, u_new);
+          let u_val = Clos { info: Bound::empty(), env: env.clone(), body: ar.term(u_new) };
+          // SAFETY: `i < us_old.len()` which is the valid size of `us_val`.
+          unsafe { *us_val.add(i) = (info, u_val) };
         }
-        Ok((ar.term(Term::Sig(us_new)), Val::Univ(lvl)))
+        Ok(((Term::Sig(us_new)), Val::Univ(lvl)))
       }
       // Tuple constructors must be enclosed in type annotations, or appear as an argument.
       Term::Tup(_) => Err(TypeError::ann_expected(ar.term(*self)).into()),
@@ -198,7 +203,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
         let (x_new, x_type) = x_old.infer(ctx, env, ar)?;
         let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
         let m = us_val.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, Val::Sig(us_val), ctx, env, ar))?;
-        Ok((ar.term(Term::Init(*n, x_new)), Val::Sig(&us_val[..m])))
+        Ok(((Term::Init(*n, ar.term(x_new))), Val::Sig(&us_val[..m])))
       }
       // The (Σ proj) rule is used.
       Term::Proj(n, x_old) => {
@@ -206,7 +211,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
         let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
         let i =
           us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, Val::Sig(us_val), ctx, env, ar))?;
-        Ok((ar.term(Term::Proj(*n, x_new)), us_val[i].1.apply(Term::Init(n + 1, x_new).eval(env, ar)?, ar)?))
+        Ok(((Term::Proj(*n, ar.term(x_new))), us_val[i].1.apply(Term::Init(n + 1, ar.term(x_new)).eval(env, ar)?, ar)?))
       }
       // Holes must be enclosed in type annotations, or appear as an argument.
       Term::Meta(_) => Err(TypeError::ann_expected(ar.term(*self)).into()),
@@ -231,7 +236,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
     ctx: &Stack<'a, 'b>,
     env: &Stack<'a, 'b>,
     ar: &'a Arena,
-  ) -> Result<&'a Term<'a, 'b, Core>, ElabError<'a, 'b>> {
+  ) -> Result<Term<'a, 'b, Core>, ElabError<'a, 'b>> {
     match self {
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly inversely used on the `t` passed into the recursive call.
@@ -241,7 +246,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
         let ctx_ext = ctx.extend(info, v_type, ar);
         let env_ext = env.extend(info, v_val, ar);
         let x_new = x_old.check(t, &ctx_ext, &env_ext, ar)?;
-        Ok(ar.term(Term::Let(info, v_new, x_new)))
+        Ok(Term::Let(info, ar.term(v_new), ar.term(x_new)))
       }
       // The (Π intro) and (extend) rules is used.
       // By pre-conditions, `t` is already known to have universe type.
@@ -251,7 +256,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
         let ctx_ext = ctx.extend(info, *t_val, ar);
         let env_ext = env.extend(info, x_val, ar);
         let b_new = b_old.check(u_val.apply(x_val, ar)?, &ctx_ext, &env_ext, ar)?;
-        Ok(ar.term(Term::Fun(info, b_new)))
+        Ok(Term::Fun(info, ar.term(b_new)))
       }
       // The (∑ intro) and (extend) rules are used.
       // By pre-conditions, `t` is already known to have universe type.
@@ -271,12 +276,12 @@ impl<'a, 'b> Term<'a, 'b, Named> {
             let ctx_ext = ctx.extend(Bound::empty(), t_val, ar);
             let env_ext = env.extend(Bound::empty(), a_val, ar);
             let b_new = b_old.check(u_val.apply(a_val, ar)?, &ctx_ext, &env_ext, ar)?;
-            bs_new[i] = (info, *b_new);
+            bs_new[i] = (info, b_new);
             let b_val = b_new.eval(&env_ext, ar)?;
             // SAFETY: `i < bs_old.len()` which is the valid size of `bs_val`.
             unsafe { *bs_val.add(i) = (info, b_val) };
           }
-          Ok(ar.term(Term::Tup(bs_new)))
+          Ok(Term::Tup(bs_new))
         } else {
           Err(TypeError::tup_size_mismatch(ar.term(*self), bs_old.len(), us_val.len()).into())
         }

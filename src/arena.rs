@@ -19,6 +19,17 @@ pub struct Arena {
   link_count: Cell<usize>,
 }
 
+/// # Relocation trait
+///
+/// A trait which serves as the [`Clone`] counterpart for types allocated on an [`Arena`].
+/// It is typically implemented for `<'a, T<'a>>` where `T<'a>` is some type containing references
+/// with lifetime `'a`. To specify a [`Relocate`] trait bound, use higher-ranked trait bounds
+/// `for<'a> Relocate<'a, T<'a>>`.
+pub trait Relocate<'a, T> {
+  /// Clones `self` to given arena.
+  fn relocate(&self, ar: &'a Arena) -> T;
+}
+
 impl Arena {
   /// Creates an empty arena.
   pub fn new() -> Self {
@@ -137,5 +148,98 @@ impl Arena {
     self.frame_count.set(0);
     self.lookup_count.set(0);
     self.link_count.set(0);
+  }
+}
+
+impl<'a> Relocate<'a, !> for ! {
+  fn relocate(&self, _: &'a Arena) -> ! {
+    match *self {}
+  }
+}
+
+impl<'a> Relocate<'a, &'a str> for &str {
+  fn relocate(&self, ar: &'a Arena) -> &'a str {
+    ar.string(self)
+  }
+}
+
+impl<'a, 'b, T: Decoration> Relocate<'a, Term<'a, 'b, T>> for Term<'_, 'b, T> {
+  fn relocate(&self, ar: &'a Arena) -> Term<'a, 'b, T> {
+    match self {
+      Term::Gc(x) => Term::Gc(ar.term(x.relocate(ar))),
+      Term::Univ(v) => Term::Univ(*v),
+      Term::Var(ix) => Term::Var(*ix),
+      Term::Ann(x, t) => Term::Ann(ar.term(x.relocate(ar)), ar.term(t.relocate(ar))),
+      Term::Let(info, v, x) => Term::Let(info, ar.term(v.relocate(ar)), ar.term(x.relocate(ar))),
+      Term::Pi(info, t, u) => Term::Pi(info, ar.term(t.relocate(ar)), ar.term(u.relocate(ar))),
+      Term::Fun(info, b) => Term::Fun(info, ar.term(b.relocate(ar))),
+      Term::App(f, x, dot) => Term::App(ar.term(f.relocate(ar)), ar.term(x.relocate(ar)), *dot),
+      Term::Sig(us) => {
+        let terms = ar.terms(us.len());
+        for (term, (info, u)) in terms.iter_mut().zip(us.iter()) {
+          *term = (info, u.relocate(ar));
+        }
+        Term::Sig(terms)
+      }
+      Term::Tup(bs) => {
+        let terms = ar.terms(bs.len());
+        for (term, (info, b)) in terms.iter_mut().zip(bs.iter()) {
+          *term = (info, b.relocate(ar));
+        }
+        Term::Tup(terms)
+      }
+      Term::Init(n, x) => Term::Init(*n, ar.term(x.relocate(ar))),
+      Term::Proj(n, x) => Term::Proj(*n, ar.term(x.relocate(ar))),
+      Term::Meta(m) => Term::Meta(*m),
+      Term::NamedVar(s) => Term::NamedVar(*s),
+      Term::NamedProj(s, x) => Term::NamedProj(*s, ar.term(x.relocate(ar))),
+    }
+  }
+}
+
+impl<'a, 'b> Relocate<'a, Val<'a, 'b>> for Val<'_, 'b> {
+  fn relocate(&self, ar: &'a Arena) -> Val<'a, 'b> {
+    match self {
+      Val::Univ(v) => Val::Univ(*v),
+      Val::Free(i) => Val::Free(*i),
+      Val::Pi(t, u) => Val::Pi(ar.val(t.relocate(ar)), ar.clos(u.relocate(ar))),
+      Val::Fun(b) => Val::Fun(ar.clos(b.relocate(ar))),
+      Val::App(f, x, dot) => Val::App(ar.val(f.relocate(ar)), ar.val(x.relocate(ar)), *dot),
+      Val::Sig(us) => {
+        let closures = ar.closures(us.len());
+        for (closure, (info, u)) in closures.iter_mut().zip(us.iter()) {
+          *closure = (info, u.relocate(ar));
+        }
+        Val::Sig(closures)
+      }
+      Val::Tup(bs) => {
+        let values = ar.values(bs.len());
+        for (value, (info, b)) in values.iter_mut().zip(bs.iter()) {
+          *value = (info, b.relocate(ar));
+        }
+        Val::Tup(values)
+      }
+      Val::Init(n, x) => Val::Init(*n, ar.val(x.relocate(ar))),
+      Val::Proj(n, x) => Val::Proj(*n, ar.val(x.relocate(ar))),
+      Val::Meta(env, m) => Val::Meta(ar.frame(env.relocate(ar)), *m),
+    }
+  }
+}
+
+impl<'a, 'b> Relocate<'a, Clos<'a, 'b>> for Clos<'_, 'b> {
+  fn relocate(&self, ar: &'a Arena) -> Clos<'a, 'b> {
+    let Self { info, env, body } = self;
+    Clos { info, env: env.relocate(ar), body: ar.term(body.relocate(ar)) }
+  }
+}
+
+impl<'a, 'b> Relocate<'a, Stack<'a, 'b>> for Stack<'_, 'b> {
+  fn relocate(&self, ar: &'a Arena) -> Stack<'a, 'b> {
+    match self {
+      Stack::Nil => Stack::Nil,
+      Stack::Cons { info, prev, value } => {
+        Stack::Cons { info, prev: ar.frame(prev.relocate(ar)), value: value.relocate(ar) }
+      }
+    }
   }
 }

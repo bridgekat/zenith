@@ -39,6 +39,10 @@ impl<T: Decoration> Term<'_, '_, T> {
       }
     }
     match self {
+      Term::Gc(x) => {
+        x.print(f, prec)?;
+        Ok(())
+      }
       Term::Univ(v) => {
         left_paren(f, Prec::Atom, prec)?;
         match v {

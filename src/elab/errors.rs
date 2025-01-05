@@ -1,4 +1,4 @@
-use crate::arena::Arena;
+use crate::arena::{Arena, Relocate};
 use crate::ir::{Core, EvalError, Named, Stack, Term, TypeError, Val};
 
 /// # Elaboration errors
@@ -18,19 +18,10 @@ impl<'a, 'b> ElabError<'a, 'b> {
 
   pub fn sig_name(name: &'b str, ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::SigName { name, ty },
+      Ok(ty) => Self::SigName { name, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
-
-  // /// Clones `self` to given arena.
-  // pub fn relocate(self, ar: &Arena) -> ElabError<'_, 'b> {
-  //   match self {
-  //     Self::TypeError { err } => ElabError::TypeError { err: err.relocate(ar) },
-  //     Self::CtxName { name } => ElabError::CtxName { name },
-  //     Self::SigName { name, ty } => ElabError::SigName { name, ty: ty.relocate(ar) },
-  //   }
-  // }
 }
 
 impl<'a, 'b> std::convert::From<EvalError<'a, 'b>> for ElabError<'a, 'b> {
@@ -42,6 +33,16 @@ impl<'a, 'b> std::convert::From<EvalError<'a, 'b>> for ElabError<'a, 'b> {
 impl<'a, 'b> std::convert::From<TypeError<'a, 'b, Named>> for ElabError<'a, 'b> {
   fn from(err: TypeError<'a, 'b, Named>) -> Self {
     Self::TypeError { err }
+  }
+}
+
+impl<'a, 'b> Relocate<'a, ElabError<'a, 'b>> for ElabError<'_, 'b> {
+  fn relocate(&self, ar: &'a Arena) -> ElabError<'a, 'b> {
+    match self {
+      Self::TypeError { err } => ElabError::TypeError { err: err.relocate(ar) },
+      Self::CtxName { name } => ElabError::CtxName { name },
+      Self::SigName { name, ty } => ElabError::SigName { name, ty: ar.term(ty.relocate(ar)) },
+    }
   }
 }
 

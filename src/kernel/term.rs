@@ -11,29 +11,29 @@ use super::*;
 #[derive(Debug, Clone, Copy)]
 pub enum Term<'a> {
   /// Garbage collection mark.
-  Gc(&'a Term<'a>),
+  Gc(&'a Self),
   /// Universe in levels.
   Univ(usize),
   /// Variables in de Bruijn indices.
   Var(usize),
   /// Type annotations (value, type).
-  Ann(&'a Term<'a>, &'a Term<'a>),
+  Ann(&'a Self, &'a Self),
   /// Let expressions (value, *body*).
-  Let(&'a Term<'a>, &'a Term<'a>),
+  Let(&'a Self, &'a Self),
   /// Function types (parameter type, *return type*).
-  Pi(&'a Term<'a>, &'a Term<'a>),
+  Pi(&'a Self, &'a Self),
   /// Function abstractions (*body*).
-  Fun(&'a Term<'a>),
+  Fun(&'a Self),
   /// Function applications (function, argument).
-  App(&'a Term<'a>, &'a Term<'a>),
+  App(&'a Self, &'a Self),
   /// Tuple types (*element types*).
-  Sig(&'a [Term<'a>]),
+  Sig(&'a [Self]),
   /// Tuple constructors (*element values*).
-  Tup(&'a [Term<'a>]),
+  Tup(&'a [Self]),
   /// Tuple initial segments (truncation, tuple).
-  Init(usize, &'a Term<'a>),
+  Init(usize, &'a Self),
   /// Tuple projections (index, tuple).
-  Proj(usize, &'a Term<'a>),
+  Proj(usize, &'a Self),
 }
 
 /// # Values
@@ -48,19 +48,19 @@ pub enum Val<'a> {
   /// Free variables in de Bruijn *levels* for cheap weakening.
   Free(usize),
   /// Function types (parameter type, *return type*).
-  Pi(&'a Val<'a>, &'a Clos<'a>),
+  Pi(&'a Self, &'a Clos<'a>),
   /// Function abstractions (*body*).
   Fun(&'a Clos<'a>),
   /// Function applications (function, argument).
-  App(&'a Val<'a>, &'a Val<'a>),
+  App(&'a Self, &'a Self),
   /// Tuple types (*element types*).
   Sig(&'a [Clos<'a>]),
   /// Tuple constructors (element values).
-  Tup(&'a [Val<'a>]),
+  Tup(&'a [Self]),
   /// Tuple initial segments (truncation, tuple).
-  Init(usize, &'a Val<'a>),
+  Init(usize, &'a Self),
   /// Tuple projections (index, tuple).
-  Proj(usize, &'a Val<'a>),
+  Proj(usize, &'a Self),
 }
 
 /// # Closures
@@ -83,7 +83,7 @@ pub struct Clos<'a> {
 #[derive(Debug, Clone)]
 pub enum Stack<'a> {
   Nil,
-  Cons { prev: &'a Stack<'a>, value: Val<'a> },
+  Cons { prev: &'a Self, value: Val<'a> },
 }
 
 impl<'a> Stack<'a> {
