@@ -1,6 +1,6 @@
 use std::fmt::Formatter;
 
-use crate::ir::{Decoration, Ix, Name, Term, Var};
+use crate::ir::{Decoration, Term};
 
 /// Precedence levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -11,31 +11,7 @@ enum Prec {
   Atom,
 }
 
-impl std::fmt::Display for Ix {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "@^{}", self.ix)
-  }
-}
-
-impl std::fmt::Display for Name<'_> {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", self.segments.join("::"))
-  }
-}
-
-impl std::fmt::Display for Var<'_> {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Var::Ix(ix) => write!(f, "{}", ix),
-      Var::Name(name) => write!(f, "{}", name),
-    }
-  }
-}
-
-impl<'b, T: Decoration<'b>> Term<'_, 'b, T>
-where
-  T::Var: std::fmt::Display,
-{
+impl<T: Decoration> Term<'_, '_, T> {
   /// Pretty-prints a term.
   ///
   /// See documentation of [`Term::parse`] for the BNF grammar.
@@ -73,19 +49,16 @@ where
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Var(x) => {
+      Term::Var(ix) => {
         left_paren(f, Prec::Atom, prec)?;
-        write!(f, "{}", x)?;
+        write!(f, "@^{}", ix)?;
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Ann(x, t, b) => {
+      Term::Ann(x, t) => {
         left_paren(f, Prec::Term, prec)?;
         x.print(f, Prec::Body)?;
-        match b {
-          false => write!(f, " : ")?,
-          true => write!(f, " :: ")?,
-        }
+        write!(f, " : ")?;
         t.print(f, Prec::Term)?;
         right_paren(f, Prec::Term, prec)?;
         Ok(())
@@ -211,14 +184,14 @@ where
         Ok(())
       }
       Term::Meta(_) => todo!(),
+      // TODO
+      Term::NamedVar(_) => todo!(),
+      Term::NamedProj(_, _) => todo!(),
     }
   }
 }
 
-impl<'b, T: Decoration<'b>> std::fmt::Display for Term<'_, 'b, T>
-where
-  T::Var: std::fmt::Display,
-{
+impl<T: Decoration> std::fmt::Display for Term<'_, '_, T> {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     self.print(f, Prec::Term)
   }

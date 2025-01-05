@@ -19,7 +19,7 @@ pub enum Token {
   Pi,
   Fun,
   Def,
-  Ann(bool),
+  Ann,
   Unit,
   Type,
   Kind,
@@ -100,8 +100,7 @@ impl<'a> Term<'a> {
             "→" | "->" => Token::Pi,
             "↦" | "=>" => Token::Fun,
             "≔" | ":=" => Token::Def,
-            ":" => Token::Ann(false),
-            "::" => Token::Ann(true),
+            ":" => Token::Ann,
             "Unit" => Token::Unit,
             "Type" => Token::Type,
             "Kind" => Token::Kind,
@@ -123,7 +122,6 @@ impl<'a> Term<'a> {
   /// <term> ::=
   ///   | <body>
   ///   | <body> ":" <term>
-  ///   | <body> "::" <term>
   ///
   /// <body> ::=
   ///   | "[" <id> "≔" <term> ("," <id> "≔" <term>)* "]" <body>
@@ -188,14 +186,9 @@ impl<'a> Term<'a> {
       let res = parse_body(it, vars, ar)?;
       match it.peek() {
         // Parsing an optional type annotation.
-        Some(Span { tok: Token::Ann(false), .. }) => {
+        Some(Span { tok: Token::Ann, .. }) => {
           it.next();
-          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?, false)))
-        }
-        // Parsing an optional type annotation with double colons (indicating an arena boundary).
-        Some(Span { tok: Token::Ann(true), .. }) => {
-          it.next();
-          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?, true)))
+          Ok(ar.term(Term::Ann(res, parse_term(it, vars, ar)?)))
         }
         _ => Ok(res),
       }
@@ -234,14 +227,14 @@ impl<'a> Term<'a> {
               Ok(body)
             }
             // Parsing a group of Pi binders.
-            Some(Span { tok: Token::Ann(_), .. }) => {
+            Some(Span { tok: Token::Ann, .. }) => {
               it.next();
               let mut ts = Vec::from([parse_term(it, vars, ar)?]);
               vars.push(Binding::Named(x));
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
-                expect(it, Token::Ann(false))?;
+                expect(it, Token::Ann)?;
                 ts.push(parse_term(it, vars, ar)?);
                 vars.push(Binding::Named(x));
               }
@@ -366,7 +359,7 @@ impl<'a> Term<'a> {
               Ok(ar.term(Term::Tup(terms)))
             }
             // Parsing a tuple type aggregate.
-            Some(Span { tok: Token::Ann(_), .. }) => {
+            Some(Span { tok: Token::Ann, .. }) => {
               vars.push(Binding::Tuple(Vec::new()));
               let mut vec = Vec::new();
               vec.push(*parse_term(it, vars, ar)?);
@@ -376,7 +369,7 @@ impl<'a> Term<'a> {
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
-                expect(it, Token::Ann(false))?;
+                expect(it, Token::Ann)?;
                 vec.push(*parse_term(it, vars, ar)?);
                 if let Some(Binding::Tuple(var)) = vars.last_mut() {
                   var.push(x);
@@ -441,6 +434,10 @@ impl Term<'_> {
       Ok(())
     }
     match self {
+      Term::Gc(x) => {
+        x.print(f, count, vars, prec)?;
+        Ok(())
+      }
       Term::Univ(v) => {
         left_paren(f, Prec::Atom, prec)?;
         match v {
@@ -465,13 +462,10 @@ impl Term<'_> {
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
-      Term::Ann(x, t, b) => {
+      Term::Ann(x, t) => {
         left_paren(f, Prec::Term, prec)?;
         x.print(f, count, vars, Prec::Body)?;
-        match b {
-          false => write!(f, " : ")?,
-          true => write!(f, " :: ")?,
-        }
+        write!(f, " : ")?;
         t.print(f, count, vars, Prec::Term)?;
         right_paren(f, Prec::Term, prec)?;
         Ok(())

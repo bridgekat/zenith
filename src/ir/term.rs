@@ -4,42 +4,25 @@ use std::slice::from_raw_parts;
 use super::*;
 use crate::arena::Arena;
 
-pub trait Decoration<'b>: std::fmt::Debug + Clone + Copy {
-  type Var: std::fmt::Debug + Clone + Copy;
+pub trait Decoration: std::fmt::Debug + Clone + Copy {
+  type NamedVar<'b>: std::fmt::Debug + std::fmt::Display + Clone + Copy;
+  type NamedProj<'b>: std::fmt::Debug + std::fmt::Display + Clone + Copy;
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Core<'b> {
-  _marker: std::marker::PhantomData<&'b ()>,
-}
+pub struct Core;
 
 #[derive(Debug, Clone, Copy)]
-pub struct Named<'b> {
-  _marker: std::marker::PhantomData<&'b ()>,
+pub struct Named;
+
+impl Decoration for Core {
+  type NamedVar<'b> = !;
+  type NamedProj<'b> = !;
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Ix {
-  pub ix: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Var<'b> {
-  Ix(Ix),
-  Name(Name<'b>),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Name<'b> {
-  pub segments: &'b [&'b str],
-}
-
-impl Decoration<'_> for Core<'_> {
-  type Var = Ix;
-}
-
-impl<'b> Decoration<'b> for Named<'b> {
-  type Var = Var<'b>;
+impl Decoration for Named {
+  type NamedVar<'b> = &'b str;
+  type NamedProj<'b> = &'b str;
 }
 
 /// # Binder information
@@ -66,13 +49,13 @@ pub struct Field<'b> {
 ///
 /// Can be understood as the "source code" given to the evaluator.
 #[derive(Debug, Clone, Copy)]
-pub enum Term<'a, 'b, T: Decoration<'b>> {
+pub enum Term<'a, 'b, T: Decoration> {
   /// Universe in levels.
   Univ(usize),
-  /// Variables in parameterised representations.
-  Var(T::Var),
-  /// Type annotations (value, type, arena boundary flag).
-  Ann(&'a Term<'a, 'b, T>, &'a Term<'a, 'b, T>, bool),
+  /// Variables in de Bruijn indices.
+  Var(usize),
+  /// Type annotations (value, type).
+  Ann(&'a Term<'a, 'b, T>, &'a Term<'a, 'b, T>),
   /// Let expressions (bound variable info, value, *body*).
   Let(&'b Bound<'b>, &'a Term<'a, 'b, T>, &'a Term<'a, 'b, T>),
   /// Function types (bound variable info, parameter type, *return type*).
@@ -91,6 +74,10 @@ pub enum Term<'a, 'b, T: Decoration<'b>> {
   Proj(usize, &'a Term<'a, 'b, T>),
   /// Holes in unique identifiers.
   Meta(usize),
+  /// Named variables.
+  NamedVar(T::NamedVar<'b>),
+  /// Named projections. To preserve covariance w.r.t. `'a`, this has to be hard-coded.
+  NamedProj(T::NamedProj<'b>, &'a Term<'a, 'b, T>),
 }
 
 /// # Values
@@ -128,11 +115,11 @@ pub enum Val<'a, 'b> {
 ///
 /// The environment is represented using a special data structure which supports structural sharing
 /// and fast random access (in most cases). For more details, see the documentation for [`Stack`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Clos<'a, 'b> {
   pub info: &'b Bound<'b>,
   pub env: Stack<'a, 'b>,
-  pub body: &'a Term<'a, 'b, Core<'b>>,
+  pub body: &'a Term<'a, 'b, Core>,
 }
 
 /// # Linked list stacks
@@ -140,17 +127,10 @@ pub struct Clos<'a, 'b> {
 /// The baseline implementation of evaluation environments. Cheap to append and clone, but random
 /// access takes linear time. This is acceptable if most of the context is wrapped inside tuples,
 /// which have constant-time random access.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Stack<'a, 'b> {
   Nil,
   Cons { prev: &'a Stack<'a, 'b>, info: &'b Bound<'b>, value: Val<'a, 'b> },
-}
-
-impl Ix {
-  /// Creates a new de Bruijn index.
-  pub fn new(ix: usize) -> Self {
-    Self { ix }
-  }
 }
 
 impl<'b> Bound<'b> {
@@ -174,38 +154,6 @@ impl<'b> Field<'b> {
   /// Creates a new field variable info in the given arena.
   pub fn new(name: &str, attrs: &[&str], ar: &'b Arena) -> Self {
     Self { name: ar.string(name), attrs: ar.strings(attrs) }
-  }
-}
-
-impl<'b, T: Decoration<'b>> Term<'_, 'b, T> {
-  /// Clones `self` to given arena.
-  pub fn relocate<'a>(&self, ar: &'a Arena) -> &'a Term<'a, 'b, T> {
-    match self {
-      Term::Univ(v) => ar.term(Term::Univ(*v)),
-      Term::Var(ix) => ar.term(Term::Var(*ix)),
-      Term::Ann(x, t, b) => ar.term(Term::Ann(x.relocate(ar), t.relocate(ar), *b)),
-      Term::Let(i, v, x) => ar.term(Term::Let(i, v.relocate(ar), x.relocate(ar))),
-      Term::Pi(i, t, u) => ar.term(Term::Pi(i, t.relocate(ar), u.relocate(ar))),
-      Term::Fun(i, b) => ar.term(Term::Fun(i, b.relocate(ar))),
-      Term::App(f, x, b) => ar.term(Term::App(f.relocate(ar), x.relocate(ar), *b)),
-      Term::Sig(us) => {
-        let terms = ar.terms(us.len());
-        for (term, (i, u)) in terms.iter_mut().zip(us.iter()) {
-          *term = (i, *u.relocate(ar));
-        }
-        ar.term(Term::Sig(terms))
-      }
-      Term::Tup(bs) => {
-        let terms = ar.terms(bs.len());
-        for (term, (i, b)) in terms.iter_mut().zip(bs.iter()) {
-          *term = (i, *b.relocate(ar));
-        }
-        ar.term(Term::Tup(terms))
-      }
-      Term::Init(n, x) => ar.term(Term::Init(*n, x.relocate(ar))),
-      Term::Proj(n, x) => ar.term(Term::Proj(*n, x.relocate(ar))),
-      Term::Meta(m) => ar.term(Term::Meta(*m)),
-    }
   }
 }
 
@@ -252,31 +200,31 @@ impl<'a, 'b> Stack<'a, 'b> {
 
   /// Extends the stack with a new value.
   pub fn extend(&self, info: &'b Bound<'b>, value: Val<'a, 'b>, ar: &'a Arena) -> Self {
-    Stack::Cons { prev: ar.frame(*self), info, value }
+    Stack::Cons { prev: ar.frame(self.clone()), info, value }
   }
 }
 
-impl<'a, 'b> Term<'a, 'b, Core<'b>> {
+impl<'a, 'b> Term<'a, 'b, Core> {
   /// Reduces `self` so that all `let`s are collected into the environment and then frozen at
   /// binders. This is mutually recursive with [`Clos::apply`], forming an eval-apply loop.
   ///
   /// Pre-conditions:
   ///
   /// - `self` is well-typed under a context and environment `env` (to ensure termination).
-  pub fn eval(&self, env: &Stack<'a, 'b>, ar: &'a Arena) -> Result<Val<'a, 'b>, EvalError> {
+  pub fn eval(&self, env: &Stack<'a, 'b>, ar: &'a Arena) -> Result<Val<'a, 'b>, EvalError<'a, 'b>> {
     match self {
       // Universes are already in normal form.
       Term::Univ(v) => Ok(Val::Univ(*v)),
       // The (δ) rule is always applied.
       // Variables of values are in de Bruijn levels, so weakening is no-op.
-      Term::Var(ix) => env.get(ix.ix, ar).ok_or_else(|| EvalError::env_index(ix.ix, env.len())),
+      Term::Var(ix) => env.get(*ix, ar).ok_or_else(|| EvalError::env_index(*ix, env.len())),
       // The (τ) rule is always applied.
-      Term::Ann(x, _, _) => x.eval(env, ar),
+      Term::Ann(x, _) => x.eval(env, ar),
       // For `let`s, we reduce the value, collect it into the environment to reduce the body.
       Term::Let(i, v, x) => x.eval(&env.extend(i, v.eval(env, ar)?, ar), ar),
       // For binders, we freeze the whole environment and store the body as a closure.
-      Term::Pi(i, t, u) => Ok(Val::Pi(ar.val(t.eval(env, ar)?), ar.clos(Clos { info: i, env: *env, body: u }))),
-      Term::Fun(i, b) => Ok(Val::Fun(ar.clos(Clos { info: i, env: *env, body: b }))),
+      Term::Pi(i, t, u) => Ok(Val::Pi(ar.val(t.eval(env, ar)?), ar.clos(Clos { info: i, env: env.clone(), body: u }))),
+      Term::Fun(i, b) => Ok(Val::Fun(ar.clos(Clos { info: i, env: env.clone(), body: b }))),
       // For applications, we reduce both operands and combine them back.
       // In the case of a redex, the (β) rule is applied.
       Term::App(f, x, b) => match (f.eval(env, ar)?, x.eval(env, ar)?) {
@@ -286,18 +234,19 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
       // For binders, we freeze the whole environment and store the body as a closure.
       Term::Sig(us) => {
         let cs = ar.closures(us.len());
-        for (j, (i, u)) in us.iter().enumerate() {
-          cs[j] = (*i, Clos { info: Bound::empty(), env: *env, body: u });
+        for (i, (info, u)) in us.iter().enumerate() {
+          cs[i] = (info, Clos { info: Bound::empty(), env: env.clone(), body: u });
         }
         Ok(Val::Sig(cs))
       }
       Term::Tup(bs) => {
         let vs = ar.values(bs.len()).as_mut_ptr();
-        for (j, (i, b)) in bs.iter().enumerate() {
-          // SAFETY: the borrowed range `&vs[..j]` is no longer modified.
-          let a = Val::Tup(unsafe { from_raw_parts(vs, j) });
-          // SAFETY: `j < bs.len()` which is the valid size of `vs`.
-          unsafe { *vs.add(j) = (i, b.eval(&env.extend(Bound::empty(), a, ar), ar)?) };
+        for (i, (info, b)) in bs.iter().enumerate() {
+          // SAFETY: the borrowed range `&vs[..i]` is no longer modified.
+          let a = Val::Tup(unsafe { from_raw_parts(vs, i) });
+          let b = b.eval(&env.extend(Bound::empty(), a, ar), ar)?;
+          // SAFETY: `i < bs.len()` which is the valid size of `vs`.
+          unsafe { *vs.add(i) = (info, b) };
         }
         // SAFETY: the borrowed slice `&vs` has valid size `bs.len()` and is no longer modified.
         Ok(Val::Tup(unsafe { from_raw_parts(vs, bs.len()) }))
@@ -307,7 +256,7 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
       Term::Init(n, x) => match x.eval(env, ar)? {
         Val::Init(m, y) => Ok(Val::Init(n + m, y)),
         Val::Tup(bs) => {
-          let m = bs.len().checked_sub(*n).ok_or_else(|| EvalError::tup_init(*n, bs.len()))?;
+          let m = bs.len().checked_sub(*n).ok_or_else(|| EvalError::tup_init(*n, Val::Tup(bs), env, ar))?;
           Ok(Val::Tup(&bs[..m]))
         }
         x => Ok(Val::Init(*n, ar.val(x))),
@@ -318,13 +267,13 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
       Term::Proj(n, x) => match x.eval(env, ar)? {
         Val::Init(m, y) => Ok(Val::Proj(n + m, y)),
         Val::Tup(bs) => {
-          let i = bs.len().checked_sub(n + 1).ok_or_else(|| EvalError::tup_proj(*n, bs.len()))?;
+          let i = bs.len().checked_sub(n + 1).ok_or_else(|| EvalError::tup_proj(*n, Val::Tup(bs), env, ar))?;
           Ok(bs[i].1)
         }
         x => Ok(Val::Proj(*n, ar.val(x))),
       },
       // For holes, we freeze the whole environment around it.
-      Term::Meta(m) => Ok(Val::Meta(ar.frame(*env), *m)),
+      Term::Meta(m) => Ok(Val::Meta(ar.frame(env.clone()), *m)),
     }
   }
 }
@@ -333,9 +282,9 @@ impl<'a, 'b> Clos<'a, 'b> {
   /// Inserts a new `let` around the body after the frozen `let`s, and reduces the body under the
   /// empty environment populated with all `let`s. This is mutually recursive with [`Term::eval`],
   /// forming an eval-apply loop.
-  pub fn apply(&self, x: Val<'a, 'b>, ar: &'a Arena) -> Result<Val<'a, 'b>, EvalError> {
+  pub fn apply(&'a self, x: Val<'a, 'b>, ar: &'a Arena) -> Result<Val<'a, 'b>, EvalError<'a, 'b>> {
     let Self { env, info, body } = self;
-    body.eval(&env.extend(info, x, ar), ar)
+    body.eval(&Stack::Cons { prev: env, info, value: x }, ar)
   }
 }
 
@@ -346,12 +295,12 @@ impl<'a, 'b> Val<'a, 'b> {
   /// Pre-conditions:
   ///
   /// - `self` is well-typed under a context with size `len` (to ensure termination).
-  pub fn quote(&self, len: usize, ar: &'a Arena) -> Result<&'a Term<'a, 'b, Core<'b>>, EvalError> {
+  pub fn quote(&self, len: usize, ar: &'a Arena) -> Result<&'a Term<'a, 'b, Core>, EvalError<'a, 'b>> {
     match self {
       Val::Univ(v) => Ok(ar.term(Term::Univ(*v))),
       Val::Free(i) => {
         let ix = len.checked_sub(i + 1).ok_or_else(|| EvalError::gen_level(*i, len))?;
-        Ok(ar.term(Term::Var(Ix::new(ix))))
+        Ok(ar.term(Term::Var(ix)))
       }
       Val::Pi(t, u) => {
         Ok(ar.term(Term::Pi(u.info, t.quote(len, ar)?, u.apply(Val::Free(len), ar)?.quote(len + 1, ar)?)))
@@ -384,7 +333,7 @@ impl<'a, 'b> Val<'a, 'b> {
   /// Pre-conditions:
   ///
   /// - `self` and `other` are well-typed under a context with size `len` (to ensure termination).
-  pub fn conv(&self, other: &Self, len: usize, ar: &'a Arena) -> Result<bool, EvalError> {
+  pub fn conv(&self, other: &Self, len: usize, ar: &'a Arena) -> Result<bool, EvalError<'a, 'b>> {
     match (self, other) {
       (Val::Univ(v), Val::Univ(w)) => Ok(v == w),
       (Val::Free(i), Val::Free(j)) => Ok(i == j),
@@ -450,7 +399,7 @@ impl<'a, 'b> Val<'a, 'b> {
   }
 }
 
-impl<'a, 'b, T: Decoration<'b>> Term<'a, 'b, T> {
+impl<'a, 'b, T: Decoration> Term<'a, 'b, T> {
   /// Given universe `u`, returns the universe of its type.
   pub fn univ_univ(u: usize) -> Result<usize, TypeError<'a, 'b, T>> {
     match u {
@@ -478,18 +427,7 @@ impl<'a, 'b, T: Decoration<'b>> Term<'a, 'b, T> {
   }
 }
 
-impl Ix {
-  /// Resolves a de Bruijn index to a term and its type.
-  pub fn resolve<'a, 'b, T: Decoration<'b>>(
-    &self,
-    ctx: &Stack<'a, 'b>,
-    ar: &'a Arena,
-  ) -> Result<Val<'a, 'b>, TypeError<'a, 'b, T>> {
-    ctx.get(self.ix, ar).ok_or_else(|| TypeError::ctx_index(self.ix, ctx.len()))
-  }
-}
-
-impl<'a, 'b> Term<'a, 'b, Core<'b>> {
+impl<'a, 'b> Term<'a, 'b, Core> {
   /// Given preterm `self`, returns the type of `self`. This is mutually recursive with
   /// [`Term::check`], and is the entry point of Coquand’s type checking algorithm.
   ///
@@ -505,24 +443,39 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
     ctx: &Stack<'a, 'b>,
     env: &Stack<'a, 'b>,
     ar: &'a Arena,
-  ) -> Result<(&'a Term<'a, 'b, Named<'b>>, Val<'a, 'b>), TypeError<'a, 'b, Core<'b>>> {
+  ) -> Result<(&'a Term<'a, 'b, Named>, Val<'a, 'b>), TypeError<'a, 'b, Core>> {
+    // Special case for projections on a variable.
+    if let Term::Var(_) | Term::Proj(_, _) = self {
+      let mut projs = Vec::new();
+      let mut term = self;
+      while let Term::Proj(n, x) = term {
+        projs.push(*n);
+        term = x;
+      }
+      if let Term::Var(_ix) = term {
+        projs.reverse();
+        // TODO
+        // return Named::present_name(*ix, &projs, ctx, env, ar);
+        todo!()
+      }
+    }
     match self {
       // The (univ) rule is used.
       Term::Univ(lvl) => Ok((ar.term(Term::Univ(*lvl)), Val::Univ(Term::univ_univ(*lvl)?))),
       // The (var) rule is used.
       // Variables of values are in de Bruijn levels, so weakening is no-op.
-      Term::Var(ix) => Ok((ar.term(Term::Var(Var::Ix(*ix))), ix.resolve(ctx, ar)?)),
+      Term::Var(ix) => {
+        let t_val = ctx.get(*ix, ar).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len()))?;
+        Ok((ar.term(Term::Var(*ix)), t_val))
+      }
       // The (ann) rule is used.
       // To establish pre-conditions for `eval()` and `check()`, the type of `t` is checked first.
-      Term::Ann(x_old, t_old, boundary) => {
+      Term::Ann(x_old, t_old) => {
         let (t_new, t_type) = t_old.infer(ctx, env, ar)?;
         let _ = t_type.as_univ(|t_type| TypeError::type_expected(t_old, t_type, ctx, env, ar))?;
         let t_val = t_old.eval(env, ar)?;
-        let x_new = match boundary {
-          false => x_old.check(t_val, ctx, env, ar)?,
-          true => x_old.check(t_val, ctx, env, &Arena::new()).map(|x| x.relocate(ar)).map_err(|e| e.relocate(ar))?,
-        };
-        Ok((ar.term(Term::Ann(x_new, t_new, *boundary)), t_val))
+        let x_new = x_old.check(t_val, ctx, env, ar)?;
+        Ok((ar.term(Term::Ann(x_new, t_new)), t_val))
       }
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly used on the value (in normal form) from the recursive call.
@@ -557,10 +510,12 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
       Term::Sig(us_old) => {
         let mut lvl = Term::unit_univ()?;
         let us_new = ar.terms(us_old.len());
-        let us_val = ar.closures(us_old.len()).as_mut_ptr();
+        let cs = ar.closures(us_old.len());
         for (i, (info, u_old)) in us_old.iter().enumerate() {
-          // SAFETY: the borrowed range `&us_val[..i]` is no longer modified.
-          let t_val = Val::Sig(unsafe { from_raw_parts(us_val, i) });
+          cs[i] = (info, Clos { info: Bound::empty(), env: env.clone(), body: u_old });
+        }
+        for (i, (info, u_old)) in us_old.iter().enumerate() {
+          let t_val = Val::Sig(&cs[..i]);
           let x_val = Val::Free(env.len());
           let ctx_ext = ctx.extend(Bound::empty(), t_val, ar);
           let env_ext = env.extend(Bound::empty(), x_val, ar);
@@ -568,8 +523,6 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
           let u_lvl = u_type.as_univ(|u_type| TypeError::type_expected(u_old, u_type, ctx, env, ar))?;
           lvl = Term::sig_univ(lvl, u_lvl)?;
           us_new[i] = (*info, *u_new);
-          // SAFETY: `i < us_old.len()` which is the valid size of `us_val`.
-          unsafe { *us_val.add(i) = (info, Clos { info: Bound::empty(), env: *env, body: u_old }) };
         }
         Ok((ar.term(Term::Sig(us_new)), Val::Univ(lvl)))
       }
@@ -579,14 +532,15 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
       Term::Init(n, x_old) => {
         let (x_new, x_type) = x_old.infer(ctx, env, ar)?;
         let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
-        let m = us_val.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, us_val.len()))?;
+        let m = us_val.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, Val::Sig(us_val), ctx, env, ar))?;
         Ok((ar.term(Term::Init(*n, x_new)), Val::Sig(&us_val[..m])))
       }
       // The (Σ proj) rule is used.
       Term::Proj(n, x_old) => {
         let (x_new, x_type) = x_old.infer(ctx, env, ar)?;
         let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
-        let i = us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, us_val.len()))?;
+        let i =
+          us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, Val::Sig(us_val), ctx, env, ar))?;
         Ok((ar.term(Term::Proj(*n, x_new)), us_val[i].1.apply(Term::Init(n + 1, x_old).eval(env, ar)?, ar)?))
       }
       // Holes must be enclosed in type annotations, or appear as an argument.
@@ -609,7 +563,7 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
     ctx: &Stack<'a, 'b>,
     env: &Stack<'a, 'b>,
     ar: &'a Arena,
-  ) -> Result<&'a Term<'a, 'b, Named<'b>>, TypeError<'a, 'b, Core<'b>>> {
+  ) -> Result<&'a Term<'a, 'b, Named>, TypeError<'a, 'b, Core>> {
     match self {
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly inversely used on the `t` passed into the recursive call.
@@ -639,7 +593,7 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
           let bs_new = ar.terms(bs_old.len());
           let bs_val = ar.values(bs_old.len()).as_mut_ptr();
           for (i, (info, b_old)) in bs_old.iter().enumerate() {
-            let (u_info, u_val) = us_val[i];
+            let (u_info, u_val) = &us_val[i];
             if info.name != u_info.name {
               return Err(TypeError::tup_field_mismatch(ar.term(*self), info.name, u_info.name));
             }
@@ -650,8 +604,9 @@ impl<'a, 'b> Term<'a, 'b, Core<'b>> {
             let env_ext = env.extend(Bound::empty(), a_val, ar);
             let b_new = b_old.check(u_val.apply(a_val, ar)?, &ctx_ext, &env_ext, ar)?;
             bs_new[i] = (info, *b_new);
+            let b_val = b_old.eval(&env_ext, ar)?;
             // SAFETY: `i < bs_old.len()` which is the valid size of `bs_val`.
-            unsafe { *bs_val.add(i) = (info, b_old.eval(&env_ext, ar)?) };
+            unsafe { *bs_val.add(i) = (info, b_val) };
           }
           Ok(ar.term(Term::Tup(bs_new)))
         } else {

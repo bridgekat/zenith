@@ -46,13 +46,13 @@ impl Arena {
   }
 
   /// Allocates a new term.
-  pub fn term<'a, 'b, T: Decoration<'b>>(&'a self, term: Term<'a, 'b, T>) -> &'a Term<'a, 'b, T> {
+  pub fn term<'a, 'b, T: Decoration>(&'a self, term: Term<'a, 'b, T>) -> &'a Term<'a, 'b, T> {
     self.term_count.set(self.term_count.get() + 1);
     self.data.alloc(term)
   }
 
   /// Allocates a new array of terms with field info for writing.
-  pub fn terms<'b, T: Decoration<'b>>(&self, len: usize) -> &mut [(&'b Field<'b>, Term<'_, 'b, T>)] {
+  pub fn terms<'b, T: Decoration>(&self, len: usize) -> &mut [(&'b Field<'b>, Term<'_, 'b, T>)] {
     self.term_count.set(self.term_count.get() + len);
     self.data.alloc_slice_fill_copy(len, (Field::empty(), Term::Univ(0)))
   }
@@ -77,9 +77,9 @@ impl Arena {
 
   /// Allocates a new array of closures with field info for writing.
   pub fn closures<'b>(&self, len: usize) -> &mut [(&'b Field<'b>, Clos<'_, 'b>)] {
-    let empty = Clos { info: Bound::empty(), env: Stack::Nil, body: &Term::Univ(0) };
+    let empty = (Field::empty(), Clos { info: Bound::empty(), env: Stack::Nil, body: &Term::Univ(0) });
     self.clos_count.set(self.clos_count.get() + len);
-    self.data.alloc_slice_fill_copy(len, (Field::empty(), empty))
+    self.data.alloc_slice_fill_clone(len, &empty)
   }
 
   /// Allocates a new stack item.

@@ -58,7 +58,7 @@ impl Arena {
   /// Allocates a new array of closures for writing.
   pub fn closures(&self, len: usize) -> &mut [Clos<'_>] {
     self.clos_count.set(self.clos_count.get() + len);
-    self.data.alloc_slice_fill_copy(len, Clos { env: Stack::Nil, body: &Term::Univ(0) })
+    self.data.alloc_slice_fill_clone(len, &Clos { env: Stack::Nil, body: &Term::Univ(0) })
   }
 
   /// Allocates a new stack item.
@@ -116,5 +116,84 @@ impl Arena {
     self.frame_count.set(0);
     self.lookup_count.set(0);
     self.link_count.set(0);
+  }
+}
+
+impl Term<'_> {
+  /// Clones `self` to given arena.
+  pub fn relocate<'a>(&self, ar: &'a Arena) -> Term<'a> {
+    match self {
+      Term::Gc(x) => Term::Gc(ar.term(x.relocate(ar))),
+      Term::Univ(v) => Term::Univ(*v),
+      Term::Var(ix) => Term::Var(*ix),
+      Term::Ann(x, t) => Term::Ann(ar.term(x.relocate(ar)), ar.term(t.relocate(ar))),
+      Term::Let(v, x) => Term::Let(ar.term(v.relocate(ar)), ar.term(x.relocate(ar))),
+      Term::Pi(t, u) => Term::Pi(ar.term(t.relocate(ar)), ar.term(u.relocate(ar))),
+      Term::Fun(b) => Term::Fun(ar.term(b.relocate(ar))),
+      Term::App(f, x) => Term::App(ar.term(f.relocate(ar)), ar.term(x.relocate(ar))),
+      Term::Sig(us) => {
+        let terms = ar.terms(us.len());
+        for (term, u) in terms.iter_mut().zip(us.iter()) {
+          *term = u.relocate(ar);
+        }
+        Term::Sig(terms)
+      }
+      Term::Tup(bs) => {
+        let terms = ar.terms(bs.len());
+        for (term, b) in terms.iter_mut().zip(bs.iter()) {
+          *term = b.relocate(ar);
+        }
+        Term::Tup(terms)
+      }
+      Term::Init(n, x) => Term::Init(*n, ar.term(x.relocate(ar))),
+      Term::Proj(n, x) => Term::Proj(*n, ar.term(x.relocate(ar))),
+    }
+  }
+}
+
+impl Val<'_> {
+  /// Clones `self` to given arena.
+  pub fn relocate<'a>(&self, ar: &'a Arena) -> Val<'a> {
+    match self {
+      Val::Univ(v) => Val::Univ(*v),
+      Val::Free(i) => Val::Free(*i),
+      Val::Pi(t, u) => Val::Pi(ar.val(t.relocate(ar)), ar.clos(u.relocate(ar))),
+      Val::Fun(b) => Val::Fun(ar.clos(b.relocate(ar))),
+      Val::App(f, x) => Val::App(ar.val(f.relocate(ar)), ar.val(x.relocate(ar))),
+      Val::Sig(us) => {
+        let closures = ar.closures(us.len());
+        for (closure, u) in closures.iter_mut().zip(us.iter()) {
+          *closure = u.relocate(ar);
+        }
+        Val::Sig(closures)
+      }
+      Val::Tup(bs) => {
+        let values = ar.values(bs.len());
+        for (value, b) in values.iter_mut().zip(bs.iter()) {
+          *value = b.relocate(ar);
+        }
+        Val::Tup(values)
+      }
+      Val::Init(n, x) => Val::Init(*n, ar.val(x.relocate(ar))),
+      Val::Proj(n, x) => Val::Proj(*n, ar.val(x.relocate(ar))),
+    }
+  }
+}
+
+impl Clos<'_> {
+  /// Clones `self` to given arena.
+  pub fn relocate<'a>(&self, ar: &'a Arena) -> Clos<'a> {
+    let Self { env, body } = self;
+    Clos { env: env.relocate(ar), body: ar.term(body.relocate(ar)) }
+  }
+}
+
+impl Stack<'_> {
+  /// Clones `self` to given arena.
+  pub fn relocate<'a>(&self, ar: &'a Arena) -> Stack<'a> {
+    match self {
+      Stack::Nil => Stack::Nil,
+      Stack::Cons { prev, value } => Stack::Cons { prev: ar.frame(prev.relocate(ar)), value: value.relocate(ar) },
+    }
   }
 }

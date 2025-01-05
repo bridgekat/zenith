@@ -2,86 +2,111 @@ use std::slice::from_raw_parts;
 
 use super::*;
 use crate::arena::Arena;
-use crate::ir::{Bound, Clos, Core, Ix, Name, Named, Stack, Term, TypeError, Val, Var};
+use crate::ir::{Bound, Clos, Core, Named, Stack, Term, TypeError, Val};
 
-impl<'b> Name<'b> {
-  /// Creates a new name from a string.
-  pub fn new(name: &str, ar: &'b Arena) -> Self {
-    Self { segments: ar.strings(&name.split("::").collect::<Vec<_>>()) }
-  }
+impl Named {
+  // /// Resolves a name suffix given a core term and its type.
+  // fn resolve_rest<'a>(
+  //   &self,
+  //   env: &Stack<'a, 'b>,
+  //   x: &'a Term<'a, 'b, Core>,
+  //   t: Val<'a, 'b>,
+  //   ar: &'a Arena,
+  // ) -> Result<(&'a Term<'a, 'b, Core>, Val<'a, 'b>), ElabError<'a, 'b>> {
+  //   match self.split_first() {
+  //     None => Ok((x, t)),
+  //     Some((first, rest)) => {
+  //       if let Val::Sig(us) = t {
+  //         for (ix, (i, u)) in us.iter().rev().enumerate() {
+  //           if i.name == first {
+  //             let t = u.apply(Term::Init(ix + 1, x).eval(env, ar)?, ar)?;
+  //             return rest.resolve_rest(env, ar.term(Term::Proj(ix, x)), t, ar);
+  //           }
+  //         }
+  //       }
+  //       Err(ElabError::ctx_name(*self))
+  //     }
+  //   }
+  // }
 
-  /// Splits the first segment from the rest.
-  pub fn split_first(&self) -> Option<(&'b str, Name<'b>)> {
-    self.segments.split_first().map(|(first, rest)| (*first, Name { segments: rest }))
-  }
+  // /// Resolves a named variable to a core term and its type.
+  // pub fn resolve<'a>(
+  //   &self,
+  //   ctx: &Stack<'a, 'b>,
+  //   env: &Stack<'a, 'b>,
+  //   ar: &'a Arena,
+  // ) -> Result<(&'a Term<'a, 'b, Core>, Val<'a, 'b>), ElabError<'a, 'b>> {
+  //   match self.split_first() {
+  //     None => Err(ElabError::ctx_name(*self)),
+  //     Some((first, rest)) => {
+  //       let mut curr = ctx;
+  //       let mut ix = 0;
+  //       // Resolve the first segment in the context.
+  //       ar.inc_lookup_count();
+  //       while let Stack::Cons { prev, info, value: t } = curr {
+  //         ar.inc_link_count();
+  //         if info.name == first {
+  //           // Resolve the rest of the name in the type.
+  //           return rest.resolve_rest(env, ar.term(Term::Var(Ix::new(ix))), *t, ar);
+  //         }
+  //         if info.name.is_empty() {
+  //           if let Val::Sig(us) = t {
+  //             if us.iter().any(|(i, _)| i.name == first) {
+  //               // Resolve the whole name in the type.
+  //               return self.resolve_rest(env, ar.term(Term::Var(Ix::new(ix))), *t, ar);
+  //             }
+  //           }
+  //         }
+  //         ix += 1;
+  //         curr = prev;
+  //       }
+  //       Err(ElabError::ctx_name(*self))
+  //     }
+  //   }
+  // }
 
-  /// Resolves a name suffix given a core term and its type.
-  fn resolve_rest<'a>(
-    &self,
-    env: &Stack<'a, 'b>,
-    x: &'a Term<'a, 'b, Core<'b>>,
-    t: Val<'a, 'b>,
-    ar: &'a Arena,
-  ) -> Result<(&'a Term<'a, 'b, Core<'b>>, Val<'a, 'b>), ElabError<'a, 'b>> {
-    match self.split_first() {
-      None => Ok((x, t)),
-      Some((first, rest)) => {
-        if let Val::Sig(us) = t {
-          for (ix, (i, u)) in us.iter().rev().enumerate() {
-            if i.name == first {
-              let t = u.apply(Term::Init(ix + 1, x).eval(env, ar)?, ar)?;
-              return rest.resolve_rest(env, ar.term(Term::Proj(ix, x)), t, ar);
-            }
-          }
-        }
-        Err(ElabError::ctx_name(*self))
-      }
-    }
-  }
+  // /// Presents a projection suffix given core and named terms and their type.
+  // pub fn present_rest<'a>(
+  //   proj: &[usize],
+  //   ctx: &Stack<'a, 'b>,
+  //   env: &Stack<'a, 'b>,
+  //   x_old: &'a Term<'a, 'b, Core>,
+  //   x_new: &'a Term<'a, 'b, Named>,
+  //   x_type: Val<'a, 'b>,
+  //   ar: &'a Arena,
+  // ) -> Result<(&'a Term<'a, 'b, Named>, Val<'a, 'b>), TypeError<'a, 'b, Core>> {
+  //   match proj.split_first() {
+  //     None => Ok((x_new, x_type)),
+  //     Some((n, rest)) => {
+  //       // The (Σ proj) rule is used.
+  //       let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
+  //       let i =
+  //         us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, Val::Sig(us_val), ctx, env, ar))?;
+  //       let (u_info, u_val) = &us_val[i];
+  //       let x_old = ar.term(Term::Init(*n, x_old));
+  //       let x_new = match us_val.iter().rev().take(*n).any(|(info, _)| info.name == u_info.name) {
+  //         true => ar.term(Term::Init(*n, x_new)),
+  //         false => todo!(),
+  //       };
+  //       let x_type = u_val.apply(Term::Init(n + 1, x_old).eval(env, ar)?, ar)?;
+  //       Self::present_rest(rest, ctx, env, x_old, x_new, x_type, ar)
+  //     }
+  //   }
+  // }
 
-  /// Resolves a named variable to a core term and its type.
-  pub fn resolve<'a>(
-    &self,
-    ctx: &Stack<'a, 'b>,
-    env: &Stack<'a, 'b>,
-    ar: &'a Arena,
-  ) -> Result<(&'a Term<'a, 'b, Core<'b>>, Val<'a, 'b>), ElabError<'a, 'b>> {
-    match self.split_first() {
-      None => Err(ElabError::ctx_name(*self)),
-      Some((first, rest)) => {
-        let mut curr = ctx;
-        let mut ix = 0;
-        // Resolve the first segment in the context.
-        ar.inc_lookup_count();
-        while let Stack::Cons { prev, info, value: t } = curr {
-          ar.inc_link_count();
-          if info.name == first {
-            // Resolve the rest of the name in the type.
-            return rest.resolve_rest(env, ar.term(Term::Var(Ix::new(ix))), *t, ar);
-          }
-          if info.name.is_empty() {
-            if let Val::Sig(us) = t {
-              if us.iter().any(|(i, _)| i.name == first) {
-                // Resolve the whole name in the type.
-                return self.resolve_rest(env, ar.term(Term::Var(Ix::new(ix))), *t, ar);
-              }
-            }
-          }
-          ix += 1;
-          curr = prev;
-        }
-        Err(ElabError::ctx_name(*self))
-      }
-    }
-  }
-
-  // /// Presents a projection as a named variable.
-  // pub fn present<'a>(ix: usize, proj: &[usize], ctx: &Stack<'a, 'b>, ar: &'b Arena) -> Option<&'b Term<'b>> {
+  // /// Presents a projection as a named variable and resolves its type.
+  // pub fn present<'a>(
+  //   ix: usize,
+  //   proj: &[usize],
+  //   ctx: &Stack<'a, 'b>,
+  //   env: &Stack<'a, 'b>,
+  //   ar: &'a Arena,
+  // ) -> Result<(&'a Term<'a, 'b, Named>, Val<'a, 'b>), TypeError<'a, 'b, Core>> {
   //   todo!()
   // }
 }
 
-impl<'a, 'b> Term<'a, 'b, Named<'b>> {
+impl<'a, 'b> Term<'a, 'b, Named> {
   /// Given preterm `self`, returns the type of `self`. This is mutually recursive with
   /// [`Term::check`], and is the entry point of Coquand’s type checking algorithm.
   ///
@@ -97,28 +122,25 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
     ctx: &Stack<'a, 'b>,
     env: &Stack<'a, 'b>,
     ar: &'a Arena,
-  ) -> Result<(&'a Term<'a, 'b, Core<'b>>, Val<'a, 'b>), ElabError<'a, 'b>> {
+  ) -> Result<(&'a Term<'a, 'b, Core>, Val<'a, 'b>), ElabError<'a, 'b>> {
     match self {
       // The (univ) rule is used.
       Term::Univ(v) => Ok((ar.term(Term::Univ(*v)), Val::Univ(Term::univ_univ(*v)?))),
       // The (var) rule is used.
       // Variables of values are in de Bruijn levels, so weakening is no-op.
       // Unresolved names are resolved.
-      Term::Var(x) => match x {
-        Var::Ix(ix) => Ok((ar.term(Term::Var(*ix)), ix.resolve(ctx, ar)?)),
-        Var::Name(name) => name.resolve(ctx, env, ar),
-      },
+      Term::Var(ix) => {
+        let t_val = ctx.get(*ix, ar).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len()))?;
+        Ok((ar.term(Term::Var(*ix)), t_val))
+      }
       // The (ann) rule is used.
       // To establish pre-conditions for `eval()` and `check()`, the type of `t` is checked first.
-      Term::Ann(x_old, t_old, boundary) => {
+      Term::Ann(x_old, t_old) => {
         let (t_new, t_type) = t_old.infer(ctx, env, ar)?;
         let _ = t_type.as_univ(|t_type| TypeError::type_expected(t_old, t_type, ctx, env, ar))?;
         let t_val = t_new.eval(env, ar)?;
-        let x_new = match boundary {
-          false => x_old.check(t_val, ctx, env, ar)?,
-          true => x_old.check(t_val, ctx, env, &Arena::new()).map(|x| x.relocate(ar)).map_err(|e| e.relocate(ar))?,
-        };
-        Ok((ar.term(Term::Ann(x_new, t_new, *boundary)), t_val))
+        let x_new = x_old.check(t_val, ctx, env, ar)?;
+        Ok((ar.term(Term::Ann(x_new, t_new)), t_val))
       }
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly used on the value (in normal form) from the recursive call.
@@ -153,10 +175,10 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
       Term::Sig(us_old) => {
         let mut lvl = Term::unit_univ()?;
         let us_new = ar.terms(us_old.len());
-        let us_val = ar.closures(us_old.len()).as_mut_ptr();
+        let cs = ar.closures(us_old.len()).as_mut_ptr();
         for (i, (info, u_old)) in us_old.iter().enumerate() {
-          // SAFETY: the borrowed range `&us_val[..i]` is no longer modified.
-          let t_val = Val::Sig(unsafe { from_raw_parts(us_val, i) });
+          // SAFETY: the borrowed range `&cs[..i]` is no longer modified.
+          let t_val = Val::Sig(unsafe { from_raw_parts(cs, i) });
           let x_val = Val::Free(env.len());
           let ctx_ext = ctx.extend(Bound::empty(), t_val, ar);
           let env_ext = env.extend(Bound::empty(), x_val, ar);
@@ -164,8 +186,8 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
           let u_lvl = u_type.as_univ(|u_type| TypeError::type_expected(u_old, u_type, ctx, env, ar))?;
           lvl = Term::sig_univ(lvl, u_lvl)?;
           us_new[i] = (*info, *u_new);
-          // SAFETY: `i < us_old.len()` which is the valid size of `us_val`.
-          unsafe { *us_val.add(i) = (info, Clos { info: Bound::empty(), env: *env, body: u_new }) };
+          // SAFETY: `i < us_old.len()` which is the valid size of `cs`.
+          unsafe { *cs.add(i) = (info, Clos { info: Bound::empty(), env: env.clone(), body: u_new }) };
         }
         Ok((ar.term(Term::Sig(us_new)), Val::Univ(lvl)))
       }
@@ -175,18 +197,22 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
       Term::Init(n, x_old) => {
         let (x_new, x_type) = x_old.infer(ctx, env, ar)?;
         let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
-        let m = us_val.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, us_val.len()))?;
+        let m = us_val.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, Val::Sig(us_val), ctx, env, ar))?;
         Ok((ar.term(Term::Init(*n, x_new)), Val::Sig(&us_val[..m])))
       }
       // The (Σ proj) rule is used.
       Term::Proj(n, x_old) => {
         let (x_new, x_type) = x_old.infer(ctx, env, ar)?;
         let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
-        let i = us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, us_val.len()))?;
+        let i =
+          us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, Val::Sig(us_val), ctx, env, ar))?;
         Ok((ar.term(Term::Proj(*n, x_new)), us_val[i].1.apply(Term::Init(n + 1, x_new).eval(env, ar)?, ar)?))
       }
       // Holes must be enclosed in type annotations, or appear as an argument.
       Term::Meta(_) => Err(TypeError::ann_expected(ar.term(*self)).into()),
+      // TODO
+      Term::NamedVar(_) => todo!(),
+      Term::NamedProj(_, _) => todo!(),
     }
   }
 
@@ -205,7 +231,7 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
     ctx: &Stack<'a, 'b>,
     env: &Stack<'a, 'b>,
     ar: &'a Arena,
-  ) -> Result<&'a Term<'a, 'b, Core<'b>>, ElabError<'a, 'b>> {
+  ) -> Result<&'a Term<'a, 'b, Core>, ElabError<'a, 'b>> {
     match self {
       // The (let) and (extend) rules are used.
       // The (ζ) rule is implicitly inversely used on the `t` passed into the recursive call.
@@ -235,7 +261,7 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
           let bs_new = ar.terms(bs_old.len());
           let bs_val = ar.values(bs_old.len()).as_mut_ptr();
           for (i, (info, b_old)) in bs_old.iter().enumerate() {
-            let (u_info, u_val) = us_val[i];
+            let (u_info, u_val) = &us_val[i];
             if info.name != u_info.name {
               return Err(TypeError::tup_field_mismatch(ar.term(*self), info.name, u_info.name).into());
             }
@@ -246,8 +272,9 @@ impl<'a, 'b> Term<'a, 'b, Named<'b>> {
             let env_ext = env.extend(Bound::empty(), a_val, ar);
             let b_new = b_old.check(u_val.apply(a_val, ar)?, &ctx_ext, &env_ext, ar)?;
             bs_new[i] = (info, *b_new);
+            let b_val = b_new.eval(&env_ext, ar)?;
             // SAFETY: `i < bs_old.len()` which is the valid size of `bs_val`.
-            unsafe { *bs_val.add(i) = (info, b_new.eval(&env_ext, ar)?) };
+            unsafe { *bs_val.add(i) = (info, b_val) };
           }
           Ok(ar.term(Term::Tup(bs_new)))
         } else {

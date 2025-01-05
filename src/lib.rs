@@ -1,3 +1,5 @@
+#![feature(never_type)]
+#![feature(exhaustive_patterns)]
 #![warn(clippy::all)]
 
 pub mod arena;

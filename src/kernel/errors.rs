@@ -4,11 +4,11 @@ use super::*;
 ///
 /// Errors produced by the evaluator (i.e. the conversion checking process).
 #[derive(Debug, Clone)]
-pub enum EvalError {
+pub enum EvalError<'a> {
   EnvIndex { ix: usize, len: usize },
   GenLevel { lvl: usize, len: usize },
-  TupInit { n: usize, len: usize },
-  TupProj { n: usize, len: usize },
+  TupInit { n: usize, val: &'a Term<'a> },
+  TupProj { n: usize, val: &'a Term<'a> },
 }
 
 /// # Typing errors
@@ -16,13 +16,13 @@ pub enum EvalError {
 /// Errors produced by the typer (i.e. the bidirectional infer/check process).
 #[derive(Debug, Clone)]
 pub enum TypeError<'a> {
-  Eval { err: EvalError },
+  EvalError { err: EvalError<'a> },
   UnivForm { univ: usize },
   PiForm { from: usize, to: usize },
   SigForm { fst: usize, snd: usize },
   CtxIndex { ix: usize, len: usize },
-  SigInit { n: usize, len: usize },
-  SigProj { n: usize, len: usize },
+  SigInit { n: usize, ty: &'a Term<'a> },
+  SigProj { n: usize, ty: &'a Term<'a> },
   AnnExpected { term: &'a Term<'a> },
   TypeExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
   PiExpected { term: &'a Term<'a>, ty: &'a Term<'a> },
@@ -53,7 +53,7 @@ pub enum ParseError {
   UnexpectedEof,
 }
 
-impl EvalError {
+impl<'a> EvalError<'a> {
   pub fn env_index(ix: usize, len: usize) -> Self {
     Self::EnvIndex { ix, len }
   }
@@ -62,21 +62,27 @@ impl EvalError {
     Self::GenLevel { lvl, len }
   }
 
-  pub fn tup_init(n: usize, len: usize) -> Self {
-    Self::TupInit { n, len }
+  pub fn tup_init(n: usize, val: Val<'a>, env: &Stack<'a>, ar: &'a Arena) -> Self {
+    match ar.val(val).quote(env.len(), ar) {
+      Ok(val) => Self::TupInit { n, val: ar.term(val) },
+      Err(err) => err,
+    }
   }
 
-  pub fn tup_proj(n: usize, len: usize) -> Self {
-    Self::TupProj { n, len }
+  pub fn tup_proj(n: usize, val: Val<'a>, env: &Stack<'a>, ar: &'a Arena) -> Self {
+    match ar.val(val).quote(env.len(), ar) {
+      Ok(val) => Self::TupProj { n, val: ar.term(val) },
+      Err(err) => err,
+    }
   }
 
   /// Clones `self` to given arena.
-  pub fn relocate(self, _: &Arena) -> EvalError {
+  pub fn relocate(self, ar: &Arena) -> EvalError {
     match self {
       Self::EnvIndex { ix, len } => EvalError::EnvIndex { ix, len },
       Self::GenLevel { lvl, len } => EvalError::GenLevel { lvl, len },
-      Self::TupInit { n, len } => EvalError::TupInit { n, len },
-      Self::TupProj { n, len } => EvalError::TupProj { n, len },
+      Self::TupInit { n, val } => EvalError::TupInit { n, val: ar.term(val.relocate(ar)) },
+      Self::TupProj { n, val } => EvalError::TupProj { n, val: ar.term(val.relocate(ar)) },
     }
   }
 }
@@ -98,12 +104,18 @@ impl<'a> TypeError<'a> {
     Self::CtxIndex { ix, len }
   }
 
-  pub fn sig_init(n: usize, len: usize) -> Self {
-    Self::SigInit { n, len }
+  pub fn sig_init(n: usize, ty: Val<'a>, ctx: &Stack<'a>, _env: &Stack<'a>, ar: &'a Arena) -> Self {
+    match ar.val(ty).quote(ctx.len(), ar) {
+      Ok(ty) => Self::SigInit { n, ty: ar.term(ty) },
+      Err(err) => err.into(),
+    }
   }
 
-  pub fn sig_proj(n: usize, len: usize) -> Self {
-    Self::SigProj { n, len }
+  pub fn sig_proj(n: usize, ty: Val<'a>, ctx: &Stack<'a>, _env: &Stack<'a>, ar: &'a Arena) -> Self {
+    match ar.val(ty).quote(ctx.len(), ar) {
+      Ok(ty) => Self::SigProj { n, ty: ar.term(ty) },
+      Err(err) => err.into(),
+    }
   }
 
   pub fn ann_expected(term: &'a Term<'a>) -> Self {
@@ -112,35 +124,35 @@ impl<'a> TypeError<'a> {
 
   pub fn type_expected(term: &'a Term<'a>, ty: Val<'a>, ctx: &Stack<'a>, _env: &Stack<'a>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::TypeExpected { term, ty },
+      Ok(ty) => Self::TypeExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
   pub fn pi_expected(term: &'a Term<'a>, ty: Val<'a>, ctx: &Stack<'a>, _env: &Stack<'a>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::PiExpected { term, ty },
+      Ok(ty) => Self::PiExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
   pub fn sig_expected(term: &'a Term<'a>, ty: Val<'a>, ctx: &Stack<'a>, _env: &Stack<'a>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::SigExpected { term, ty },
+      Ok(ty) => Self::SigExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
   pub fn pi_ann_expected(ty: Val<'a>, ctx: &Stack<'a>, _env: &Stack<'a>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::PiAnnExpected { ty },
+      Ok(ty) => Self::PiAnnExpected { ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
   pub fn sig_ann_expected(ty: Val<'a>, ctx: &Stack<'a>, _env: &Stack<'a>, ar: &'a Arena) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::SigAnnExpected { ty },
+      Ok(ty) => Self::SigAnnExpected { ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
@@ -155,7 +167,7 @@ impl<'a> TypeError<'a> {
   ) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
       Ok(ty) => match ar.val(ety).quote(ctx.len(), ar) {
-        Ok(ety) => Self::TypeMismatch { term, ty, ety },
+        Ok(ety) => Self::TypeMismatch { term, ty: ar.term(ty), ety: ar.term(ety) },
         Err(err) => err.into(),
       },
       Err(err) => err.into(),
@@ -169,30 +181,40 @@ impl<'a> TypeError<'a> {
   /// Clones `self` to given arena.
   pub fn relocate(self, ar: &Arena) -> TypeError {
     match self {
-      Self::Eval { err } => TypeError::Eval { err: err.relocate(ar) },
+      Self::EvalError { err } => TypeError::EvalError { err: err.relocate(ar) },
       Self::UnivForm { univ } => TypeError::UnivForm { univ },
       Self::PiForm { from, to } => TypeError::PiForm { from, to },
       Self::SigForm { fst, snd } => TypeError::SigForm { fst, snd },
       Self::CtxIndex { ix, len } => TypeError::CtxIndex { ix, len },
-      Self::SigInit { n, len } => TypeError::SigInit { n, len },
-      Self::SigProj { n, len } => TypeError::SigProj { n, len },
-      Self::AnnExpected { term } => TypeError::AnnExpected { term: term.relocate(ar) },
-      Self::TypeExpected { term, ty } => TypeError::TypeExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
-      Self::PiExpected { term, ty } => TypeError::PiExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
-      Self::SigExpected { term, ty } => TypeError::SigExpected { term: term.relocate(ar), ty: ty.relocate(ar) },
-      Self::PiAnnExpected { ty } => TypeError::PiAnnExpected { ty: ty.relocate(ar) },
-      Self::SigAnnExpected { ty } => TypeError::SigAnnExpected { ty: ty.relocate(ar) },
-      Self::TypeMismatch { term, ty, ety } => {
-        TypeError::TypeMismatch { term: term.relocate(ar), ty: ty.relocate(ar), ety: ety.relocate(ar) }
+      Self::SigInit { n, ty } => TypeError::SigInit { n, ty: ar.term(ty.relocate(ar)) },
+      Self::SigProj { n, ty } => TypeError::SigProj { n, ty: ar.term(ty.relocate(ar)) },
+      Self::AnnExpected { term } => TypeError::AnnExpected { term: ar.term(term.relocate(ar)) },
+      Self::TypeExpected { term, ty } => {
+        TypeError::TypeExpected { term: ar.term(term.relocate(ar)), ty: ar.term(ty.relocate(ar)) }
       }
-      Self::TupSizeMismatch { term, sz, esz } => TypeError::TupSizeMismatch { term: term.relocate(ar), sz, esz },
+      Self::PiExpected { term, ty } => {
+        TypeError::PiExpected { term: ar.term(term.relocate(ar)), ty: ar.term(ty.relocate(ar)) }
+      }
+      Self::SigExpected { term, ty } => {
+        TypeError::SigExpected { term: ar.term(term.relocate(ar)), ty: ar.term(ty.relocate(ar)) }
+      }
+      Self::PiAnnExpected { ty } => TypeError::PiAnnExpected { ty: ar.term(ty.relocate(ar)) },
+      Self::SigAnnExpected { ty } => TypeError::SigAnnExpected { ty: ar.term(ty.relocate(ar)) },
+      Self::TypeMismatch { term, ty, ety } => TypeError::TypeMismatch {
+        term: ar.term(term.relocate(ar)),
+        ty: ar.term(ty.relocate(ar)),
+        ety: ar.term(ety.relocate(ar)),
+      },
+      Self::TupSizeMismatch { term, sz, esz } => {
+        TypeError::TupSizeMismatch { term: ar.term(term.relocate(ar)), sz, esz }
+      }
     }
   }
 }
 
-impl std::convert::From<EvalError> for TypeError<'_> {
-  fn from(err: EvalError) -> Self {
-    Self::Eval { err }
+impl<'a> std::convert::From<EvalError<'a>> for TypeError<'a> {
+  fn from(err: EvalError<'a>) -> Self {
+    Self::EvalError { err }
   }
 }
 
@@ -240,13 +262,13 @@ impl std::convert::From<LexError> for ParseError {
   }
 }
 
-impl std::fmt::Display for EvalError {
+impl std::fmt::Display for EvalError<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::EnvIndex { ix, len } => write!(f, "variable index {ix} out of bound, environment has size {len}"),
       Self::GenLevel { lvl, len } => write!(f, "generic variable level {lvl} out of bound, environment has size {len}"),
-      Self::TupInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple has size {len}"),
-      Self::TupProj { n, len } => write!(f, "tuple index {n} out of bound, tuple has size {len}"),
+      Self::TupInit { n, val } => write!(f, "tuple prefix length {n} out of bound, tuple has value {val}"),
+      Self::TupProj { n, val } => write!(f, "tuple index {n} out of bound, tuple has value {val}"),
     }
   }
 }
@@ -254,13 +276,13 @@ impl std::fmt::Display for EvalError {
 impl std::fmt::Display for TypeError<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      Self::Eval { err } => write!(f, "{err}"),
+      Self::EvalError { err } => write!(f, "{err}"),
       Self::UnivForm { univ } => write!(f, "universe {univ} does not have a type"),
       Self::PiForm { from, to } => write!(f, "dependent functions from universe {from} to {to} are unspecified"),
       Self::SigForm { fst, snd } => write!(f, "dependent tuples in universes {fst} and {snd} are unspecified"),
       Self::CtxIndex { ix, len } => write!(f, "variable index {ix} out of bound, context has size {len}"),
-      Self::SigInit { n, len } => write!(f, "obtaining initial segment of length {n}, tuple type has size {len}"),
-      Self::SigProj { n, len } => write!(f, "tuple index {n} out of bound, tuple type has size {len}"),
+      Self::SigInit { n, ty } => write!(f, "tuple prefix length {n} out of bound, tuple has type {ty}"),
+      Self::SigProj { n, ty } => write!(f, "tuple index {n} out of bound, tuple has type {ty}"),
       Self::AnnExpected { term } => write!(f, "type annotation expected around term {term}"),
       Self::TypeExpected { term, ty } => write!(f, "type expected, term {term} has type {ty} but not universe type"),
       Self::PiExpected { term, ty } => write!(f, "function expected, term {term} has type {ty} but not function type"),
@@ -292,3 +314,8 @@ impl std::fmt::Display for ParseError {
     }
   }
 }
+
+impl std::error::Error for EvalError<'_> {}
+impl std::error::Error for TypeError<'_> {}
+impl std::error::Error for LexError {}
+impl std::error::Error for ParseError {}

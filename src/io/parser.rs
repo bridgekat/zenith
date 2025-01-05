@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use super::*;
 use crate::arena::Arena;
-use crate::ir::{Bound, Field, Ix, Name, Named, Term, Var};
+use crate::ir::{Bound, Field, Named, Term};
 
 /// # Lexer tokens
 ///
@@ -21,7 +21,7 @@ pub enum Token {
   Pi,
   Fun,
   Def,
-  Ann(bool),
+  Ann,
   Unit,
   Type,
   Kind,
@@ -39,7 +39,7 @@ pub struct Span {
   pub end: usize,
 }
 
-impl<'a> Term<'a, 'a, Named<'a>> {
+impl<'a> Term<'a, 'a, Named> {
   /// Tokenises `input` into a list of [`Span`].
   pub fn lex(chars: impl Iterator<Item = char>) -> Result<Vec<Span>, LexError> {
     // The token grammar is almost LL(1).
@@ -87,8 +87,7 @@ impl<'a> Term<'a, 'a, Named<'a>> {
             "→" | "->" => Token::Pi,
             "↦" | "=>" => Token::Fun,
             "≔" | ":=" => Token::Def,
-            ":" => Token::Ann(false),
-            "::" => Token::Ann(true),
+            ":" => Token::Ann,
             "Unit" => Token::Unit,
             "Type" => Token::Type,
             "Kind" => Token::Kind,
@@ -110,7 +109,6 @@ impl<'a> Term<'a, 'a, Named<'a>> {
   /// <term> ::=
   ///   | <body>
   ///   | <body> ":" <term>
-  ///   | <body> "::" <term>
   ///
   /// <body> ::=
   ///   | "[" <id> "≔" <term> ("," <id> "≔" <term>)* "]" <body>
@@ -129,7 +127,7 @@ impl<'a> Term<'a, 'a, Named<'a>> {
   ///   | "{" <id> ":" <term> ("," <id> ":" <term>)* "}"
   ///   | "{" <id> "≔" <term> ("," <id> "≔" <term>)* "}"
   /// ```
-  pub fn parse(spans: impl Iterator<Item = Span>, ar: &'a Arena) -> Result<&'a Term<'a, 'a, Named<'a>>, ParseError> {
+  pub fn parse(spans: impl Iterator<Item = Span>, ar: &'a Arena) -> Result<&'a Term<'a, 'a, Named>, ParseError> {
     /// Expects the next token to have the same kind as `tok`.
     fn expect(it: &mut impl Iterator<Item = Span>, tok: Token) -> Result<(), ParseError> {
       match it.next() {
@@ -163,19 +161,14 @@ impl<'a> Term<'a, 'a, Named<'a>> {
     fn parse_term<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a, 'a, Named<'a>>, ParseError> {
+    ) -> Result<&'a Term<'a, 'a, Named>, ParseError> {
       // Parsing a term body.
       let res = parse_body(it, ar)?;
       match it.peek() {
         // Parsing an optional type annotation.
-        Some(Span { tok: Token::Ann(false), .. }) => {
+        Some(Span { tok: Token::Ann, .. }) => {
           it.next();
-          Ok(ar.term(Term::Ann(res, parse_term(it, ar)?, false)))
-        }
-        // Parsing an optional type annotation with double colons (indicating an arena boundary).
-        Some(Span { tok: Token::Ann(true), .. }) => {
-          it.next();
-          Ok(ar.term(Term::Ann(res, parse_term(it, ar)?, true)))
+          Ok(ar.term(Term::Ann(res, parse_term(it, ar)?)))
         }
         _ => Ok(res),
       }
@@ -184,7 +177,7 @@ impl<'a> Term<'a, 'a, Named<'a>> {
     fn parse_body<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a, 'a, Named<'a>>, ParseError> {
+    ) -> Result<&'a Term<'a, 'a, Named>, ParseError> {
       match it.peek() {
         // Parsing a binder group.
         Some(Span { tok: Token::LeftBracket, .. }) => {
@@ -212,14 +205,14 @@ impl<'a> Term<'a, 'a, Named<'a>> {
               Ok(body)
             }
             // Parsing a group of Pi binders.
-            Some(Span { tok: Token::Ann(_), .. }) => {
+            Some(Span { tok: Token::Ann, .. }) => {
               it.next();
               let mut is = Vec::from([Bound::new(&normalize_name(x), &[], ar)]);
               let mut ts = Vec::from([parse_term(it, ar)?]);
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
-                expect(it, Token::Ann(false))?;
+                expect(it, Token::Ann)?;
                 is.push(Bound::new(&normalize_name(x), &[], ar));
                 ts.push(parse_term(it, ar)?);
               }
@@ -277,7 +270,7 @@ impl<'a> Term<'a, 'a, Named<'a>> {
     fn parse_proj<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a, 'a, Named<'a>>, ParseError> {
+    ) -> Result<&'a Term<'a, 'a, Named>, ParseError> {
       let mut res = parse_atom(it, ar)?;
       loop {
         match it.peek() {
@@ -296,15 +289,16 @@ impl<'a> Term<'a, 'a, Named<'a>> {
     fn parse_atom<'a>(
       it: &mut Peekable<impl Iterator<Item = Span>>,
       ar: &'a Arena,
-    ) -> Result<&'a Term<'a, 'a, Named<'a>>, ParseError> {
+    ) -> Result<&'a Term<'a, 'a, Named>, ParseError> {
       // All atoms begin with a terminal token that can be taken unconditionally.
       match it.next() {
         // Parsing a single token.
         Some(Span { tok: Token::Unit, .. }) => Ok(ar.term(Term::Sig(&[]))),
         Some(Span { tok: Token::Type, .. }) => Ok(ar.term(Term::Univ(0))),
         Some(Span { tok: Token::Kind, .. }) => Ok(ar.term(Term::Univ(1))),
-        Some(Span { tok: Token::Env, .. }) => Ok(ar.term(Term::Var(Var::Ix(Ix::new(expect_ix(it)?))))),
-        Some(Span { tok: Token::Id(x), .. }) => Ok(ar.term(Term::Var(Var::Name(Name::new(&x, ar))))),
+        Some(Span { tok: Token::Env, .. }) => Ok(ar.term(Term::Var(expect_ix(it)?))),
+        // TODO
+        Some(Span { tok: Token::Id(x), .. }) => Ok(ar.term(Term::NamedVar(ar.string(&x)))),
         // Parsing a parenthesised term.
         Some(Span { tok: Token::LeftParen, .. }) => {
           let res = parse_term(it, ar)?;
@@ -338,13 +332,13 @@ impl<'a> Term<'a, 'a, Named<'a>> {
               Ok(ar.term(Term::Tup(terms)))
             }
             // Parsing a tuple type aggregate.
-            Some(Span { tok: Token::Ann(_), .. }) => {
+            Some(Span { tok: Token::Ann, .. }) => {
               let mut vec = Vec::new();
               vec.push((ar.field(Field::new(&normalize_name(x), &[], ar)), *parse_term(it, ar)?));
               while let Some(Span { tok: Token::Sep, .. }) = it.peek() {
                 it.next();
                 let (x, _, _) = expect_id(it)?;
-                expect(it, Token::Ann(false))?;
+                expect(it, Token::Ann)?;
                 vec.push((ar.field(Field::new(&normalize_name(x), &[], ar)), *parse_term(it, ar)?));
               }
               expect(it, Token::RightBrace)?;
