@@ -112,16 +112,16 @@ impl<'a> Stack<'a> {
   }
 
   /// Returns the value at the given de Bruijn index, if it exists.
-  pub fn get(&self, index: usize, ar: &'a Arena) -> Option<Val<'a>> {
+  pub fn get(&self, ix: usize, ar: &'a Arena) -> Option<Val<'a>> {
     let mut curr = self;
-    let mut index = index;
+    let mut ix = ix;
     ar.inc_lookup_count();
     while let Stack::Cons { prev, value } = curr {
       ar.inc_link_count();
-      if index == 0 {
+      if ix == 0 {
         return Some(*value);
       }
-      index -= 1;
+      ix -= 1;
       curr = prev;
     }
     None

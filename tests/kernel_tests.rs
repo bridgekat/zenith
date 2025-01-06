@@ -1,19 +1,19 @@
-use zenith::kernel::{Arena, Stack, Term};
+use zenith::kernel::{Arena, Span, Stack, Term};
 
 fn check<'a>(x: &str, t: &str, ctx: &Stack<'a>, env: &Stack<'a>, ar: &'a Arena) {
-  let t = Term::parse(Term::lex(t.chars()).unwrap().into_iter(), ar).unwrap();
+  let t = Term::parse(Span::lex(t.chars()).unwrap().into_iter(), ar).unwrap();
   let t = t.eval(env, ar).unwrap();
-  let x = Term::parse(Term::lex(x.chars()).unwrap().into_iter(), ar).unwrap();
+  let x = Term::parse(Span::lex(x.chars()).unwrap().into_iter(), ar).unwrap();
   x.check(t, ctx, env, ar).unwrap();
 }
 
 fn check_and_eval<'a>(x: &str, y: &str, t: &str, ctx: &Stack<'a>, env: &Stack<'a>, ar: &'a Arena) {
-  let t = Term::parse(Term::lex(t.chars()).unwrap().into_iter(), ar).unwrap();
+  let t = Term::parse(Span::lex(t.chars()).unwrap().into_iter(), ar).unwrap();
   let t = t.eval(env, ar).unwrap();
-  let x = Term::parse(Term::lex(x.chars()).unwrap().into_iter(), ar).unwrap();
+  let x = Term::parse(Span::lex(x.chars()).unwrap().into_iter(), ar).unwrap();
   x.check(t, ctx, env, ar).unwrap();
   let x = x.eval(env, ar).unwrap();
-  let y = Term::parse(Term::lex(y.chars()).unwrap().into_iter(), ar).unwrap();
+  let y = Term::parse(Span::lex(y.chars()).unwrap().into_iter(), ar).unwrap();
   y.check(t, ctx, env, ar).unwrap();
   let y = y.eval(env, ar).unwrap();
   assert!(x.conv(&y, ctx.len(), ar).unwrap());

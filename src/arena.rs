@@ -191,8 +191,8 @@ impl<'a, 'b, T: Decoration> Relocate<'a, Term<'a, 'b, T>> for Term<'_, 'b, T> {
       Term::Init(n, x) => Term::Init(*n, ar.term(x.relocate(ar))),
       Term::Proj(n, x) => Term::Proj(*n, ar.term(x.relocate(ar))),
       Term::Meta(m) => Term::Meta(*m),
-      Term::NamedVar(s) => Term::NamedVar(*s),
-      Term::NamedProj(s, x) => Term::NamedProj(*s, ar.term(x.relocate(ar))),
+      Term::NamedVar(s, ext) => Term::NamedVar(*s, *ext),
+      Term::NamedProj(s, x, ext) => Term::NamedProj(*s, ar.term(x.relocate(ar)), *ext),
     }
   }
 }

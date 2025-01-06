@@ -1,18 +1,51 @@
 use std::cmp::max;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::slice::from_raw_parts;
 
 use super::*;
 use crate::arena::{Arena, Relocate};
 
-pub trait Decoration: Debug + Clone + Copy {
-  type NamedVar<'b>: Debug + Display + Clone + Copy;
-  type NamedProj<'b>: Debug + Display + Clone + Copy;
+/// # Variable and field names
+///
+/// This is simply a wrapper around a string reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Name<'a>(pub &'a str);
+
+/// # Binder information
+///
+/// Auxiliary information for bound variables (e.g. names, attributes).
+#[derive(Debug, Clone, Copy)]
+pub struct Bound<'b> {
+  pub name: Name<'b>,
+  pub attrs: &'b [&'b str],
 }
 
+/// # Field information
+///
+/// Auxiliary information for field variables (e.g. names, attributes).
+#[derive(Debug, Clone, Copy)]
+pub struct Field<'b> {
+  pub name: Name<'b>,
+  pub attrs: &'b [&'b str],
+}
+
+/// # Term decorations
+///
+/// Specifies decorations to the base [`Term`].
+pub trait Decoration: Debug + Clone + Copy {
+  type NamedVar<'b>: Debug + Clone + Copy;
+  type NamedProj<'b>: Debug + Clone + Copy;
+}
+
+/// # Core term decoration
+///
+/// The core calculus does not support named variables or projections.
 #[derive(Debug, Clone, Copy)]
 pub struct Core;
 
+/// # Named term decoration
+///
+/// The named calculus supports named variables and projections.
 #[derive(Debug, Clone, Copy)]
 pub struct Named;
 
@@ -22,26 +55,8 @@ impl Decoration for Core {
 }
 
 impl Decoration for Named {
-  type NamedVar<'b> = &'b str;
-  type NamedProj<'b> = &'b str;
-}
-
-/// # Binder information
-///
-/// Auxiliary information for bound variables (e.g. names, attributes).
-#[derive(Debug, Clone, Copy)]
-pub struct Bound<'b> {
-  pub name: &'b str,
-  pub attrs: &'b [&'b str],
-}
-
-/// # Field information
-///
-/// Auxiliary information for field variables (e.g. names, attributes).
-#[derive(Debug, Clone, Copy)]
-pub struct Field<'b> {
-  pub name: &'b str,
-  pub attrs: &'b [&'b str],
+  type NamedVar<'b> = ();
+  type NamedProj<'b> = ();
 }
 
 /// # Terms
@@ -78,9 +93,9 @@ pub enum Term<'a, 'b, T: Decoration> {
   /// Holes in unique identifiers.
   Meta(usize),
   /// Named variables.
-  NamedVar(T::NamedVar<'b>),
+  NamedVar(Name<'b>, T::NamedVar<'b>),
   /// Named projections. To preserve covariance w.r.t. `'a`, this has to be hard-coded.
-  NamedProj(T::NamedProj<'b>, &'a Self),
+  NamedProj(Name<'b>, &'a Self, T::NamedProj<'b>),
 }
 
 /// # Values
@@ -136,27 +151,35 @@ pub enum Stack<'a, 'b> {
   Cons { prev: &'a Self, info: &'b Bound<'b>, value: Val<'a, 'b> },
 }
 
+impl Name<'_> {
+  /// Returns if the name is empty (i.e. transparent).
+  pub fn is_empty(&self) -> bool {
+    let Self(name) = self;
+    name.is_empty()
+  }
+}
+
 impl<'b> Bound<'b> {
   /// Creates a new bound variable info with empty name (i.e. transparent).
   pub fn empty() -> &'b Self {
-    &Self { name: "", attrs: &[] }
+    &Self { name: Name(""), attrs: &[] }
   }
 
   /// Creates a new bound variable info in the given arena.
-  pub fn new(name: &str, attrs: &[&str], ar: &'b Arena) -> Self {
-    Self { name: ar.string(name), attrs: ar.strings(attrs) }
+  pub fn new(name: Name<'b>, attrs: &[&str], ar: &'b Arena) -> Self {
+    Self { name, attrs: ar.strings(attrs) }
   }
 }
 
 impl<'b> Field<'b> {
-  /// Creates a new field variable info with empty name (i.e. transparent).
+  /// Creates a new field variable info with empty name (for writing).
   pub fn empty() -> &'b Self {
-    &Self { name: "", attrs: &[] }
+    &Self { name: Name(""), attrs: &[] }
   }
 
   /// Creates a new field variable info in the given arena.
-  pub fn new(name: &str, attrs: &[&str], ar: &'b Arena) -> Self {
-    Self { name: ar.string(name), attrs: ar.strings(attrs) }
+  pub fn new(name: Name<'b>, attrs: &[&str], ar: &'b Arena) -> Self {
+    Self { name, attrs: ar.strings(attrs) }
   }
 }
 
@@ -186,16 +209,16 @@ impl<'a, 'b> Stack<'a, 'b> {
   }
 
   /// Returns the value at the given de Bruijn index, if it exists.
-  pub fn get(&self, index: usize, ar: &'a Arena) -> Option<Val<'a, 'b>> {
+  pub fn get(&self, ix: usize, ar: &'a Arena) -> Option<(Bound<'b>, Val<'a, 'b>)> {
     let mut curr = self;
-    let mut index = index;
+    let mut ix = ix;
     ar.inc_lookup_count();
-    while let Stack::Cons { prev, info: _, value } = curr {
+    while let Stack::Cons { prev, info, value } = curr {
       ar.inc_link_count();
-      if index == 0 {
-        return Some(*value);
+      if ix == 0 {
+        return Some((**info, *value));
       }
-      index -= 1;
+      ix -= 1;
       curr = prev;
     }
     None
@@ -222,7 +245,7 @@ impl<'a, 'b> Term<'a, 'b, Core> {
       Term::Univ(v) => Ok(Val::Univ(*v)),
       // The (δ) rule is always applied.
       // Variables of values are in de Bruijn levels, so weakening is no-op.
-      Term::Var(ix) => env.get(*ix, ar).ok_or_else(|| EvalError::env_index(*ix, env.len())),
+      Term::Var(ix) => Ok(env.get(*ix, ar).ok_or_else(|| EvalError::env_index(*ix, env.len()))?.1),
       // The (τ) rule is always applied.
       Term::Ann(x, _) => x.eval(env, ar),
       // For `let`s, we reduce the value, collect it into the environment to reduce the body.
@@ -446,21 +469,6 @@ impl<'a, 'b> Term<'a, 'b, Core> {
     env: &Stack<'a, 'b>,
     ar: &'a Arena,
   ) -> Result<(Term<'a, 'b, Named>, Val<'a, 'b>), TypeError<'a, 'b, Core>> {
-    // Special case for projections on a variable.
-    if let Term::Var(_) | Term::Proj(_, _) = self {
-      let mut projs = Vec::new();
-      let mut term = self;
-      while let Term::Proj(n, x) = term {
-        projs.push(*n);
-        term = x;
-      }
-      if let Term::Var(_ix) = term {
-        projs.reverse();
-        // TODO
-        // return Named::present_name(*ix, &projs, ctx, env, ar);
-        todo!()
-      }
-    }
     match self {
       // The garbage collection mark forces the subterm to be inferred inside a new arena.
       Term::Gc(x) => {
@@ -468,12 +476,6 @@ impl<'a, 'b> Term<'a, 'b, Core> {
       }
       // The (univ) rule is used.
       Term::Univ(lvl) => Ok(((Term::Univ(*lvl)), Val::Univ(Term::univ_univ(*lvl)?))),
-      // The (var) rule is used.
-      // Variables of values are in de Bruijn levels, so weakening is no-op.
-      Term::Var(ix) => {
-        let t_val = ctx.get(*ix, ar).ok_or_else(|| TypeError::ctx_index(*ix, ctx.len()))?;
-        Ok(((Term::Var(*ix)), t_val))
-      }
       // The (ann) rule is used.
       // To establish pre-conditions for `eval()` and `check()`, the type of `t` is checked first.
       Term::Ann(x_old, t_old) => {
@@ -541,13 +543,12 @@ impl<'a, 'b> Term<'a, 'b, Core> {
         let m = us_val.len().checked_sub(*n).ok_or_else(|| TypeError::sig_init(*n, Val::Sig(us_val), ctx, env, ar))?;
         Ok(((Term::Init(*n, ar.term(x_new))), Val::Sig(&us_val[..m])))
       }
-      // The (Σ proj) rule is used.
+      // The (var) and (Σ proj) rules are used.
+      Term::Var(ix) => Name::present_named_var(*ix, None, ctx, env, ar),
+      Term::Proj(n, Term::Var(ix)) => Name::present_named_var(*ix, Some(*n), ctx, env, ar),
       Term::Proj(n, x_old) => {
         let (x_new, x_type) = x_old.infer(ctx, env, ar)?;
-        let us_val = x_type.as_sig(|x_type| TypeError::sig_expected(x_old, x_type, ctx, env, ar))?;
-        let i =
-          us_val.len().checked_sub(n + 1).ok_or_else(|| TypeError::sig_proj(*n, Val::Sig(us_val), ctx, env, ar))?;
-        Ok(((Term::Proj(*n, ar.term(x_new))), us_val[i].1.apply(Term::Init(n + 1, x_old).eval(env, ar)?, ar)?))
+        Name::present_named_proj(*n, x_old, x_new, x_type, ctx, env, ar)
       }
       // Holes must be enclosed in type annotations, or appear as an argument.
       Term::Meta(_) => Err(TypeError::ann_expected(ar.term(*self))),
@@ -583,7 +584,7 @@ impl<'a, 'b> Term<'a, 'b, Core> {
         let x_new = x_old.check(t, &ctx_ext, &env_ext, ar)?;
         Ok(Term::Let(info, ar.term(v_new), ar.term(x_new)))
       }
-      // The (Π intro) and (extend) rules is used.
+      // The (Π intro) and (extend) rules used.
       // By pre-conditions, `t` is already known to have universe type.
       Term::Fun(info, b_old) => {
         let (t_val, u_val) = t.as_pi(|t| TypeError::pi_ann_expected(t, ctx, env, ar))?;

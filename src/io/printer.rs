@@ -1,21 +1,33 @@
 use std::fmt::Formatter;
 
-use crate::ir::{Decoration, Term};
+use crate::ir::{Decoration, Name, Term};
 
 /// Precedence levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Prec {
+pub enum Prec {
   Term,
   Body,
   Proj,
   Atom,
 }
 
+impl std::fmt::Display for Name<'_> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    let Self(name) = self;
+    if name.is_empty() {
+      write!(f, "_")?;
+    } else {
+      write!(f, "{name}")?;
+    }
+    Ok(())
+  }
+}
+
 impl<T: Decoration> Term<'_, '_, T> {
-  /// Pretty-prints a term.
+  /// Pretty-prints a term under given precedence.
   ///
   /// See documentation of [`Term::parse`] for the BNF grammar.
-  fn print(&self, f: &mut Formatter<'_>, prec: Prec) -> std::fmt::Result {
+  pub fn print(&self, f: &mut Formatter<'_>, prec: Prec) -> std::fmt::Result {
     /// Prints a left parenthesis if the actual precedence level is lower than the expected.
     fn left_paren(f: &mut Formatter<'_>, actual: Prec, expected: Prec) -> std::fmt::Result {
       if actual < expected {
@@ -29,14 +41,6 @@ impl<T: Decoration> Term<'_, '_, T> {
         write!(f, ")")?
       }
       Ok(())
-    }
-    /// Converts an empty string to "_".
-    fn present_name(x: &str) -> &str {
-      if x.is_empty() {
-        "_"
-      } else {
-        x
-      }
     }
     match self {
       Term::Gc(x) => {
@@ -55,7 +59,7 @@ impl<T: Decoration> Term<'_, '_, T> {
       }
       Term::Var(ix) => {
         left_paren(f, Prec::Atom, prec)?;
-        write!(f, "@^{}", ix)?;
+        write!(f, "@^{ix}")?;
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
@@ -80,7 +84,7 @@ impl<T: Decoration> Term<'_, '_, T> {
           if j != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{} ≔ ", present_name(i.name))?;
+          write!(f, "{} ≔ ", i.name)?;
           t.print(f, Prec::Term)?;
         }
         write!(f, "] ")?;
@@ -101,7 +105,7 @@ impl<T: Decoration> Term<'_, '_, T> {
           if j != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{} : ", present_name(i.name))?;
+          write!(f, "{} : ", i.name)?;
           t.print(f, Prec::Term)?;
         }
         write!(f, "] → ")?;
@@ -122,18 +126,26 @@ impl<T: Decoration> Term<'_, '_, T> {
           if j != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{}", present_name(i.name))?;
+          write!(f, "{}", i.name)?;
         }
         write!(f, "] ↦ ")?;
         body.print(f, Prec::Body)?;
         right_paren(f, Prec::Body, prec)?;
         Ok(())
       }
-      Term::App(_, _, _) => {
+      Term::App(g, x, true) => {
+        left_paren(f, Prec::Proj, prec)?;
+        x.print(f, Prec::Proj)?;
+        write!(f, ".")?;
+        g.print(f, Prec::Atom)?;
+        right_paren(f, Prec::Proj, prec)?;
+        Ok(())
+      }
+      Term::App(_, _, false) => {
         let mut init = self;
         let mut xs = Vec::new();
-        while let Term::App(f, x, _) = init {
-          init = f;
+        while let Term::App(g, x, false) = init {
+          init = g;
           xs.push(x);
         }
         let g = init;
@@ -157,7 +169,7 @@ impl<T: Decoration> Term<'_, '_, T> {
             if j != 0 {
               write!(f, ", ")?;
             }
-            write!(f, "{} : ", present_name(i.name))?;
+            write!(f, "{} : ", i.name)?;
             u.print(f, Prec::Term)?;
           }
           write!(f, "}}")?;
@@ -172,7 +184,7 @@ impl<T: Decoration> Term<'_, '_, T> {
           if j != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{} ≔ ", present_name(i.name))?;
+          write!(f, "{} ≔ ", i.name)?;
           b.print(f, Prec::Term)?;
         }
         write!(f, "}}")?;
@@ -183,14 +195,29 @@ impl<T: Decoration> Term<'_, '_, T> {
       Term::Proj(n, x) => {
         left_paren(f, Prec::Proj, prec)?;
         x.print(f, Prec::Proj)?;
-        write!(f, "^{}", n)?;
+        write!(f, "^{n}")?;
         right_paren(f, Prec::Proj, prec)?;
         Ok(())
       }
-      Term::Meta(_) => todo!(),
-      // TODO
-      Term::NamedVar(_) => todo!(),
-      Term::NamedProj(_, _) => todo!(),
+      Term::Meta(n) => {
+        left_paren(f, Prec::Atom, prec)?;
+        write!(f, "?{n}")?;
+        right_paren(f, Prec::Atom, prec)?;
+        Ok(())
+      }
+      Term::NamedVar(name, _) => {
+        left_paren(f, Prec::Atom, prec)?;
+        write!(f, "{name}")?;
+        right_paren(f, Prec::Atom, prec)?;
+        Ok(())
+      }
+      Term::NamedProj(name, x, _) => {
+        left_paren(f, Prec::Proj, prec)?;
+        x.print(f, Prec::Proj)?;
+        write!(f, "::{name}")?;
+        right_paren(f, Prec::Proj, prec)?;
+        Ok(())
+      }
     }
   }
 }

@@ -39,21 +39,21 @@ pub struct Span {
 
 /// Variable bindings.
 #[derive(Debug, Clone)]
-enum Binding {
+pub enum Binding {
   Named(String),
   Tuple(Vec<String>),
 }
 
 /// Precedence levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Prec {
+pub enum Prec {
   Term,
   Body,
   Proj,
   Atom,
 }
 
-impl<'a> Term<'a> {
+impl Span {
   /// Tokenises `input` into a list of [`Span`].
   pub fn lex(chars: impl Iterator<Item = char>) -> Result<Vec<Span>, LexError> {
     // The token grammar is almost LL(1).
@@ -113,7 +113,9 @@ impl<'a> Term<'a> {
     }
     Ok(res)
   }
+}
 
+impl<'a> Term<'a> {
   /// Parses a list of [`Span`] into a [`Term`].
   ///
   /// The grammar is given by the following BNF:
@@ -397,7 +399,13 @@ impl Term<'_> {
   /// Pretty-prints a term.
   ///
   /// See documentation of [`Term::parse`] for the BNF grammar.
-  fn print(&self, f: &mut Formatter<'_>, count: &mut usize, vars: &mut Vec<Binding>, prec: Prec) -> std::fmt::Result {
+  pub fn print(
+    &self,
+    f: &mut Formatter<'_>,
+    count: &mut usize,
+    vars: &mut Vec<Binding>,
+    prec: Prec,
+  ) -> std::fmt::Result {
     /// Generates a unique lowercase variable name from a unique number.
     fn generate_name(mut id: usize) -> String {
       let mut len = 0;
@@ -452,13 +460,13 @@ impl Term<'_> {
         if let Some(i) = vars.len().checked_sub(ix + 1) {
           if let Binding::Named(name) = &vars[i] {
             left_paren(f, Prec::Atom, prec)?;
-            write!(f, "{}", name)?;
+            write!(f, "{name}")?;
             right_paren(f, Prec::Atom, prec)?;
             return Ok(());
           }
         }
         left_paren(f, Prec::Atom, prec)?;
-        write!(f, "@^{}", ix)?;
+        write!(f, "@^{ix}")?;
         right_paren(f, Prec::Atom, prec)?;
         Ok(())
       }
@@ -486,7 +494,7 @@ impl Term<'_> {
           if i != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{} ≔ ", name)?;
+          write!(f, "{name} ≔ ")?;
           t.print(f, count, vars, Prec::Term)?;
           vars.push(Binding::Named(std::mem::take(name)));
         }
@@ -512,7 +520,7 @@ impl Term<'_> {
           if i != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{} : ", name)?;
+          write!(f, "{name} : ")?;
           t.print(f, count, vars, Prec::Term)?;
           vars.push(Binding::Named(std::mem::take(name)));
         }
@@ -536,7 +544,7 @@ impl Term<'_> {
           if i != 0 {
             write!(f, ", ")?;
           }
-          write!(f, "{}", name)?;
+          write!(f, "{name}")?;
           vars.push(Binding::Named(std::mem::take(name)));
         }
         write!(f, "] ↦ ")?;
@@ -576,7 +584,7 @@ impl Term<'_> {
             }
             let name = generate_name(*count);
             *count += 1;
-            write!(f, "{} : ", name)?;
+            write!(f, "{name} : ")?;
             u.print(f, count, vars, Prec::Term)?;
             if let Some(Binding::Tuple(var)) = vars.last_mut() {
               var.push(name);
@@ -598,7 +606,7 @@ impl Term<'_> {
           }
           let name = generate_name(*count);
           *count += 1;
-          write!(f, "{} ≔ ", name)?;
+          write!(f, "{name} ≔ ")?;
           b.print(f, count, vars, Prec::Term)?;
           if let Some(Binding::Tuple(var)) = vars.last_mut() {
             var.push(name);
@@ -624,7 +632,7 @@ impl Term<'_> {
         }
         left_paren(f, Prec::Proj, prec)?;
         x.print(f, count, vars, Prec::Proj)?;
-        write!(f, "^{}", n)?;
+        write!(f, "^{n}")?;
         right_paren(f, Prec::Proj, prec)?;
         Ok(())
       }

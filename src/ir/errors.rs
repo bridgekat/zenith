@@ -32,7 +32,7 @@ pub enum TypeError<'a, 'b, T: Decoration> {
   SigAnnExpected { ty: &'a Term<'a, 'b, Core> },
   TypeMismatch { term: &'a Term<'a, 'b, T>, ty: &'a Term<'a, 'b, Core>, ety: &'a Term<'a, 'b, Core> },
   TupSizeMismatch { term: &'a Term<'a, 'b, T>, sz: usize, esz: usize },
-  TupFieldMismatch { term: &'a Term<'a, 'b, T>, name: &'b str, ename: &'b str },
+  TupFieldMismatch { term: &'a Term<'a, 'b, T>, name: Name<'b>, ename: Name<'b> },
 }
 
 impl<'a, 'b> EvalError<'a, 'b> {
@@ -168,7 +168,7 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
     Self::TupSizeMismatch { term, sz, esz }
   }
 
-  pub fn tup_field_mismatch(term: &'a Term<'a, 'b, T>, name: &'b str, ename: &'b str) -> Self {
+  pub fn tup_field_mismatch(term: &'a Term<'a, 'b, T>, name: Name<'b>, ename: Name<'b>) -> Self {
     Self::TupFieldMismatch { term, name, ename }
   }
 }
@@ -221,7 +221,7 @@ impl<'a, 'b, T: Decoration> Relocate<'a, TypeError<'a, 'b, T>> for TypeError<'_,
         TypeError::TupSizeMismatch { term: ar.term(term.relocate(ar)), sz: *sz, esz: *esz }
       }
       Self::TupFieldMismatch { term, name, ename } => {
-        TypeError::TupFieldMismatch { term: ar.term(term.relocate(ar)), name, ename }
+        TypeError::TupFieldMismatch { term: ar.term(term.relocate(ar)), name: *name, ename: *ename }
       }
     }
   }

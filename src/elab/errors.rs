@@ -1,5 +1,5 @@
 use crate::arena::{Arena, Relocate};
-use crate::ir::{Core, EvalError, Named, Stack, Term, TypeError, Val};
+use crate::ir::{Core, EvalError, Name, Named, Stack, Term, TypeError, Val};
 
 /// # Elaboration errors
 ///
@@ -7,18 +7,40 @@ use crate::ir::{Core, EvalError, Named, Stack, Term, TypeError, Val};
 #[derive(Debug, Clone)]
 pub enum ElabError<'a, 'b> {
   TypeError { err: TypeError<'a, 'b, Named> },
-  CtxName { name: &'b str },
-  SigName { name: &'b str, ty: &'a Term<'a, 'b, Core> },
+  CtxName { name: Name<'b> },
+  SigExpected { name: Name<'b>, term: &'a Term<'a, 'b, Named>, ty: &'a Term<'a, 'b, Core> },
+  SigName { name: Name<'b>, term: &'a Term<'a, 'b, Named>, ty: &'a Term<'a, 'b, Core> },
 }
 
 impl<'a, 'b> ElabError<'a, 'b> {
-  pub fn ctx_name(name: &'b str) -> Self {
+  pub fn ctx_name(name: Name<'b>) -> Self {
     Self::CtxName { name }
   }
 
-  pub fn sig_name(name: &'b str, ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
+  pub fn sig_expected(
+    name: Name<'b>,
+    term: &'a Term<'a, 'b, Named>,
+    ty: Val<'a, 'b>,
+    ctx: &Stack<'a, 'b>,
+    _env: &Stack<'a, 'b>,
+    ar: &'a Arena,
+  ) -> Self {
     match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => Self::SigName { name, ty: ar.term(ty) },
+      Ok(ty) => Self::SigExpected { name, term, ty: ar.term(ty) },
+      Err(err) => err.into(),
+    }
+  }
+
+  pub fn sig_name(
+    name: Name<'b>,
+    term: &'a Term<'a, 'b, Named>,
+    ty: Val<'a, 'b>,
+    ctx: &Stack<'a, 'b>,
+    _env: &Stack<'a, 'b>,
+    ar: &'a Arena,
+  ) -> Self {
+    match ar.val(ty).quote(ctx.len(), ar) {
+      Ok(ty) => Self::SigName { name, term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
@@ -40,8 +62,13 @@ impl<'a, 'b> Relocate<'a, ElabError<'a, 'b>> for ElabError<'_, 'b> {
   fn relocate(&self, ar: &'a Arena) -> ElabError<'a, 'b> {
     match self {
       Self::TypeError { err } => ElabError::TypeError { err: err.relocate(ar) },
-      Self::CtxName { name } => ElabError::CtxName { name },
-      Self::SigName { name, ty } => ElabError::SigName { name, ty: ar.term(ty.relocate(ar)) },
+      Self::CtxName { name } => ElabError::CtxName { name: *name },
+      Self::SigExpected { name, term, ty } => {
+        ElabError::SigExpected { name: *name, term: ar.term(term.relocate(ar)), ty: ar.term(ty.relocate(ar)) }
+      }
+      Self::SigName { name, term, ty } => {
+        ElabError::SigName { name: *name, term: ar.term(term.relocate(ar)), ty: ar.term(ty.relocate(ar)) }
+      }
     }
   }
 }
@@ -51,7 +78,12 @@ impl std::fmt::Display for ElabError<'_, '_> {
     match self {
       Self::TypeError { err } => write!(f, "{err}"),
       Self::CtxName { name } => write!(f, "unresolved variable name {name}"),
-      Self::SigName { name, ty } => write!(f, "field {name} not found in tuple type {ty}"),
+      Self::SigExpected { name, term, ty } => {
+        write!(f, "invalid field access {name} to term {term}, which has non-tuple type {ty}")
+      }
+      Self::SigName { name, term, ty } => {
+        write!(f, "invalid field access {name} to term {term}, field not found in tuple type {ty}")
+      }
     }
   }
 }
