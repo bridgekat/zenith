@@ -1,5 +1,5 @@
 use crate::arena::{Arena, Relocate};
-use crate::ir::{Core, EvalError, Name, Named, Stack, Term, TypeError, Val};
+use crate::ir::{Core, EvalError, Name, Named, Signature, Stack, Term, TypeError, Val};
 
 /// # Elaboration errors
 ///
@@ -21,11 +21,12 @@ impl<'a, 'b> ElabError<'a, 'b> {
     name: Name<'b>,
     term: &'a Term<'a, 'b, Named>,
     ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
     ctx: &Stack<'a, 'b>,
     _env: &Stack<'a, 'b>,
     ar: &'a Arena,
   ) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::SigExpected { name, term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
@@ -35,11 +36,12 @@ impl<'a, 'b> ElabError<'a, 'b> {
     name: Name<'b>,
     term: &'a Term<'a, 'b, Named>,
     ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
     ctx: &Stack<'a, 'b>,
     _env: &Stack<'a, 'b>,
     ar: &'a Arena,
   ) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::SigName { name, term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }

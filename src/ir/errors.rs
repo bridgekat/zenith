@@ -48,15 +48,15 @@ impl<'a, 'b> EvalError<'a, 'b> {
     Self::GenLevel { lvl, len }
   }
 
-  pub fn tup_init(n: usize, val: Val<'a, 'b>, env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
-    match ar.val(val).quote(env.len(), ar) {
+  pub fn tup_init(n: usize, val: Val<'a, 'b>, sig: &Signature<'a, 'b>, env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
+    match ar.val(val).quote(sig, env.len(), ar) {
       Ok(val) => Self::TupInit { n, val: ar.term(val) },
       Err(err) => err,
     }
   }
 
-  pub fn tup_proj(n: usize, val: Val<'a, 'b>, env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
-    match ar.val(val).quote(env.len(), ar) {
+  pub fn tup_proj(n: usize, val: Val<'a, 'b>, sig: &Signature<'a, 'b>, env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
+    match ar.val(val).quote(sig, env.len(), ar) {
       Ok(val) => Self::TupProj { n, val: ar.term(val) },
       Err(err) => err,
     }
@@ -80,15 +80,29 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
     Self::CtxIndex { ix, len }
   }
 
-  pub fn sig_init(n: usize, ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+  pub fn sig_init(
+    n: usize,
+    ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
+    ctx: &Stack<'a, 'b>,
+    _env: &Stack<'a, 'b>,
+    ar: &'a Arena,
+  ) -> Self {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::SigInit { n, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
-  pub fn sig_proj(n: usize, ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+  pub fn sig_proj(
+    n: usize,
+    ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
+    ctx: &Stack<'a, 'b>,
+    _env: &Stack<'a, 'b>,
+    ar: &'a Arena,
+  ) -> Self {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::SigProj { n, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
@@ -101,11 +115,12 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
   pub fn type_expected(
     term: &'a Term<'a, 'b, T>,
     ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
     ctx: &Stack<'a, 'b>,
     _env: &Stack<'a, 'b>,
     ar: &'a Arena,
   ) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::TypeExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
@@ -114,11 +129,12 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
   pub fn pi_expected(
     term: &'a Term<'a, 'b, T>,
     ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
     ctx: &Stack<'a, 'b>,
     _env: &Stack<'a, 'b>,
     ar: &'a Arena,
   ) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::PiExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
@@ -127,25 +143,38 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
   pub fn sig_expected(
     term: &'a Term<'a, 'b, T>,
     ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
     ctx: &Stack<'a, 'b>,
     _env: &Stack<'a, 'b>,
     ar: &'a Arena,
   ) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::SigExpected { term, ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
-  pub fn pi_ann_expected(ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+  pub fn pi_ann_expected(
+    ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
+    ctx: &Stack<'a, 'b>,
+    _env: &Stack<'a, 'b>,
+    ar: &'a Arena,
+  ) -> Self {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::PiAnnExpected { ty: ar.term(ty) },
       Err(err) => err.into(),
     }
   }
 
-  pub fn sig_ann_expected(ty: Val<'a, 'b>, ctx: &Stack<'a, 'b>, _env: &Stack<'a, 'b>, ar: &'a Arena) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
+  pub fn sig_ann_expected(
+    ty: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
+    ctx: &Stack<'a, 'b>,
+    _env: &Stack<'a, 'b>,
+    ar: &'a Arena,
+  ) -> Self {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
       Ok(ty) => Self::SigAnnExpected { ty: ar.term(ty) },
       Err(err) => err.into(),
     }
@@ -155,12 +184,13 @@ impl<'a, 'b, T: Decoration> TypeError<'a, 'b, T> {
     term: &'a Term<'a, 'b, T>,
     ty: Val<'a, 'b>,
     ety: Val<'a, 'b>,
+    sig: &Signature<'a, 'b>,
     ctx: &Stack<'a, 'b>,
     _env: &Stack<'a, 'b>,
     ar: &'a Arena,
   ) -> Self {
-    match ar.val(ty).quote(ctx.len(), ar) {
-      Ok(ty) => match ar.val(ety).quote(ctx.len(), ar) {
+    match ar.val(ty).quote(sig, ctx.len(), ar) {
+      Ok(ty) => match ar.val(ety).quote(sig, ctx.len(), ar) {
         Ok(ety) => Self::TypeMismatch { term, ty: ar.term(ty), ety: ar.term(ety) },
         Err(err) => err.into(),
       },

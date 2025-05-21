@@ -190,7 +190,7 @@ impl<'a, 'b, T: Decoration> Relocate<'a, Term<'a, 'b, T>> for Term<'_, 'b, T> {
       }
       Term::Init(n, x) => Term::Init(*n, ar.term(x.relocate(ar))),
       Term::Proj(n, x) => Term::Proj(*n, ar.term(x.relocate(ar))),
-      Term::Meta(m) => Term::Meta(*m),
+      Term::Hole(m) => Term::Hole(*m),
       Term::NamedVar(s, ext) => Term::NamedVar(*s, *ext),
       Term::NamedProj(s, x, ext) => Term::NamedProj(*s, ar.term(x.relocate(ar)), *ext),
     }
@@ -221,7 +221,7 @@ impl<'a, 'b> Relocate<'a, Val<'a, 'b>> for Val<'_, 'b> {
       }
       Val::Init(n, x) => Val::Init(*n, ar.val(x.relocate(ar))),
       Val::Proj(n, x) => Val::Proj(*n, ar.val(x.relocate(ar))),
-      Val::Meta(env, m) => Val::Meta(ar.frame(env.relocate(ar)), *m),
+      Val::Hole(env, m) => Val::Hole(ar.frame(env.relocate(ar)), *m),
     }
   }
 }

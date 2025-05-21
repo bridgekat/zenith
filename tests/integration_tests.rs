@@ -1,26 +1,34 @@
 use zenith::arena::Arena;
 use zenith::io::Span;
-use zenith::ir::{Stack, Term, Val};
+use zenith::ir::{Signature, Stack, Term, Val};
 
-fn check<'b>(x: &str, t: &str, ctx: &Stack<'_, 'b>, env: &Stack<'_, 'b>, ar: &'b Arena) {
+fn check<'b>(x: &str, t: &str, sig: &Signature<'_, 'b>, ctx: &Stack<'_, 'b>, env: &Stack<'_, 'b>, ar: &'b Arena) {
   let t = Term::parse(Span::lex(t.chars()).unwrap().into_iter(), ar).unwrap();
-  let (t, _) = t.infer(ctx, env, ar).unwrap();
-  let t = Val::eval(&t, env, ar).unwrap();
+  let (t, _) = t.infer(sig, ctx, env, ar).unwrap();
+  let t = Val::eval(&t, sig, env, ar).unwrap();
   let x = Term::parse(Span::lex(x.chars()).unwrap().into_iter(), ar).unwrap();
-  let _ = x.check(t, ctx, env, ar).unwrap();
+  let _ = x.check(t, sig, ctx, env, ar).unwrap();
 }
 
-fn check_and_eval<'b>(x: &str, y: &str, t: &str, ctx: &Stack<'_, 'b>, env: &Stack<'_, 'b>, ar: &'b Arena) {
+fn check_and_eval<'b>(
+  x: &str,
+  y: &str,
+  t: &str,
+  sig: &Signature<'_, 'b>,
+  ctx: &Stack<'_, 'b>,
+  env: &Stack<'_, 'b>,
+  ar: &'b Arena,
+) {
   let t = Term::parse(Span::lex(t.chars()).unwrap().into_iter(), ar).unwrap();
-  let (t, _) = t.infer(ctx, env, ar).unwrap();
-  let t = Val::eval(&t, env, ar).unwrap();
+  let (t, _) = t.infer(sig, ctx, env, ar).unwrap();
+  let t = Val::eval(&t, sig, env, ar).unwrap();
   let x = Term::parse(Span::lex(x.chars()).unwrap().into_iter(), ar).unwrap();
-  let x = x.check(t, ctx, env, ar).unwrap();
-  let x = Val::eval(&x, env, ar).unwrap();
+  let x = x.check(t, sig, ctx, env, ar).unwrap();
+  let x = Val::eval(&x, sig, env, ar).unwrap();
   let y = Term::parse(Span::lex(y.chars()).unwrap().into_iter(), ar).unwrap();
-  let y = y.check(t, ctx, env, ar).unwrap();
-  let y = Val::eval(&y, env, ar).unwrap();
-  assert!(x.conv(&y, ctx.len(), ar).unwrap());
+  let y = y.check(t, sig, ctx, env, ar).unwrap();
+  let y = Val::eval(&y, sig, env, ar).unwrap();
+  assert!(x.conv(&y, sig, ctx.len(), ar).unwrap());
 }
 
 #[test]
@@ -30,6 +38,7 @@ fn test_check_and_eval_id() {
     r"[id ≔ [X, x] ↦ x : [X : Type, x : X] → X] [A] ↦ id ([a : A] → A) (id A)",
     r"[X, x] ↦ x",
     r"[A : Type, a : A] → A",
+    &Signature::new(),
     &Stack::new(&ar),
     &Stack::new(&ar),
     &ar,
@@ -43,6 +52,7 @@ fn test_check_and_eval_tuple() {
     r"[P, Q, h] ↦ {hq ≔ h^0, hp ≔ h^1, hr := h^0}",
     r"[P, Q, h] ↦ {hq ≔ h^0, hp ≔ h^1, hr := hq}",
     r"[P : Type, Q : Type, h : {hp : P, hq : Q}] → {hq : Q, hp : P, hr : Q}",
+    &Signature::new(),
     &Stack::new(&ar),
     &Stack::new(&ar),
     &ar,
@@ -78,6 +88,7 @@ fn test_check_and_eval_church_naturals() {
       ))))))))))
     ",
     r"[A : Type, s : [a : A] → A, z : A] → A",
+    &Signature::new(),
     &Stack::new(&ar),
     &Stack::new(&ar),
     &ar,
@@ -155,6 +166,7 @@ fn test_check_first_order_logic_de_morgan_proof() {
       not-exists-iff-forall-not : [p : [_ : X] → Prop] → ⊢ (⇔ (¬ (∃ ([x] ↦ p x))) (∀ ([x] ↦ ¬ (p x))))
     }
     ",
+    &Signature::new(),
     &Stack::new(&ar),
     &Stack::new(&ar),
     &ar,

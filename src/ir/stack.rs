@@ -67,7 +67,13 @@ impl<'a, 'b> Stack<'a, 'b> {
   /// Pre-conditions:
   ///
   /// - `self` is well-formed context.
-  pub fn get_by_name(&self, name: Name<'b>, env: &Self, ar: &'a Arena) -> Option<(usize, Option<usize>, Val<'a, 'b>)> {
+  pub fn get_by_name(
+    &self,
+    name: Name<'b>,
+    sig: &Signature<'a, 'b>,
+    env: &Self,
+    ar: &'a Arena,
+  ) -> Option<(usize, Option<usize>, Val<'a, 'b>)> {
     let mut curr = self;
     let mut ix = 0;
     ar.inc_lookup_count();
@@ -83,7 +89,8 @@ impl<'a, 'b> Stack<'a, 'b> {
           for (n, (info, u)) in us.iter().rev().enumerate() {
             if info.name == name {
               let u =
-                Val::apply(u, Val::eval(&Term::Init(n + 1, ar.term(Term::Var(ix))), env, ar).unwrap(), ar).unwrap();
+                Val::apply(u, Val::eval(&Term::Init(n + 1, ar.term(Term::Var(ix))), sig, env, ar).unwrap(), sig, ar)
+                  .unwrap();
               return Some((ix, Some(n), u));
             }
           }

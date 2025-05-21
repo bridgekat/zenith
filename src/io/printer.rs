@@ -199,7 +199,7 @@ impl<T: Decoration> Term<'_, '_, T> {
         right_paren(f, Prec::Proj, prec)?;
         Ok(())
       }
-      Term::Meta(n) => {
+      Term::Hole(n) => {
         left_paren(f, Prec::Atom, prec)?;
         write!(f, "?{n}")?;
         right_paren(f, Prec::Atom, prec)?;

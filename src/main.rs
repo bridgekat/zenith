@@ -3,7 +3,7 @@ use std::thread::Builder;
 
 use zenith::arena::Arena;
 use zenith::io::Span;
-use zenith::ir::{Stack, Term, Val};
+use zenith::ir::{Signature, Stack, Term, Val};
 
 /// Converts `pos` to line and column numbers.
 fn pos_to_line_col(pos: usize, lines: &[String]) -> (usize, usize) {
@@ -145,17 +145,23 @@ fn run_repl() -> std::io::Result<()> {
       }
     };
 
+    let sig = Signature::new();
     let ctx = Stack::new(&ar);
     let env = Stack::new(&ar);
-    match term.infer(&ctx, &env, &ar) {
+    match term.infer(&sig, &ctx, &env, &ar) {
       Ok((term, ty)) => {
-        let term = Val::eval(&term, &env, &ar).unwrap().quote(0, &ar).unwrap().check(ty, &ctx, &env, &ar).unwrap();
+        let term = Val::eval(&term, &sig, &env, &ar)
+          .unwrap()
+          .quote(&sig, 0, &ar)
+          .unwrap()
+          .check(ty, &sig, &ctx, &env, &ar)
+          .unwrap();
         println!("≡ {term}");
-        if ty.conv(&Val::Univ(1), 0, &ar).unwrap() {
-          let ty = ty.quote(0, &ar).unwrap();
+        if ty.conv(&Val::Univ(1), &sig, 0, &ar).unwrap() {
+          let ty = ty.quote(&sig, 0, &ar).unwrap();
           println!(": {ty}");
         } else {
-          let ty = ty.quote(0, &ar).unwrap().infer(&ctx, &env, &ar).unwrap().0;
+          let ty = ty.quote(&sig, 0, &ar).unwrap().infer(&sig, &ctx, &env, &ar).unwrap().0;
           println!(": {ty}");
         }
       }
