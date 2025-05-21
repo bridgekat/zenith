@@ -1,3 +1,7 @@
+//! # Error types
+//!
+//! This module defines the error types used by the core evaluator and the type checker.
+
 use super::*;
 use crate::arena::{Arena, Relocate};
 

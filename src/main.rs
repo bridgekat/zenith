@@ -149,7 +149,7 @@ fn run_repl() -> std::io::Result<()> {
     let env = Stack::new(&ar);
     match term.infer(&ctx, &env, &ar) {
       Ok((term, ty)) => {
-        let term = term.eval(&env, &ar).unwrap().quote(0, &ar).unwrap().check(ty, &ctx, &env, &ar).unwrap();
+        let term = Val::eval(&term, &env, &ar).unwrap().quote(0, &ar).unwrap().check(ty, &ctx, &env, &ar).unwrap();
         println!("≡ {term}");
         if ty.conv(&Val::Univ(1), 0, &ar).unwrap() {
           let ty = ty.quote(0, &ar).unwrap();

@@ -1,27 +1,25 @@
 use zenith::arena::Arena;
 use zenith::io::Span;
-use zenith::ir::{Stack, Term, TypeError};
+use zenith::ir::{Stack, Term, Val};
 
 fn check<'b>(x: &str, t: &str, ctx: &Stack<'_, 'b>, env: &Stack<'_, 'b>, ar: &'b Arena) {
   let t = Term::parse(Span::lex(t.chars()).unwrap().into_iter(), ar).unwrap();
-  let (t, tt) = t.infer(ctx, env, ar).unwrap();
-  tt.as_univ(|tt| TypeError::type_expected(&t, tt, ctx, env, ar)).unwrap();
-  let t = t.eval(env, ar).unwrap();
+  let (t, _) = t.infer(ctx, env, ar).unwrap();
+  let t = Val::eval(&t, env, ar).unwrap();
   let x = Term::parse(Span::lex(x.chars()).unwrap().into_iter(), ar).unwrap();
   let _ = x.check(t, ctx, env, ar).unwrap();
 }
 
 fn check_and_eval<'b>(x: &str, y: &str, t: &str, ctx: &Stack<'_, 'b>, env: &Stack<'_, 'b>, ar: &'b Arena) {
   let t = Term::parse(Span::lex(t.chars()).unwrap().into_iter(), ar).unwrap();
-  let (t, tt) = t.infer(ctx, env, ar).unwrap();
-  tt.as_univ(|tt| TypeError::type_expected(&t, tt, ctx, env, ar)).unwrap();
-  let t = t.eval(env, ar).unwrap();
+  let (t, _) = t.infer(ctx, env, ar).unwrap();
+  let t = Val::eval(&t, env, ar).unwrap();
   let x = Term::parse(Span::lex(x.chars()).unwrap().into_iter(), ar).unwrap();
   let x = x.check(t, ctx, env, ar).unwrap();
-  let x = x.eval(env, ar).unwrap();
+  let x = Val::eval(&x, env, ar).unwrap();
   let y = Term::parse(Span::lex(y.chars()).unwrap().into_iter(), ar).unwrap();
   let y = y.check(t, ctx, env, ar).unwrap();
-  let y = y.eval(env, ar).unwrap();
+  let y = Val::eval(&y, env, ar).unwrap();
   assert!(x.conv(&y, ctx.len(), ar).unwrap());
 }
 

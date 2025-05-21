@@ -1,6 +1,6 @@
-mod errors;
-mod parser;
-mod printer;
+pub mod errors;
+pub mod parser;
+pub mod printer;
 
 pub use errors::{LexError, ParseError};
 pub use parser::{Span, Token};
