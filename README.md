@@ -20,7 +20,7 @@ Example proof terms in the surface syntax:
 
 ## Design
 
-- My [final year project report](docs/design_report.pdf). I am still working on the problems mentioned in the final section.
+- My [final year project report](docs/design_report.pdf) and [slides](docs/design_slides.pdf). I am still working on the problems mentioned in the final chapter.
 
 ## Progress
 
