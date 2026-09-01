@@ -1,0 +1,37 @@
+## LaTeX intermediate files
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+
+## Latexmk
+*.xdv
+*.nav
+*.snm
+*.vrb
+
+## Bibliography tools
+*.acn
+*.acr
+*.alg
+*.glg
+*.glo
+*.gls
+*.ist
+
+## Generated files
+*.pdf
+*.dvi
+*.ps

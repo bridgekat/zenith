@@ -325,6 +325,7 @@ impl<'a, 'b> Term<'a, 'b, Core> {
   }
 
   /// Presents a projection as a named projection and returns its type.
+  #[allow(clippy::too_many_arguments)]
   pub fn present_named_proj(
     n: usize,
     x_old: &'a Term<'a, 'b, Core>,

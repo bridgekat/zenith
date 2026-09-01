@@ -77,7 +77,7 @@ impl<'a> EvalError<'a> {
   }
 
   /// Clones `self` to given arena.
-  pub fn relocate(self, ar: &Arena) -> EvalError {
+  pub fn relocate(self, ar: &Arena) -> EvalError<'_> {
     match self {
       Self::EnvIndex { ix, len } => EvalError::EnvIndex { ix, len },
       Self::GenLevel { lvl, len } => EvalError::GenLevel { lvl, len },
@@ -179,7 +179,7 @@ impl<'a> TypeError<'a> {
   }
 
   /// Clones `self` to given arena.
-  pub fn relocate(self, ar: &Arena) -> TypeError {
+  pub fn relocate(self, ar: &Arena) -> TypeError<'_> {
     match self {
       Self::EvalError { err } => TypeError::EvalError { err: err.relocate(ar) },
       Self::UnivForm { univ } => TypeError::UnivForm { univ },

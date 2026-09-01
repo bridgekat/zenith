@@ -239,6 +239,7 @@ impl<'a, 'b> Term<'a, 'b, Named> {
   }
 
   /// Resolves a named projection to a core term and its type.
+  #[allow(clippy::too_many_arguments)]
   pub fn resolve_named_proj(
     name: &Name<'b>,
     x_old: &'a Term<'a, 'b, Named>,
